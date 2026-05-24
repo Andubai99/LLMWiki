@@ -1,0 +1,26 @@
+[workspace]
+name = "LLM Wiki"
+version = "0.1"
+root = "."
+
+[sources]
+raw_dir = "sources/raw"
+normalized_dir = "sources/normalized"
+supported_types = ["markdown", "web", "text_pdf"]
+ocr_enabled = false
+
+[wiki]
+dir = "wiki"
+index = "wiki/index.md"
+log = "wiki/log.md"
+
+[staging]
+dir = "staging"
+auto_apply = false
+
+[state]
+catalog = "state/catalog.sqlite"
+
+[agent]
+contract = "AGENTS.md"
+write_policy = "staged_review"
