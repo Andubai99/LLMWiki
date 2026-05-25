@@ -54,6 +54,7 @@ def test_lint_and_doctor_report_workspace_health(capsys):
     assert main(["doctor", "--root", str(root)]) == 0
     doctor = capsys.readouterr().out
     assert "Python OK" in doctor
+    assert "dependencies OK" in doctor
     assert "Workspace OK" in doctor
     assert "schema OK" in doctor
     assert "index/log OK" in doctor

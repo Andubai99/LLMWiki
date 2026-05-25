@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import sys
+import tomllib
 from pathlib import Path
 
 from .apply import UnsafePatchError, apply_run
@@ -117,8 +119,10 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     result = check_workspace(root)
     schema_ok, schema_problems = schema_status(catalog_path(root))
     index_log_ok = (root / "wiki" / "index.md").exists() and (root / "wiki" / "log.md").exists()
+    deps_ok, dep_problems = dependency_status()
     print(f"Python OK: {sys.version.split()[0]}")
-    if result.ok and schema_ok and index_log_ok:
+    if result.ok and schema_ok and index_log_ok and deps_ok:
+        print("dependencies OK")
         print(f"Workspace OK: {result.root}")
         print("schema OK")
         print("index/log OK")
@@ -131,7 +135,29 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         print(f"- {problem}")
     if not index_log_ok:
         print("- index/log missing")
+    for problem in dep_problems:
+        print(f"- dependency {problem}")
     return 1
+
+
+def dependency_status() -> tuple[bool, list[str]]:
+    problems: list[str] = []
+    required = {"pypdf": "pypdf"}
+    declared = declared_dependencies()
+    for module_name, package_name in required.items():
+        importable = importlib.util.find_spec(module_name) is not None
+        declared_ok = any(dep.casefold().startswith(package_name) for dep in declared)
+        if not importable and not declared_ok:
+            problems.append(f"{package_name} missing from runtime and pyproject")
+    return not problems, problems
+
+
+def declared_dependencies() -> list[str]:
+    pyproject = Path(__file__).resolve().parents[1] / "pyproject.toml"
+    if not pyproject.exists():
+        return []
+    data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+    return list(data.get("project", {}).get("dependencies", []))
 
 
 def build_parser() -> argparse.ArgumentParser:
