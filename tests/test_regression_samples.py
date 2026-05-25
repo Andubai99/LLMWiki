@@ -144,6 +144,55 @@ def test_lint_distinguishes_recorded_and_unresolved_contradictions(capsys):
     assert "unresolved potential contradictions: 0" in lint
 
 
+def test_chinese_regression_sources_cover_alias_entity_conflict_and_support(capsys):
+    root = make_workspace()
+    assert main(["init", "--root", str(root)]) == 0
+
+    source_ids = [
+        add_ingest_apply(root, fixture("zh_alias_entity.md")),
+        add_ingest_apply(root, fixture("zh_conflict.md")),
+        add_ingest_apply(root, fixture("zh_supports.md")),
+    ]
+    capsys.readouterr()
+
+    rag_pages = scalar(
+        root,
+        "select count(*) from pages where page_type = 'concept' and title = 'Retrieval Augmented Generation'",
+    )
+    assert rag_pages == 1
+
+    openai_entities = scalar(
+        root,
+        "select count(*) from pages where page_type = 'entity' and title = 'OpenAI'",
+    )
+    assert openai_entities == 1
+
+    contradictions = scalar(
+        root,
+        "select count(*) from relationships where relationship_type = 'contradicts'",
+    )
+    supports = scalar(
+        root,
+        "select count(*) from relationships where relationship_type = 'supports'",
+    )
+    assert contradictions >= 1
+    assert supports >= 1
+
+    with sqlite3.connect(root / "state" / "catalog.sqlite") as conn:
+        claim_rows = conn.execute(
+            "select claim_text, citation_locator from claims where source_id in (?, ?, ?)",
+            source_ids,
+        ).fetchall()
+    assert claim_rows
+    assert any("检索增强生成" in row[0] for row in claim_rows)
+    assert all("line:" in row[1] and "section:" in row[1] and "paragraph:" in row[1] for row in claim_rows)
+
+    assert main(["lint", "--root", str(root)]) == 0
+    lint = capsys.readouterr().out
+    assert "recorded contradicts relationships:" in lint
+    assert "unresolved potential contradictions: 0" in lint
+
+
 def test_docs_describe_v1_commands_and_constraints():
     root = Path(__file__).resolve().parents[1]
     readme = (root / "README.md").read_text(encoding="utf-8")

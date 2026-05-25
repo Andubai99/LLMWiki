@@ -230,7 +230,7 @@ def find_duplicate_candidates(root: Path, concept_title: str, aliases: list[str]
 
 def find_conflict_candidates(root: Path, claims: list[Claim]) -> list[str]:
     candidates: list[str] = []
-    conflict_terms = ("contradict", "conflict", "disagree", "not ")
+    conflict_terms = ("contradict", "conflict", "disagree", "not ", "不", "无需", "不需要", "冲突", "矛盾")
     for claim in claims:
         text_lower = claim.claim_text.lower()
         if any(term in text_lower for term in conflict_terms):
@@ -832,7 +832,7 @@ def section_items(markdown: str, heading: str) -> list[str]:
 
 
 def normalize_alias(value: str) -> str:
-    return re.sub(r"[^a-z0-9]+", "", value.casefold())
+    return "".join(ch for ch in value.casefold() if ch.isalnum())
 
 
 def alias_keys(value: str) -> set[str]:
