@@ -48,6 +48,10 @@ def ingest_source(root: Path, source_id: str) -> IngestResult:
     concept_title, aliases = infer_concept(source["title"], claims)
     entity = infer_entity(claims)
     duplicate_candidates = find_duplicate_candidates(root, concept_title, aliases)
+    if entity:
+        entity_title, entity_aliases = entity
+        duplicate_candidates.extend(find_duplicate_candidates(root, entity_title, entity_aliases))
+        duplicate_candidates = list(dict.fromkeys(duplicate_candidates))
     conflict_candidates = find_conflict_candidates(root, claims)
     coverage = citation_coverage(claims)
 
@@ -179,7 +183,8 @@ def is_claim_text(text: str) -> bool:
 
 def infer_concept(source_title: str, claims: list[Claim]) -> tuple[str, list[str]]:
     combined = " ".join(claim.claim_text for claim in claims)
-    if re.search(r"\bRAG\b|retrieval augmented generation", combined, re.I):
+    combined_keys = alias_keys(combined)
+    if "rag" in combined_keys or "retrievalaugmentedgeneration" in combined_keys:
         return "Retrieval Augmented Generation", ["RAG", "retrieval augmented generation"]
     if re.search(r"\balias\b", combined, re.I):
         return "Alias Resolution", ["alias", "identity resolution"]
@@ -191,26 +196,36 @@ def infer_concept(source_title: str, claims: list[Claim]) -> tuple[str, list[str
 
 def infer_entity(claims: list[Claim]) -> tuple[str, list[str]] | None:
     combined = " ".join(claim.claim_text for claim in claims)
-    if re.search(r"\bOpen\s*AI\b|\bOpenAI\b", combined, re.I):
-        return "OpenAI", ["OpenAI", "Open AI"]
+    if "openai" in alias_keys(combined):
+        return "OpenAI", ["OpenAI", "Open AI", "Open-AI"]
     return None
 
 
 def find_duplicate_candidates(root: Path, concept_title: str, aliases: list[str]) -> list[str]:
-    normalized = {normalize_alias(concept_title), *(normalize_alias(alias) for alias in aliases)}
+    wanted_keys = set().union(*(alias_keys(value) for value in [concept_title, *aliases]))
     candidates: list[str] = []
     with connect(catalog_path(root)) as conn:
         page_rows = conn.execute("select path, title from pages").fetchall()
-        alias_rows = conn.execute("select alias, target_type, target_id from aliases").fetchall()
+        alias_rows = conn.execute(
+            """
+            select a.alias, a.target_type, a.target_id, p.path
+            from aliases a
+            left join pages p on p.page_id = a.target_id
+            """
+        ).fetchall()
     for row in page_rows:
-        if normalize_alias(row["title"]) in normalized:
+        existing_keys = alias_keys(row["title"])
+        if existing_keys & wanted_keys:
             candidates.append(f"{row['path']} has matching title {row['title']}")
+        elif similar_title(row["title"], concept_title):
+            candidates.append(f"{row['path']} has similar title {row['title']}")
     for row in alias_rows:
-        if normalize_alias(row["alias"]) in normalized:
+        if alias_keys(row["alias"]) & wanted_keys:
+            target = row["path"] if row["path"] else f"{row['target_type']}:{row['target_id']}"
             candidates.append(
-                f"{row['target_type']}:{row['target_id']} has matching alias {row['alias']}"
+                f"{target} has matching alias {row['alias']}"
             )
-    return candidates
+    return list(dict.fromkeys(candidates))
 
 
 def find_conflict_candidates(root: Path, claims: list[Claim]) -> list[str]:
@@ -817,7 +832,34 @@ def section_items(markdown: str, heading: str) -> list[str]:
 
 
 def normalize_alias(value: str) -> str:
-    return re.sub(r"\s+", " ", value.casefold().strip())
+    return re.sub(r"[^a-z0-9]+", "", value.casefold())
+
+
+def alias_keys(value: str) -> set[str]:
+    words = re.findall(r"[a-z0-9]+", value.casefold())
+    if not words:
+        return set()
+    spaced = " ".join(words)
+    compact = "".join(words)
+    keys = {compact}
+    if "retrieval augmented generation" in spaced:
+        keys.add("retrievalaugmentedgeneration")
+        keys.add("rag")
+    if re.search(r"\brag\b", spaced):
+        keys.add("rag")
+        keys.add("retrievalaugmentedgeneration")
+    if "open ai" in spaced or "openai" in compact:
+        keys.add("openai")
+    return keys
+
+
+def similar_title(left: str, right: str) -> bool:
+    left_tokens = {token for token in re.findall(r"[a-z0-9]{3,}", left.casefold())}
+    right_tokens = {token for token in re.findall(r"[a-z0-9]{3,}", right.casefold())}
+    if not left_tokens or not right_tokens:
+        return False
+    overlap = left_tokens & right_tokens
+    return len(overlap) >= 2 and len(overlap) / min(len(left_tokens), len(right_tokens)) >= 0.5
 
 
 def slugify(value: str) -> str:

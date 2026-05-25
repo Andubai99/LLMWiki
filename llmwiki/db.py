@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 import sqlite3
 from pathlib import Path
+from typing import Iterator
 
 
 REQUIRED_SCHEMA: dict[str, tuple[str, ...]] = {
@@ -45,13 +47,21 @@ def catalog_path(root: Path) -> Path:
     return root / "state" / "catalog.sqlite"
 
 
-def connect(db_path: Path) -> sqlite3.Connection:
+@contextmanager
+def connect(db_path: Path) -> Iterator[sqlite3.Connection]:
     conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    conn.execute("pragma journal_mode = truncate")
-    conn.execute("pragma temp_store = memory")
-    conn.execute("pragma foreign_keys = on")
-    return conn
+    try:
+        conn.row_factory = sqlite3.Row
+        conn.execute("pragma journal_mode = truncate")
+        conn.execute("pragma temp_store = memory")
+        conn.execute("pragma foreign_keys = on")
+        yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 def init_db(db_path: Path) -> None:

@@ -38,11 +38,8 @@ def test_regression_samples_preserve_alias_entity_and_conflict(capsys):
     )
     assert openai_entities == 1
 
-    openai_aliases = scalar(
-        root,
-        "select count(*) from aliases where normalized_alias in ('openai', 'open ai')",
-    )
-    assert openai_aliases >= 2
+    openai_aliases = scalar(root, "select count(*) from aliases where normalized_alias = 'openai'")
+    assert openai_aliases == 1
 
     contradictions = scalar(
         root,
@@ -50,11 +47,101 @@ def test_regression_samples_preserve_alias_entity_and_conflict(capsys):
     )
     assert contradictions >= 1
 
+    assert main(["lint", "--root", str(root)]) == 0
+    lint = capsys.readouterr().out
+    assert "recorded contradicts relationships:" in lint
+    assert "duplicate alias:" in lint
+    assert "unresolved potential contradictions:" in lint
+    assert "unresolved potential contradictions: 0" in lint
+
+
+def test_identity_resolution_detects_alias_punctuation_and_entity_candidates(capsys):
+    root = make_workspace()
+    assert main(["init", "--root", str(root)]) == 0
+    add_ingest_apply(root, fixture("minimal_source.md"))
+    add_ingest_apply(root, fixture("regression_entity.md"))
+    capsys.readouterr()
+
+    alias_source = root / "rag-punctuation.md"
+    alias_source.write_text(
+        "# Retrieval-Augmented_Generation Notes\n\n"
+        "Retrieval-augmented_generation should preserve citation anchors for audit review.\n",
+        encoding="utf-8",
+    )
+    assert main(["add", str(alias_source), "--root", str(root)]) == 0
+    source_id = scalar(
+        root,
+        "select source_id from sources where title = 'Retrieval-Augmented_Generation Notes'",
+    )
+    assert main(["ingest", source_id, "--root", str(root)]) == 0
+    alias_run = capsys.readouterr().out.split("run_id=", 1)[1].splitlines()[0].strip()
+    assert main(["review", alias_run, "--root", str(root)]) == 0
+    alias_review = capsys.readouterr().out
+    assert "Duplicate candidates:" in alias_review
+    assert "wiki/concepts/retrieval-augmented-generation.md" in alias_review
+    assert "change" in alias_review and "update" in alias_review
+    assert "wiki/concepts/retrieval-augmented-generation-notes.md" not in alias_review
+
+    entity_source = root / "open-ai-variant.md"
+    entity_source.write_text(
+        "# Open-AI Entity Variant\n\n"
+        "Open-AI develops language models for applied research systems.\n",
+        encoding="utf-8",
+    )
+    assert main(["add", str(entity_source), "--root", str(root)]) == 0
+    source_id = scalar(root, "select source_id from sources where title = 'Open-AI Entity Variant'")
+    assert main(["ingest", source_id, "--root", str(root)]) == 0
+    entity_run = capsys.readouterr().out.split("run_id=", 1)[1].splitlines()[0].strip()
+    triage = (root / "staging" / entity_run / "triage.md").read_text(encoding="utf-8")
+    assert "wiki/entities/openai.md has matching alias OpenAI" in triage
+
+
+def test_lint_distinguishes_recorded_and_unresolved_contradictions(capsys):
+    root = make_workspace()
+    assert main(["init", "--root", str(root)]) == 0
+    with sqlite3.connect(root / "state" / "catalog.sqlite") as conn:
+        conn.execute(
+            """
+            insert into claims (claim_id, source_id, claim_text, citation_locator, confidence_status, created_at)
+            values (?, ?, ?, ?, ?, ?)
+            """,
+            ("clm_a", "src_a", "RAG systems require citation anchors.", "line:1", "cited", "2026-05-25T00:00:00+00:00"),
+        )
+        conn.execute(
+            """
+            insert into claims (claim_id, source_id, claim_text, citation_locator, confidence_status, created_at)
+            values (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "clm_b",
+                "src_b",
+                "RAG systems do not require citation anchors.",
+                "line:1",
+                "cited",
+                "2026-05-25T00:00:00+00:00",
+            ),
+        )
+
     assert main(["lint", "--root", str(root)]) == 1
     lint = capsys.readouterr().out
-    assert "contradicts relationships:" in lint
-    assert "duplicate alias:" in lint
-    assert "potential contradictions:" in lint
+    assert "recorded contradicts relationships: 0" in lint
+    assert "unresolved potential contradictions: 1" in lint
+
+    with sqlite3.connect(root / "state" / "catalog.sqlite") as conn:
+        conn.execute(
+            """
+            insert into relationships (
+                subject_id, object_id, relationship_type, evidence_claim_id, source_id
+            )
+            values (?, ?, ?, ?, ?)
+            """,
+            ("clm_a", "clm_b", "contradicts", "clm_b", "src_b"),
+        )
+
+    assert main(["lint", "--root", str(root)]) == 0
+    lint = capsys.readouterr().out
+    assert "recorded contradicts relationships: 1" in lint
+    assert "unresolved potential contradictions: 0" in lint
 
 
 def test_docs_describe_v1_commands_and_constraints():

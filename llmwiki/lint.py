@@ -74,15 +74,14 @@ def lint_workspace(root: Path) -> LintReport:
         lines.append(f"- source hash drift: {drift_count}")
         issue_count += drift_count
 
-        contradicts = conn.execute(
+        recorded_contradicts = conn.execute(
             "select count(*) from relationships where relationship_type = 'contradicts'"
         ).fetchone()[0]
-        lines.append(f"- contradicts relationships: {contradicts}")
-        issue_count += contradicts
+        lines.append(f"- recorded contradicts relationships: {recorded_contradicts}")
 
-        potential = potential_contradictions(conn)
-        lines.append(f"- potential contradictions: {potential}")
-        issue_count += potential
+        unresolved = unresolved_potential_contradictions(conn)
+        lines.append(f"- unresolved potential contradictions: {unresolved}")
+        issue_count += unresolved
 
     if issue_count == 0:
         lines.append("Lint OK")
@@ -104,13 +103,35 @@ def source_hash_drift(root: Path, conn) -> int:
     return drift
 
 
-def potential_contradictions(conn) -> int:
-    rows = conn.execute("select claim_text from claims").fetchall()
-    texts = [row["claim_text"].casefold() for row in rows]
+def unresolved_potential_contradictions(conn) -> int:
+    rows = conn.execute("select claim_id, claim_text from claims").fetchall()
+    claims = [(row["claim_id"], row["claim_text"].casefold()) for row in rows]
+    recorded_claim_ids = recorded_contradict_claim_ids(conn)
     count = 0
-    for index, left in enumerate(texts):
-        for right in texts[index + 1 :]:
+    for index, (left_id, left) in enumerate(claims):
+        for right_id, right in claims[index + 1 :]:
             shared = set(left.split()) & set(right.split())
             if len(shared) >= 3 and (" not " in f" {left} ") != (" not " in f" {right} "):
+                if left_id in recorded_claim_ids or right_id in recorded_claim_ids:
+                    continue
                 count += 1
     return count
+
+
+def recorded_contradict_claim_ids(conn) -> set[str]:
+    claim_ids = {
+        row["claim_id"]
+        for row in conn.execute("select claim_id from claims").fetchall()
+    }
+    recorded: set[str] = set()
+    for row in conn.execute(
+        """
+        select subject_id, object_id, evidence_claim_id
+        from relationships
+        where relationship_type = 'contradicts'
+        """
+    ).fetchall():
+        for value in (row["subject_id"], row["object_id"], row["evidence_claim_id"]):
+            if value in claim_ids:
+                recorded.add(value)
+    return recorded
