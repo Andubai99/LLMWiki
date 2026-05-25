@@ -27,7 +27,7 @@ Use Python 3.10 or newer. From the repository root:
 python -m pip install -e .
 ```
 
-The first version uses only the Python standard library by default. Text PDF extraction can use `pypdf` if it is installed; scanned PDF OCR is not supported.
+The first version uses a small dependency set. `pypdf` is used for text PDF extraction; scanned PDF OCR is not supported.
 
 ## CLI Usage
 
@@ -87,7 +87,7 @@ Open the repository root or `wiki/` folder in Obsidian to browse pages. Keep the
 
 - Markdown and plain text source import.
 - Web snapshot import for reachable `http`/`https` URLs.
-- Text PDF import with optional `pypdf`.
+- Text PDF import through `pypdf`.
 - Claim-first staging with citations.
 - Source summary, concept, and entity Markdown pages.
 - SQLite source/claim/page/link/relationship indexing.
