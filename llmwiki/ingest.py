@@ -109,7 +109,18 @@ def load_source(root: Path, source_id: str) -> dict[str, str]:
 def extract_claims(source_id: str, normalized_text: str) -> list[Claim]:
     created_at = utc_now()
     claims: list[Claim] = []
+    current_section = ""
+    current_paragraph = ""
     for line in normalized_text.splitlines():
+        section_match = re.match(r"<!-- section:(.*?) -->", line)
+        if section_match:
+            current_section = section_match.group(1).strip()
+            current_paragraph = ""
+            continue
+        paragraph_match = re.match(r"<!-- paragraph:(\d+) -->", line)
+        if paragraph_match:
+            current_paragraph = paragraph_match.group(1)
+            continue
         match = re.match(r"\[line:(\d+)\]\s+(.*)", line)
         if not match:
             continue
@@ -117,7 +128,12 @@ def extract_claims(source_id: str, normalized_text: str) -> list[Claim]:
         claim_text = claim_text.strip()
         if not is_claim_text(claim_text):
             continue
-        locator = f"line:{line_no}"
+        locator_parts = [f"line:{line_no}"]
+        if current_section:
+            locator_parts.append(f"section:{current_section}")
+        if current_paragraph:
+            locator_parts.append(f"paragraph:{current_paragraph}")
+        locator = ";".join(locator_parts)
         claims.append(
             Claim(
                 claim_id=f"clm_{source_id}_{line_no}",
@@ -132,9 +148,31 @@ def extract_claims(source_id: str, normalized_text: str) -> list[Claim]:
 
 
 def is_claim_text(text: str) -> bool:
+    text = text.strip()
     if not text or text.startswith("#"):
         return False
     if text.startswith("[unsupported-"):
+        return False
+    text = re.sub(r"^[-*+]\s+", "", text).strip()
+    if not text:
+        return False
+    lowered = text.casefold()
+    metadata_prefixes = (
+        "topic:",
+        "created for:",
+        "author:",
+        "date:",
+        "source:",
+        "tags:",
+        "status:",
+        "title:",
+    )
+    if lowered.startswith(metadata_prefixes):
+        return False
+    table_of_contents = {"contents", "table of contents", "introduction", "scope", "overview"}
+    if lowered.strip(" .:-") in table_of_contents:
+        return False
+    if text.endswith(":"):
         return False
     return any(ch.isalpha() for ch in text) and len(text.split()) >= 4
 

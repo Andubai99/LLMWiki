@@ -135,3 +135,45 @@ def test_review_patches_shows_candidate_markdown_content(capsys):
     assert "```markdown" in out
     assert "## Source Metadata" in out
     assert "## Key Claims" in out
+
+
+def test_ingest_filters_non_claim_lines_and_adds_rich_locators(capsys):
+    root = make_workspace()
+    assert main(["init", "--root", str(root)]) == 0
+    source = root / "claim-quality.md"
+    source.write_text(
+        "# Claim Quality Notes\n\n"
+        "- Topic: internal regression metadata.\n"
+        "- Created for: testing claim filters.\n"
+        "- Introduction\n"
+        "- Scope\n\n"
+        "## Retrieval Practice\n\n"
+        "RAG systems should preserve citation anchors during review.\n"
+        "Citation-aware review makes later synthesis auditable.\n",
+        encoding="utf-8",
+    )
+    assert main(["add", str(source), "--root", str(root)]) == 0
+    import sqlite3
+
+    with sqlite3.connect(root / "state" / "catalog.sqlite") as conn:
+        source_id = conn.execute("select source_id from sources").fetchone()[0]
+        normalized_path = conn.execute("select normalized_path from sources").fetchone()[0]
+    normalized = (root / normalized_path).read_text(encoding="utf-8")
+    assert "<!-- section:Retrieval Practice -->" in normalized
+    assert "<!-- paragraph:" in normalized
+
+    assert main(["ingest", source_id, "--root", str(root)]) == 0
+    run_id = capsys.readouterr().out.split("run_id=", 1)[1].splitlines()[0].strip()
+    claims = [
+        json.loads(line)
+        for line in (root / "staging" / run_id / "claims.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    texts = [claim["claim_text"] for claim in claims]
+    assert texts == [
+        "RAG systems should preserve citation anchors during review.",
+        "Citation-aware review makes later synthesis auditable.",
+    ]
+    assert all("line:" in claim["citation_locator"] for claim in claims)
+    assert all("section:Retrieval Practice" in claim["citation_locator"] for claim in claims)
+    assert all("paragraph:" in claim["citation_locator"] for claim in claims)
+    assert all(claim["confidence_status"] == "cited" for claim in claims)

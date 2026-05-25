@@ -156,11 +156,31 @@ def normalize_content(
         f"# Normalized Source: {title}",
         "",
     ]
+    current_paragraph = 0
+    in_paragraph = False
     for index, line in enumerate(lines, start=1):
+        heading = markdown_heading(line)
+        if heading:
+            normalized_lines.append(f"<!-- section:{heading} -->")
+            in_paragraph = False
+        elif line.strip():
+            if not in_paragraph:
+                current_paragraph += 1
+                normalized_lines.append(f"<!-- paragraph:{current_paragraph} -->")
+            in_paragraph = True
+        else:
+            in_paragraph = False
         normalized_lines.append(f"<!-- line:{index} -->")
         normalized_lines.append(f"[line:{index}] {line}")
     normalized_lines.append("")
     return "\n".join(normalized_lines), title
+
+
+def markdown_heading(line: str) -> str | None:
+    match = re.match(r"^\s{0,3}#{1,6}\s+(.+?)\s*$", line)
+    if not match:
+        return None
+    return match.group(1).strip()
 
 
 def extract_text(source_type: str, content: bytes) -> str:
