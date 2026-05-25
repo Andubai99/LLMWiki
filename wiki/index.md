@@ -1,24 +1,26 @@
 ---
 page_type: index
-updated_at: 2026-05-24
+title: LLM Wiki Index
+aliases: []
+source_count: 0
+claim_ids: []
+updated_at: "2026-05-25T00:00:00+00:00"
 ---
 
 # LLM Wiki Index
 
-This index will catalog source summaries, concepts, entities, and syntheses as the wiki grows.
-
 ## Sources
 
-No sources ingested yet.
+No sources applied yet.
 
 ## Concepts
 
-No concept pages yet.
+No concepts applied yet.
 
 ## Entities
 
-No entity pages yet.
+No entities applied yet.
 
 ## Syntheses
 
-No synthesis pages yet.
+No syntheses applied yet.

@@ -1,104 +1,104 @@
 # LLM Wiki
 
-LLM Wiki is a local-first personal research library: Python CLI, Markdown wiki, SQLite index, and a staging review workflow. It is meant to act as a source-backed knowledge compiler, not a free-form notes folder.
+LLM Wiki 是一个本地优先的个人研究库：用 Python CLI 管理资料导入、claim 抽取、staging 审阅、Markdown wiki 落盘和 SQLite 索引。它的定位是 source-backed knowledge compiler，而不是自由笔记文件夹。
 
-Raw sources stay immutable under `sources/raw/`. Ingest creates candidate claims and wiki page patches under `staging/<run-id>/`; only `llmwiki apply` writes final wiki pages and synchronizes `state/catalog.sqlite`.
+核心原则是：`sources/raw/` 下的原始资料不可变；`ingest` 只能在 `staging/<run-id>/` 里提出候选 claims 和 wiki patch；只有 `llmwiki apply` 才能把审阅后的内容写入 `wiki/` 并同步 `state/catalog.sqlite`。
 
-## Directory Layout
+## 目录结构
 
-- `sources/raw/`: original Markdown, text PDF, text, and web snapshots.
-- `sources/normalized/`: normalized Markdown with line/page anchors.
-- `state/catalog.sqlite`: rebuildable source, claim, alias, page, link, relationship, and ingest run index.
-- `wiki/index.md`: entry index.
-- `wiki/log.md`: append-only apply log.
-- `wiki/sources/`: source summaries.
-- `wiki/concepts/`: concept pages.
-- `wiki/entities/`: entity pages.
-- `wiki/syntheses/`: synthesis pages.
-- `staging/<run-id>/`: `triage.md`, `claims.jsonl`, and `patches/`.
-- `llmwiki/`: CLI implementation.
-- `tests/`: automated tests and regression fixtures.
+- `sources/raw/`：原始 Markdown、文本 PDF、纯文本和网页快照。
+- `sources/normalized/`：带行号、页码或段落锚点的规范化 Markdown。
+- `state/catalog.sqlite`：可重建的索引和审计缓存，保存 source、claim、alias、page、link、relationship、ingest run。
+- `wiki/index.md`：wiki 入口索引。
+- `wiki/log.md`：append-only apply 日志。
+- `wiki/sources/`：单篇资料摘要页。
+- `wiki/concepts/`：概念页。
+- `wiki/entities/`：实体页。
+- `wiki/syntheses/`：综合分析页。
+- `staging/<run-id>/`：每次 ingest 的 `triage.md`、`claims.jsonl` 和 `patches/`。
+- `llmwiki/`：CLI 和核心实现。
+- `tests/`：自动化测试和回归样例。
 
-## Install
+## 安装
 
-Use Python 3.10 or newer. From the repository root:
+需要 Python 3.10 或更高版本。在仓库根目录执行：
 
 ```bash
 python -m pip install -e .
 ```
 
-The first version uses a small dependency set. `pypdf` is used for text PDF extraction; scanned PDF OCR is not supported.
+第一版只使用小型依赖集合。`pypdf` 用于文本 PDF 抽取；扫描版 PDF OCR 不支持。
 
-## CLI Usage
+## CLI 用法
 
 ```bash
 llmwiki init --root .
 ```
 
-Creates the workspace directories, default config, agent contract, wiki index/log, and SQLite schema.
+创建工作区目录、默认配置、agent contract、wiki index/log 和 SQLite schema。
 
 ```bash
 llmwiki add tests/fixtures/minimal_source.md --root .
 ```
 
-Copies the source into `sources/raw/`, writes normalized Markdown with line anchors into `sources/normalized/`, computes SHA-256, and deduplicates repeated imports by hash.
+把资料复制到 `sources/raw/`，在 `sources/normalized/` 生成带引用锚点的规范化 Markdown，计算 SHA-256，并按 hash 去重。
 
 ```bash
 llmwiki ingest <source-id> --root .
 ```
 
-Extracts cited claims first, performs simple identity/conflict checks, and writes only to `staging/<run-id>/`.
+先抽取带引用的 claims，再执行简单的 identity/conflict 检查，只写入 `staging/<run-id>/`，不会修改正式 `wiki/`。
 
 ```bash
 llmwiki review <run-id> --root .
 ```
 
-Prints candidate patch count, duplicate candidates, conflict candidates, citation coverage, and patch paths. It does not modify `wiki/`.
+展示候选 patch 数量、重复候选、冲突候选、citation 覆盖率和 patch 路径；不会修改 `wiki/`。
 
 ```bash
 llmwiki apply <run-id> --root .
 ```
 
-Validates staged patch safety, writes Markdown pages under `wiki/`, refreshes `wiki/index.md`, appends `wiki/log.md`, and synchronizes SQLite claims/pages/links/relationships/runs.
+校验 staged patch 安全性，写入 `wiki/` 下的 Markdown 页面，刷新 `wiki/index.md`，追加 `wiki/log.md`，并同步 SQLite 中的 claims、pages、links、relationships 和 runs。
 
 ```bash
 llmwiki query "retrieval citation anchors" --root .
 ```
 
-Searches the SQLite claim store using FTS/BM25 when available, falls back to simple text search, and prints retrieval context with `source_id` and citation locators. It does not call an external LLM API.
+优先使用 SQLite FTS/BM25 检索 claim store，必要时回退到简单文本检索，输出带 `source_id` 和 citation locator 的 retrieval context。第一版不会调用外部 LLM API。
 
 ```bash
 llmwiki lint --root .
 ```
 
-Checks broken links, orphan pages, duplicate aliases, uncited claims, source hash drift, missing citation status, and contradiction indicators.
+检查断链、孤页、重复 alias、无引用 claim、source hash drift、缺 citation 状态和潜在矛盾。
 
 ```bash
 llmwiki doctor --root .
 ```
 
-Checks Python, workspace directories, config, database schema, and wiki index/log.
+检查 Python、依赖、工作区目录、配置、数据库 schema 和 wiki index/log。
 
-## Obsidian And Git
+## Obsidian 与 Git
 
-Open the repository root or `wiki/` folder in Obsidian to browse pages. Keep the repository under Git so raw sources, normalized sources, staging reviews, and applied Markdown history remain auditable.
+可以在 Obsidian 中打开仓库根目录或 `wiki/` 目录来浏览 Markdown 页面。建议始终用 Git 管理仓库，这样 raw sources、normalized sources、staging review 和已 apply 的 Markdown 历史都可审计。
 
-## Supported
+## 支持内容
 
-- Markdown and plain text source import.
-- Web snapshot import for reachable `http`/`https` URLs.
-- Text PDF import through `pypdf`.
-- Claim-first staging with citations.
-- Source summary, concept, and entity Markdown pages.
-- SQLite source/claim/page/link/relationship indexing.
+- Markdown 和纯文本资料导入。
+- 可访问 `http`/`https` URL 的网页快照导入。
+- 通过 `pypdf` 导入文本 PDF。
+- claim-first staging，并为重要 claim 保留引用。
+- 生成 source summary、concept 和 entity Markdown 页面。
+- 用 SQLite 索引 source、claim、page、link 和 relationship。
 
-## Not Supported
+## 不支持内容 (not supported)
 
-- External LLM API calls by default.
-- Vector databases.
-- MCP server integration.
-- Web UI or Obsidian plugin.
-- Cloud sync.
-- Team permissions or multi-user review.
-- Scanned PDF OCR.
-- Automatic conflict adjudication.
+- 默认调用外部 LLM API。
+- 向量数据库。
+- MCP server 集成。
+- Web UI 或 Obsidian 插件。
+- 云同步。
+- 团队权限或多人审阅流程。
+- 扫描 PDF OCR。
+- 自动裁决资料之间的冲突。
