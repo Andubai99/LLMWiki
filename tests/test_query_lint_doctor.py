@@ -64,3 +64,21 @@ def test_lint_and_doctor_report_workspace_health(capsys):
     assert "Lint OK" in lint
     assert "source hash drift: 0" in lint
     assert "uncited claims: 0" in lint
+
+
+def test_lint_reports_source_hash_drift(capsys):
+    root = make_workspace()
+    assert main(["init", "--root", str(root)]) == 0
+    add_ingest_apply(root, fixture("minimal_source.md"))
+    capsys.readouterr()
+
+    import sqlite3
+
+    with sqlite3.connect(root / "state" / "catalog.sqlite") as conn:
+        raw_path = conn.execute("select raw_path from sources limit 1").fetchone()[0]
+    with (root / raw_path).open("a", encoding="utf-8") as handle:
+        handle.write("\nUnauthorized raw mutation.\n")
+
+    assert main(["lint", "--root", str(root)]) == 1
+    lint = capsys.readouterr().out
+    assert "source hash drift: 1" in lint

@@ -185,6 +185,52 @@ def test_apply_rejects_patch_outside_wiki(capsys):
     assert "Unsafe patch" in out
     assert not (root / "sources" / "raw" / "bad.md").exists()
 
+    run_id = "run_unsafe_normalized"
+    run_dir = root / "staging" / run_id
+    patches_dir = run_dir / "patches"
+    patches_dir.mkdir(parents=True)
+    (run_dir / "claims.jsonl").write_text("", encoding="utf-8")
+    (run_dir / "triage.md").write_text("# unsafe\n", encoding="utf-8")
+    (patches_dir / "001-bad.json").write_text(
+        json.dumps(
+            {
+                "action": "upsert_page",
+                "page_id": "bad",
+                "page_type": "source",
+                "target_path": "sources/normalized/bad.md",
+                "title": "Bad",
+                "aliases": [],
+                "claim_ids": [],
+                "content": "bad",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert main(["apply", run_id, "--root", str(root)]) == 1
+    out = capsys.readouterr().out
+    assert "Unsafe patch" in out
+    assert not (root / "sources" / "normalized" / "bad.md").exists()
+
+
+def test_ingest_and_apply_leave_raw_and_normalized_sources_unchanged(capsys):
+    root = make_workspace()
+    run_id = create_staged_sample(root)
+    import sqlite3
+
+    with sqlite3.connect(root / "state" / "catalog.sqlite") as conn:
+        row = conn.execute("select raw_path, normalized_path from sources").fetchone()
+    raw_path = root / row[0]
+    normalized_path = root / row[1]
+    raw_before = raw_path.read_bytes()
+    normalized_before = normalized_path.read_bytes()
+
+    assert main(["apply", run_id, "--root", str(root)]) == 0
+    capsys.readouterr()
+
+    assert raw_path.read_bytes() == raw_before
+    assert normalized_path.read_bytes() == normalized_before
+
 
 def test_apply_rejects_run_status_that_is_not_staged_or_reviewed(capsys):
     root = make_workspace()
