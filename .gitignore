@@ -1,0 +1,24 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tmp/
+.test-workspaces/
+probe_*.sqlite*
+testprobe.sqlite*
+.venv/
+venv/
+build/
+dist/
+*.egg-info/
+
+# Runtime cache. Markdown and raw sources remain the durable assets.
+state/*.sqlite
+state/*.sqlite-*
+state/*.db
+state/*.db-*
+
+# Staging runs are review workspaces; keep the directory but do not commit runs by default.
+staging/*
+!staging/.gitkeep

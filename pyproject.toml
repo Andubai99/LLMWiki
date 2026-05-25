@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "llmwiki"
+version = "0.1.0"
+description = "Local source-backed Markdown wiki compiler for personal research."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["pypdf>=4"]
+
+[project.scripts]
+llmwiki = "llmwiki.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["llmwiki*"]
