@@ -3,7 +3,8 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from .workspace import check_workspace
+from .db import catalog_path, schema_status
+from .workspace import check_workspace, init_workspace
 
 
 COMMANDS = ("init", "add", "ingest", "review", "apply", "lint", "query", "doctor")
@@ -18,7 +19,11 @@ def _scaffold_only(command: str) -> int:
 
 
 def cmd_init(args: argparse.Namespace) -> int:
-    return _scaffold_only("init")
+    root = Path(args.root).resolve()
+    init_workspace(root)
+    print(f"Initialized workspace: {root}")
+    print(f"Catalog schema OK: {catalog_path(root)}")
+    return 0
 
 
 def cmd_add(args: argparse.Namespace) -> int:
@@ -48,13 +53,17 @@ def cmd_query(args: argparse.Namespace) -> int:
 def cmd_doctor(args: argparse.Namespace) -> int:
     root = Path(args.root).resolve()
     result = check_workspace(root)
-    if result.ok:
+    schema_ok, schema_problems = schema_status(catalog_path(root))
+    if result.ok and schema_ok:
         print(f"Workspace OK: {result.root}")
+        print("schema OK")
         return 0
 
     print(f"Workspace incomplete: {result.root}")
     for path in result.missing:
         print(f"- missing {path}")
+    for problem in schema_problems:
+        print(f"- {problem}")
     return 1
 
 
@@ -66,29 +75,36 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     init_parser = subparsers.add_parser("init", help="Create a new LLM Wiki workspace.")
+    init_parser.add_argument("--root", default=".")
     init_parser.set_defaults(func=cmd_init)
 
     add_parser = subparsers.add_parser("add", help="Add a Markdown, web, or text PDF source.")
     add_parser.add_argument("source")
+    add_parser.add_argument("--root", default=".")
     add_parser.set_defaults(func=cmd_add)
 
     ingest_parser = subparsers.add_parser("ingest", help="Create a staged ingest run for a source.")
     ingest_parser.add_argument("source_id")
+    ingest_parser.add_argument("--root", default=".")
     ingest_parser.set_defaults(func=cmd_ingest)
 
     review_parser = subparsers.add_parser("review", help="Review a staged ingest run.")
     review_parser.add_argument("run_id")
+    review_parser.add_argument("--root", default=".")
     review_parser.set_defaults(func=cmd_review)
 
     apply_parser = subparsers.add_parser("apply", help="Apply a reviewed ingest run.")
     apply_parser.add_argument("run_id")
+    apply_parser.add_argument("--root", default=".")
     apply_parser.set_defaults(func=cmd_apply)
 
     lint_parser = subparsers.add_parser("lint", help="Check wiki health.")
+    lint_parser.add_argument("--root", default=".")
     lint_parser.set_defaults(func=cmd_lint)
 
     query_parser = subparsers.add_parser("query", help="Query the compiled wiki.")
     query_parser.add_argument("question")
+    query_parser.add_argument("--root", default=".")
     query_parser.set_defaults(func=cmd_query)
 
     doctor_parser = subparsers.add_parser("doctor", help="Check workspace structure.")

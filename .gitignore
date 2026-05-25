@@ -3,6 +3,10 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.tmp/
+.test-workspaces/
+probe_*.sqlite*
+testprobe.sqlite*
 .venv/
 venv/
 build/
