@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from .apply import UnsafePatchError, apply_run
 from .db import catalog_path, schema_status
 from .ingest import ingest_source, review_run
 from .sources import import_source
@@ -77,7 +78,22 @@ def cmd_review(args: argparse.Namespace) -> int:
 
 
 def cmd_apply(args: argparse.Namespace) -> int:
-    return _scaffold_only("apply")
+    root = Path(args.root).resolve()
+    try:
+        result = apply_run(root, args.run_id)
+    except UnsafePatchError as exc:
+        print(f"Unsafe patch: {exc}")
+        return 1
+    except FileNotFoundError:
+        print(f"Run not found: {args.run_id}")
+        return 1
+    except Exception as exc:
+        print(f"Apply failed: {exc}")
+        return 1
+    print(f"Applied ingest run: {result['run_id']}")
+    print(f"claims={result['claims']}")
+    print(f"patches={result['patches']}")
+    return 0
 
 
 def cmd_lint(args: argparse.Namespace) -> int:
