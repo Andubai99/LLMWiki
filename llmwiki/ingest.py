@@ -39,7 +39,8 @@ def ingest_source(root: Path, source_id: str) -> IngestResult:
     if not claims:
         raise ValueError(f"no claims found for source {source_id}")
 
-    run_id = f"run_{source_id}_{utc_now().replace(':', '').replace('+', 'Z')}_{uuid.uuid4().hex[:8]}"
+    created_at = utc_now()
+    run_id = f"run_{source_id}_{created_at.replace(':', '').replace('+', 'Z')}_{uuid.uuid4().hex[:8]}"
     run_dir = root / "staging" / run_id
     patches_dir = run_dir / "patches"
     patches_dir.mkdir(parents=True, exist_ok=False)
@@ -51,6 +52,13 @@ def ingest_source(root: Path, source_id: str) -> IngestResult:
     coverage = citation_coverage(claims)
 
     write_jsonl(run_dir / "claims.jsonl", [claim.__dict__ for claim in claims])
+    write_run_manifest(
+        run_dir / "run.json",
+        run_id=run_id,
+        source_id=source_id,
+        status="staged",
+        created_at=created_at,
+    )
     patches = build_patches(
         source=source,
         claims=claims,
@@ -556,7 +564,25 @@ def write_jsonl(path: Path, rows: list[dict[str, str]]) -> None:
     )
 
 
-def review_run(root: Path, run_id: str) -> str:
+def write_run_manifest(path: Path, run_id: str, source_id: str, status: str, created_at: str) -> None:
+    path.write_text(
+        json.dumps(
+            {
+                "run_id": run_id,
+                "source_id": source_id,
+                "status": status,
+                "created_at": created_at,
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+
+def review_run(root: Path, run_id: str, detail: bool = False, show_patches: bool = False) -> str:
     run_dir = root.resolve() / "staging" / run_id
     if not run_dir.exists():
         raise FileNotFoundError(run_id)
@@ -565,24 +591,163 @@ def review_run(root: Path, run_id: str) -> str:
         for line in (run_dir / "claims.jsonl").read_text(encoding="utf-8").splitlines()
         if line.strip()
     ]
-    patches = sorted((run_dir / "patches").glob("*.json"))
+    patch_paths = sorted((run_dir / "patches").glob("*.json"))
+    patches = [json.loads(path.read_text(encoding="utf-8")) for path in patch_paths]
     triage = (run_dir / "triage.md").read_text(encoding="utf-8")
+    manifest = read_run_manifest(run_dir, run_id, claims)
     duplicate_count = count_section_items(triage, "Duplicate Candidates")
     conflict_count = count_section_items(triage, "Conflict Candidates")
     coverage = round(
         sum(1 for claim in claims if claim.get("citation_locator")) * 100 / len(claims)
     ) if claims else 0
+    weak_claims = [
+        claim
+        for claim in claims
+        if not claim.get("citation_locator")
+        or claim.get("confidence_status") in {"weak", "uncited"}
+    ]
+    patch_rows = summarize_patches(root.resolve(), patches)
+    new_pages = [row for row in patch_rows if row["change"] == "new"]
+    updated_pages = [row for row in patch_rows if row["change"] == "update"]
     lines = [
-        f"Review run: {run_id}",
-        f"Claims: {len(claims)}",
-        f"Citation coverage: {coverage}%",
-        f"Candidate patches: {len(patches)}",
+        "Run information",
+        f"- run_id: {run_id}",
+        f"- source_id: {manifest['source_id']}",
+        f"- status: {manifest['status']}",
+        f"- created_at: {manifest['created_at']}",
+        f"- claims: {len(claims)}",
+        f"- patches: {len(patches)}",
+        f"- citation_coverage: {coverage}%",
+        "",
+        "Triage summary",
         f"Duplicate candidates: {duplicate_count}",
         f"Conflict candidates: {conflict_count}",
-        "Patch list:",
-        *[f"- {path.relative_to(run_dir).as_posix()}" for path in patches],
+        f"Weak/uncited claims: {len(weak_claims)}",
+        "",
+        "Claims",
+        "claim_id | status | citation | claim_text",
+        "--- | --- | --- | ---",
+        *[
+            (
+                f"{claim['claim_id']} | {claim.get('confidence_status', '')} | "
+                f"{claim.get('citation_locator') or ''} | {summarize_text(claim['claim_text'], 96)}"
+            )
+            for claim in claims
+        ],
+        "",
+        "Patches",
+        "target_path | page_type | title | aliases | claim_ids | change",
+        "--- | --- | --- | --- | --- | ---",
+        *[
+            (
+                f"{row['target_path']} | {row['page_type']} | {row['title']} | "
+                f"{row['aliases']} | {row['claim_ids']} | {row['change']}"
+            )
+            for row in patch_rows
+        ],
+        "",
+        "New pages:",
+        *bullet_lines([row["target_path"] for row in new_pages], "- None"),
+        "",
+        "Updated pages:",
+        *bullet_lines([row["target_path"] for row in updated_pages], "- None"),
+        "",
+        "Duplicate candidates:",
+        *section_items(triage, "Duplicate Candidates"),
+        "",
+        "Conflict candidates:",
+        *section_items(triage, "Conflict Candidates"),
+        "",
+        "Weak/uncited claims:",
+        *bullet_lines([claim["claim_id"] for claim in weak_claims], "- None"),
     ]
+    if detail:
+        lines.extend(
+            [
+                "",
+                "Detailed claims",
+                *[
+                    (
+                        f"- {claim['claim_id']} [{claim.get('confidence_status', '')}] "
+                        f"{claim.get('citation_locator') or 'no-citation'}: {claim['claim_text']}"
+                    )
+                    for claim in claims
+                ],
+                "",
+                "Citation coverage detail",
+                f"- cited: {len(claims) - len(weak_claims)}",
+                f"- weak_or_uncited: {len(weak_claims)}",
+                f"- coverage: {coverage}%",
+                "",
+                "Triage details",
+                triage.rstrip(),
+            ]
+        )
+    if show_patches:
+        lines.extend(["", "Patch contents"])
+        for path, patch in zip(patch_paths, patches):
+            lines.extend(
+                [
+                    "",
+                    f"### {path.relative_to(run_dir).as_posix()}",
+                    f"- target_path: {patch.get('target_path')}",
+                    f"- page_type: {patch.get('page_type')}",
+                    f"- title: {patch.get('title')}",
+                    "",
+                    "```markdown",
+                    str(patch.get("content", "")).rstrip(),
+                    "```",
+                ]
+            )
     return "\n".join(lines)
+
+
+def read_run_manifest(run_dir: Path, run_id: str, claims: list[dict[str, str]]) -> dict[str, str]:
+    manifest_path = run_dir / "run.json"
+    if manifest_path.exists():
+        data = json.loads(manifest_path.read_text(encoding="utf-8"))
+    else:
+        data = {}
+    if "run_id" not in data:
+        data["run_id"] = run_id
+    if "source_id" not in data:
+        data["source_id"] = claims[0]["source_id"] if claims else "unknown"
+    if "status" not in data:
+        data["status"] = "staged"
+    if "created_at" not in data:
+        data["created_at"] = created_at_from_run_id(run_id)
+    return {key: str(value) for key, value in data.items()}
+
+
+def created_at_from_run_id(run_id: str) -> str:
+    parts = run_id.split("_")
+    if len(parts) >= 4:
+        return parts[-2]
+    return "unknown"
+
+
+def summarize_patches(root: Path, patches: list[dict[str, object]]) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    for patch in patches:
+        target_path = str(patch.get("target_path", ""))
+        rows.append(
+            {
+                "target_path": target_path,
+                "page_type": str(patch.get("page_type", "")),
+                "title": str(patch.get("title", "")),
+                "aliases": ", ".join(str(alias) for alias in patch.get("aliases", [])),
+                "claim_ids": ", ".join(str(claim_id) for claim_id in patch.get("claim_ids", [])),
+                "change": "update" if (root / target_path).exists() else "new",
+            }
+        )
+    return rows
+
+
+def summarize_text(text: str, max_length: int) -> str:
+    text = re.sub(r"\s+", " ", text).strip()
+    if len(text) <= max_length:
+        return text
+    return f"{text[: max_length - 3].rstrip()}..."
 
 
 def count_section_items(markdown: str, heading: str) -> int:
@@ -597,6 +762,20 @@ def count_section_items(markdown: str, heading: str) -> int:
         if in_section and line.startswith("- ") and "None identified" not in line:
             count += 1
     return count
+
+
+def section_items(markdown: str, heading: str) -> list[str]:
+    items: list[str] = []
+    in_section = False
+    for line in markdown.splitlines():
+        if line == f"## {heading}":
+            in_section = True
+            continue
+        if in_section and line.startswith("## "):
+            break
+        if in_section and line.startswith("- "):
+            items.append(line)
+    return items or ["- None"]
 
 
 def normalize_alias(value: str) -> str:

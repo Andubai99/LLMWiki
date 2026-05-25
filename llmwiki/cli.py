@@ -72,7 +72,7 @@ def cmd_ingest(args: argparse.Namespace) -> int:
 def cmd_review(args: argparse.Namespace) -> int:
     root = Path(args.root).resolve()
     try:
-        print(review_run(root, args.run_id))
+        print(review_run(root, args.run_id, detail=args.detail, show_patches=args.patches))
     except FileNotFoundError:
         print(f"Run not found: {args.run_id}")
         return 1
@@ -183,6 +183,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     review_parser = subparsers.add_parser("review", help="Review a staged ingest run.")
     review_parser.add_argument("run_id")
+    review_parser.add_argument("--detail", action="store_true", help="Show full claims and triage details.")
+    review_parser.add_argument("--patches", action="store_true", help="Show candidate Markdown patch contents.")
     review_parser.add_argument("--root", default=".")
     review_parser.set_defaults(func=cmd_review)
 
