@@ -235,6 +235,15 @@ def test_ingest_and_apply_leave_raw_and_normalized_sources_unchanged(capsys):
 def test_apply_rejects_run_status_that_is_not_staged_or_reviewed(capsys):
     root = make_workspace()
     assert main(["init", "--root", str(root)]) == 0
+    missing_manifest_dir = root / "staging" / "run_missing_manifest"
+    (missing_manifest_dir / "patches").mkdir(parents=True)
+    (missing_manifest_dir / "claims.jsonl").write_text("", encoding="utf-8")
+    (missing_manifest_dir / "triage.md").write_text("# missing manifest\n", encoding="utf-8")
+
+    assert main(["apply", "run_missing_manifest", "--root", str(root)]) == 1
+    out = capsys.readouterr().out
+    assert "run status is missing" in out
+
     run_id = "run_already_applied"
     write_manual_run(root, run_id, valid_source_patch(), [valid_claim()], status="applied")
 

@@ -113,7 +113,7 @@ def read_patches(patches_dir: Path) -> list[dict[str, object]]:
 def validate_run_status(run_dir: Path) -> None:
     manifest_path = run_dir / "run.json"
     if not manifest_path.exists():
-        return
+        raise UnsafePatchError("Unsafe run status is missing; staging run.json is required")
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     status = str(manifest.get("status", "staged"))
     if status not in ALLOWED_RUN_STATUSES:
