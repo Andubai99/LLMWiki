@@ -53,13 +53,36 @@ llmwiki ingest <source-id> --root .
 llmwiki review <run-id> --root .
 ```
 
-展示候选 patch 数量、重复候选、冲突候选、citation 覆盖率和 patch 路径；不会修改 `wiki/`。
+review/apply v2 中，`review` 是只读审阅命令：展示 run_id、source_id、状态、创建时间、claim 数、patch 数、citation 覆盖率、triage 摘要、claims 表、patch 表、新增/更新页面、duplicate candidates、conflict candidates 和 weak/uncited claims。它只读取 `staging/` 和 SQLite，不会修改 `wiki/`、`wiki/index.md`、`wiki/log.md` 或 `state/catalog.sqlite`。
+
+```bash
+llmwiki review <run-id> --detail --root .
+```
+
+展示完整 claims、triage 细节和引用覆盖情况。
+
+```bash
+llmwiki review <run-id> --patches --root .
+```
+
+展示每个候选 Markdown patch 的完整内容，方便在 apply 前审阅页面正文。
 
 ```bash
 llmwiki apply <run-id> --root .
 ```
 
-校验 staged patch 安全性，写入 `wiki/` 下的 Markdown 页面，刷新 `wiki/index.md`，追加 `wiki/log.md`，并同步 SQLite 中的 claims、pages、links、relationships 和 runs。
+校验 staged patch 安全性，写入 `wiki/` 下的 Markdown 页面，刷新 `wiki/index.md`，追加 `wiki/log.md`，并同步 SQLite 中的 claims、pages、links、relationships 和 runs。当前实现允许 `staged` 或 `reviewed` 状态进入 apply；还没有强制单独的 reviewed 命令，所以 apply 前的人工确认依赖用户运行 `review`、`review --detail` 或 `review --patches`。apply 成功后，SQLite 和 staging manifest 中的 run 状态会变为 `applied`。
+
+apply 安全校验包括：
+
+- 只能写入 `wiki/`，不能写入 `sources/raw/` 或 `sources/normalized/`。
+- 不能删除页面，不能重写 `wiki/log.md` 历史。
+- Markdown 必须有合法 frontmatter，包含 `page_type`、`title`、`aliases`、`source_count`、`claim_ids`、`updated_at`。
+- `page_type` 必须是 `source`、`concept`、`entity` 或 `synthesis`。
+- 页面必须包含该类型要求的章节。
+- patch 引用的 `claim_ids` 必须存在于 staging claims 或数据库。
+- 重要内容不能全部来自 weak/uncited claim；没有 cited claim 的 patch 会被拒绝。
+- 目标页已存在时，apply 会先把旧页面写入 `staging/<run-id>/backups/`，再执行更新。第一版采用 recoverable backups，不做语义级合并。
 
 ```bash
 llmwiki query "retrieval citation anchors" --root .
@@ -72,6 +95,8 @@ llmwiki lint --root .
 ```
 
 检查断链、孤页、重复 alias、无引用 claim、source hash drift、缺 citation 状态和潜在矛盾。
+
+lint 会区分已经记录的 `contradicts` relationships 和未处理的潜在矛盾。已记录冲突是审计信息，不会自动让 lint 失败；未处理的潜在矛盾仍然需要进入 triage 或 relationship。
 
 ```bash
 llmwiki doctor --root .
@@ -89,6 +114,7 @@ llmwiki doctor --root .
 - 可访问 `http`/`https` URL 的网页快照导入。
 - 通过 `pypdf` 导入文本 PDF。
 - claim-first staging，并为重要 claim 保留引用。
+- weak/uncited claim 可以进入 triage，但不能直接成为正式结论。
 - 生成 source summary、concept 和 entity Markdown 页面。
 - 用 SQLite 索引 source、claim、page、link 和 relationship。
 

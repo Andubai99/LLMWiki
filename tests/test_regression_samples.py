@@ -203,10 +203,22 @@ def test_docs_describe_v1_commands_and_constraints():
     assert "Obsidian" in readme
     assert "Git" in readme
     assert "not supported" in readme
+    assert "review/apply v2" in readme
+    assert "--detail" in readme
+    assert "--patches" in readme
+    assert "staged" in readme
+    assert "reviewed" in readme
+    assert "applied" in readme
+    assert "weak/uncited" in readme
+    assert "backups" in readme
 
     assert "Do not modify files under `sources/raw/`" in agents
     assert "staging" in agents
     assert "apply" in agents
     assert "citation" in agents
+    assert "safety validation" in agents
+    assert "must not bypass staging" in agents
+    assert "must not overwrite user-authored wiki content without a recoverable backup" in agents
+    assert "source locator" in agents
     assert "vector" in agents
     assert "Web UI" in agents
