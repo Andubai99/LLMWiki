@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import ast
 import json
+import re
 from pathlib import Path, PurePosixPath
 
 from .db import catalog_path, connect
@@ -12,28 +14,80 @@ class UnsafePatchError(ValueError):
     pass
 
 
+ALLOWED_RUN_STATUSES = {"staged", "reviewed"}
+ALLOWED_PAGE_TYPES = {"source", "concept", "entity", "synthesis"}
+REQUIRED_FRONTMATTER = {"page_type", "title", "aliases", "source_count", "claim_ids", "updated_at"}
+REQUIRED_SECTIONS = {
+    "source": (
+        "Source Metadata",
+        "Key Claims",
+        "Summary",
+        "Important Evidence",
+        "Possible Conflicts",
+        "Links",
+    ),
+    "concept": (
+        "Definition",
+        "Key Claims",
+        "Related Concepts",
+        "Supporting Sources",
+        "Open Questions",
+    ),
+    "entity": (
+        "Overview",
+        "Aliases",
+        "Key Claims",
+        "Relationships",
+        "Supporting Sources",
+        "Open Questions",
+    ),
+    "synthesis": (
+        "Question/Topic",
+        "Short Answer",
+        "Evidence",
+        "Analysis",
+        "Uncertainties",
+        "Related Pages",
+    ),
+}
+
+
 def apply_run(root: Path, run_id: str) -> dict[str, int | str]:
     root = root.resolve()
     run_dir = root / "staging" / run_id
     if not run_dir.exists():
         raise FileNotFoundError(run_id)
 
+    validate_run_status(run_dir)
     claims = read_claims(run_dir / "claims.jsonl")
     patches = read_patches(run_dir / "patches")
     if not patches:
         raise ValueError(f"run {run_id} has no patches")
 
+    claims_by_id = known_claims(root, claims)
     for patch in patches:
-        validate_patch(root, patch)
+        validate_patch(root, patch, claims_by_id)
 
-    for patch in patches:
-        target = root / Path(*PurePosixPath(str(patch["target_path"])).parts)
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(str(patch["content"]), encoding="utf-8", newline="\n")
+    snapshots = snapshot_mutable_files(root, patches)
+    catalog_snapshot = catalog_path(root).read_bytes()
+    try:
+        backup_existing_targets(root, run_dir, patches)
+        for patch in patches:
+            target = root / Path(*PurePosixPath(str(patch["target_path"])).parts)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(str(patch["content"]), encoding="utf-8", newline="\n")
 
-    sync_catalog(root, run_id, claims, patches)
-    refresh_index(root)
-    append_log(root, run_id, claims, patches)
+        sync_catalog(root, run_id, claims, patches)
+        refresh_index(root)
+        append_log(root, run_id, claims, patches)
+        mark_run_applied(run_dir)
+    except Exception as exc:
+        restore_mutable_files(snapshots)
+        catalog_path(root).write_bytes(catalog_snapshot)
+        raise UnsafePatchError(
+            "Apply failed after mutation; restored wiki targets, index/log, and catalog. "
+            f"Original error: {exc}"
+        ) from exc
     return {"run_id": run_id, "claims": len(claims), "patches": len(patches)}
 
 
@@ -54,7 +108,33 @@ def read_patches(patches_dir: Path) -> list[dict[str, object]]:
     ]
 
 
-def validate_patch(root: Path, patch: dict[str, object]) -> None:
+def validate_run_status(run_dir: Path) -> None:
+    manifest_path = run_dir / "run.json"
+    if not manifest_path.exists():
+        return
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    status = str(manifest.get("status", "staged"))
+    if status not in ALLOWED_RUN_STATUSES:
+        raise UnsafePatchError(
+            f"Unsafe run status {status}; only staged or reviewed runs can be applied"
+        )
+
+
+def known_claims(root: Path, staging_claims: list[dict[str, str]]) -> dict[str, dict[str, str]]:
+    claims = {claim["claim_id"]: claim for claim in staging_claims}
+    with connect(catalog_path(root)) as conn:
+        for row in conn.execute(
+            "select claim_id, source_id, claim_text, citation_locator, confidence_status, created_at from claims"
+        ).fetchall():
+            claims.setdefault(row["claim_id"], dict(row))
+    return claims
+
+
+def validate_patch(
+    root: Path,
+    patch: dict[str, object],
+    claims_by_id: dict[str, dict[str, str]],
+) -> None:
     if patch.get("action") != "upsert_page":
         raise UnsafePatchError("Unsafe patch action; only upsert_page is supported")
     target_path = patch.get("target_path")
@@ -65,6 +145,8 @@ def validate_patch(root: Path, patch: dict[str, object]) -> None:
         raise UnsafePatchError(f"Unsafe patch target: {target_path}")
     if len(pure.parts) < 2 or pure.parts[0] != "wiki":
         raise UnsafePatchError(f"Unsafe patch target outside wiki: {target_path}")
+    if pure.parts == ("wiki", "log.md"):
+        raise UnsafePatchError("Unsafe patch target cannot rewrite wiki/log.md")
     if pure.suffix.lower() != ".md":
         raise UnsafePatchError(f"Unsafe patch target is not Markdown: {target_path}")
     target = (root / Path(*pure.parts)).resolve()
@@ -73,6 +155,126 @@ def validate_patch(root: Path, patch: dict[str, object]) -> None:
         raise UnsafePatchError(f"Unsafe patch target outside wiki: {target_path}")
     if "content" not in patch:
         raise UnsafePatchError("Unsafe patch has no content")
+    content = str(patch["content"])
+    frontmatter = parse_frontmatter(content)
+    missing = sorted(REQUIRED_FRONTMATTER - set(frontmatter))
+    if missing:
+        raise UnsafePatchError(f"Unsafe patch frontmatter missing required field(s): {', '.join(missing)}")
+    page_type = frontmatter.get("page_type", "")
+    if page_type not in ALLOWED_PAGE_TYPES:
+        raise UnsafePatchError(f"Unsafe patch page_type: {page_type}")
+    if str(patch.get("page_type")) != page_type:
+        raise UnsafePatchError(
+            f"Unsafe patch page_type mismatch: patch={patch.get('page_type')} frontmatter={page_type}"
+        )
+    claim_ids = [str(claim_id) for claim_id in patch.get("claim_ids", [])]
+    if not claim_ids:
+        raise UnsafePatchError("Unsafe patch has no claim_ids")
+    for claim_id in claim_ids:
+        if claim_id not in claims_by_id:
+            raise UnsafePatchError(f"Unsafe patch references unknown claim_id: {claim_id}")
+    cited_claims = [
+        claim
+        for claim_id in claim_ids
+        for claim in [claims_by_id[claim_id]]
+        if claim.get("citation_locator")
+        and claim.get("confidence_status", "weak") not in {"weak", "uncited"}
+    ]
+    if not cited_claims:
+        raise UnsafePatchError("Unsafe patch has no cited claims")
+    for section in REQUIRED_SECTIONS[page_type]:
+        if not has_section(content, section):
+            raise UnsafePatchError(f"Unsafe patch missing required section: {section}")
+
+
+def parse_frontmatter(content: str) -> dict[str, str]:
+    lines = content.splitlines()
+    if not lines or lines[0].strip() != "---":
+        raise UnsafePatchError("Unsafe patch frontmatter is missing")
+    try:
+        end = next(index for index, line in enumerate(lines[1:], start=1) if line.strip() == "---")
+    except StopIteration as exc:
+        raise UnsafePatchError("Unsafe patch frontmatter is not closed") from exc
+    frontmatter: dict[str, str] = {}
+    for line in lines[1:end]:
+        if not line.strip():
+            continue
+        if ":" not in line:
+            raise UnsafePatchError(f"Unsafe patch frontmatter line is invalid: {line}")
+        key, value = line.split(":", 1)
+        key = key.strip()
+        value = value.strip()
+        if key in {"aliases", "claim_ids"}:
+            parse_list_value(value, key)
+        frontmatter[key] = strip_quotes(value)
+    return frontmatter
+
+
+def parse_list_value(value: str, key: str) -> list[str]:
+    try:
+        parsed = ast.literal_eval(value)
+    except Exception as exc:
+        raise UnsafePatchError(f"Unsafe patch frontmatter {key} must be a list") from exc
+    if not isinstance(parsed, list):
+        raise UnsafePatchError(f"Unsafe patch frontmatter {key} must be a list")
+    return [str(item) for item in parsed]
+
+
+def strip_quotes(value: str) -> str:
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+        return value[1:-1]
+    return value
+
+
+def has_section(content: str, section: str) -> bool:
+    pattern = rf"(?m)^##\s+{re.escape(section)}\s*$"
+    return re.search(pattern, content) is not None
+
+
+def snapshot_mutable_files(root: Path, patches: list[dict[str, object]]) -> dict[Path, bytes | None]:
+    paths = {
+        root / Path(*PurePosixPath(str(patch["target_path"])).parts)
+        for patch in patches
+    }
+    paths.add(root / "wiki" / "index.md")
+    paths.add(root / "wiki" / "log.md")
+    return {path: path.read_bytes() if path.exists() else None for path in paths}
+
+
+def restore_mutable_files(snapshots: dict[Path, bytes | None]) -> None:
+    for path, content in snapshots.items():
+        if content is None:
+            if path.exists():
+                path.unlink()
+            continue
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(content)
+
+
+def backup_existing_targets(root: Path, run_dir: Path, patches: list[dict[str, object]]) -> None:
+    backup_root = run_dir / "backups"
+    for patch in patches:
+        pure = PurePosixPath(str(patch["target_path"]))
+        target = root / Path(*pure.parts)
+        if not target.exists():
+            continue
+        backup_path = backup_root / Path(*pure.parts)
+        backup_path.parent.mkdir(parents=True, exist_ok=True)
+        backup_path.write_bytes(target.read_bytes())
+
+
+def mark_run_applied(run_dir: Path) -> None:
+    manifest_path = run_dir / "run.json"
+    if not manifest_path.exists():
+        return
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["status"] = "applied"
+    manifest["applied_at"] = utc_now()
+    manifest_path.write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
 
 
 def sync_catalog(
