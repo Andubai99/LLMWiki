@@ -4,6 +4,7 @@ import argparse
 from pathlib import Path
 
 from .db import catalog_path, schema_status
+from .ingest import ingest_source, review_run
 from .sources import import_source
 from .workspace import check_workspace, init_workspace
 
@@ -48,11 +49,31 @@ def cmd_add(args: argparse.Namespace) -> int:
 
 
 def cmd_ingest(args: argparse.Namespace) -> int:
-    return _scaffold_only("ingest")
+    root = Path(args.root).resolve()
+    try:
+        result = ingest_source(root, args.source_id)
+    except Exception as exc:
+        print(f"Ingest failed: {exc}")
+        return 1
+    print(f"Created ingest run: run_id={result.run_id}")
+    print(f"source_id={result.source_id}")
+    print(f"claims={result.claim_count}")
+    print(f"patches={result.patch_count}")
+    print(f"citation_coverage={result.citation_coverage}%")
+    return 0
 
 
 def cmd_review(args: argparse.Namespace) -> int:
-    return _scaffold_only("review")
+    root = Path(args.root).resolve()
+    try:
+        print(review_run(root, args.run_id))
+    except FileNotFoundError:
+        print(f"Run not found: {args.run_id}")
+        return 1
+    except Exception as exc:
+        print(f"Review failed: {exc}")
+        return 1
+    return 0
 
 
 def cmd_apply(args: argparse.Namespace) -> int:
