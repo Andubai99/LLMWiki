@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -38,12 +39,13 @@ def ingest_source(root: Path, source_id: str) -> IngestResult:
     if not claims:
         raise ValueError(f"no claims found for source {source_id}")
 
-    run_id = f"run_{source_id}_{utc_now().replace(':', '').replace('+', 'Z')}"
+    run_id = f"run_{source_id}_{utc_now().replace(':', '').replace('+', 'Z')}_{uuid.uuid4().hex[:8]}"
     run_dir = root / "staging" / run_id
     patches_dir = run_dir / "patches"
     patches_dir.mkdir(parents=True, exist_ok=False)
 
     concept_title, aliases = infer_concept(source["title"], claims)
+    entity = infer_entity(claims)
     duplicate_candidates = find_duplicate_candidates(root, concept_title, aliases)
     conflict_candidates = find_conflict_candidates(root, claims)
     coverage = citation_coverage(claims)
@@ -56,6 +58,7 @@ def ingest_source(root: Path, source_id: str) -> IngestResult:
         aliases=aliases,
         duplicate_candidates=duplicate_candidates,
         conflict_candidates=conflict_candidates,
+        entity=entity,
     )
     for index, patch in enumerate(patches, start=1):
         patch_path = patches_dir / f"{index:03d}-{patch['page_type']}-{patch['page_id']}.json"
@@ -140,6 +143,13 @@ def infer_concept(source_title: str, claims: list[Claim]) -> tuple[str, list[str
     return title or source_title, [source_title]
 
 
+def infer_entity(claims: list[Claim]) -> tuple[str, list[str]] | None:
+    combined = " ".join(claim.claim_text for claim in claims)
+    if re.search(r"\bOpen\s*AI\b|\bOpenAI\b", combined, re.I):
+        return "OpenAI", ["OpenAI", "Open AI"]
+    return None
+
+
 def find_duplicate_candidates(root: Path, concept_title: str, aliases: list[str]) -> list[str]:
     normalized = {normalize_alias(concept_title), *(normalize_alias(alias) for alias in aliases)}
     candidates: list[str] = []
@@ -203,6 +213,7 @@ def build_patches(
     aliases: list[str],
     duplicate_candidates: list[str],
     conflict_candidates: list[str],
+    entity: tuple[str, list[str]] | None,
 ) -> list[dict[str, object]]:
     source_page_id = source["source_id"]
     concept_page_id = slugify(concept_title)
@@ -210,7 +221,7 @@ def build_patches(
     concept_path = f"wiki/concepts/{concept_page_id}.md"
     claim_ids = [claim.claim_id for claim in claims]
     now = utc_now()
-    return [
+    patches: list[dict[str, object]] = [
         {
             "patch_id": f"patch_{source_page_id}_source",
             "action": "upsert_page",
@@ -256,6 +267,43 @@ def build_patches(
             ),
         },
     ]
+    if entity:
+        entity_title, entity_aliases = entity
+        entity_page_id = slugify(entity_title)
+        entity_path = f"wiki/entities/{entity_page_id}.md"
+        patches.append(
+            {
+                "patch_id": f"patch_{entity_page_id}_entity",
+                "action": "upsert_page",
+                "page_id": entity_page_id,
+                "page_type": "entity",
+                "target_path": entity_path,
+                "title": entity_title,
+                "aliases": entity_aliases,
+                "claim_ids": claim_ids,
+                "source_id": source["source_id"],
+                "content": render_entity_page(
+                    entity_title, entity_aliases, claims, source, conflict_candidates, now
+                ),
+                "links": [
+                    {
+                        "from_page": entity_path,
+                        "to_page": f"wiki/sources/{source['source_id']}.md",
+                        "link_type": "supports",
+                    }
+                ],
+                "relationships": [
+                    {
+                        "subject_id": entity_page_id,
+                        "object_id": source["source_id"],
+                        "relationship_type": "supports",
+                        "evidence_claim_id": claim_ids[0],
+                        "source_id": source["source_id"],
+                    }
+                ],
+            }
+        )
+    return patches
 
 
 def build_relationships(
@@ -379,6 +427,59 @@ def render_concept_page(
                 [f"Duplicate candidate: {item}" for item in duplicate_candidates],
                 "- None identified during ingest.",
             ),
+            "",
+            "## Supporting Sources",
+            "",
+            f"- [[wiki/sources/{source['source_id']}.md]]",
+            "",
+            "## Open Questions",
+            "",
+            *bullet_lines(
+                [f"Conflict candidate: {item}" for item in conflict_candidates],
+                "- None recorded.",
+            ),
+            "",
+        ]
+    )
+
+
+def render_entity_page(
+    title: str,
+    aliases: list[str],
+    claims: list[Claim],
+    source: dict[str, str],
+    conflict_candidates: list[str],
+    updated_at: str,
+) -> str:
+    claim_ids = [claim.claim_id for claim in claims]
+    return "\n".join(
+        [
+            "---",
+            "page_type: entity",
+            f"title: {yaml_quote(title)}",
+            f"aliases: [{', '.join(yaml_quote(alias) for alias in aliases)}]",
+            "source_count: 1",
+            f"claim_ids: [{', '.join(yaml_quote(claim_id) for claim_id in claim_ids)}]",
+            f"updated_at: {yaml_quote(updated_at)}",
+            "---",
+            "",
+            f"# {title}",
+            "",
+            "## Overview",
+            "",
+            f"Candidate entity page derived from `{source['source_id']}` and pending user review.",
+            "",
+            "## Aliases",
+            "",
+            *[f"- {alias}" for alias in aliases],
+            "",
+            "## Key Claims",
+            "",
+            *[format_claim_bullet(claim) for claim in claims],
+            "",
+            "## Relationships",
+            "",
+            f"- Supported by [[wiki/sources/{source['source_id']}.md]].",
             "",
             "## Supporting Sources",
             "",

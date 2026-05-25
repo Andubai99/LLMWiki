@@ -139,7 +139,12 @@ def sync_catalog(
                 ),
             )
             conn.execute("delete from aliases where target_id = ?", (page_id,))
+            seen_aliases: set[str] = set()
             for alias in [str(patch["title"]), *aliases]:
+                normalized = normalize_alias(alias)
+                if normalized in seen_aliases:
+                    continue
+                seen_aliases.add(normalized)
                 conn.execute(
                     """
                     insert into aliases (alias, target_type, target_id, normalized_alias)
@@ -149,7 +154,7 @@ def sync_catalog(
                         alias,
                         str(patch["page_type"]),
                         page_id,
-                        normalize_alias(alias),
+                        normalized,
                     ),
                 )
             for link in patch.get("links", []):

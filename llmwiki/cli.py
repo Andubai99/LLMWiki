@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 
 from .apply import UnsafePatchError, apply_run
 from .db import catalog_path, schema_status
 from .ingest import ingest_source, review_run
+from .lint import lint_workspace
+from .query import query_context
 from .sources import import_source
 from .workspace import check_workspace, init_workspace
 
@@ -97,20 +100,28 @@ def cmd_apply(args: argparse.Namespace) -> int:
 
 
 def cmd_lint(args: argparse.Namespace) -> int:
-    return _scaffold_only("lint")
+    root = Path(args.root).resolve()
+    report = lint_workspace(root)
+    print("\n".join(report.lines))
+    return 0 if report.issue_count == 0 else 1
 
 
 def cmd_query(args: argparse.Namespace) -> int:
-    return _scaffold_only("query")
+    root = Path(args.root).resolve()
+    print(query_context(root, args.question))
+    return 0
 
 
 def cmd_doctor(args: argparse.Namespace) -> int:
     root = Path(args.root).resolve()
     result = check_workspace(root)
     schema_ok, schema_problems = schema_status(catalog_path(root))
-    if result.ok and schema_ok:
+    index_log_ok = (root / "wiki" / "index.md").exists() and (root / "wiki" / "log.md").exists()
+    print(f"Python OK: {sys.version.split()[0]}")
+    if result.ok and schema_ok and index_log_ok:
         print(f"Workspace OK: {result.root}")
         print("schema OK")
+        print("index/log OK")
         return 0
 
     print(f"Workspace incomplete: {result.root}")
@@ -118,6 +129,8 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         print(f"- missing {path}")
     for problem in schema_problems:
         print(f"- {problem}")
+    if not index_log_ok:
+        print("- index/log missing")
     return 1
 
 
