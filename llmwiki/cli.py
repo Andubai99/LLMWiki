@@ -4,6 +4,7 @@ import argparse
 from pathlib import Path
 
 from .db import catalog_path, schema_status
+from .sources import import_source
 from .workspace import check_workspace, init_workspace
 
 
@@ -27,7 +28,23 @@ def cmd_init(args: argparse.Namespace) -> int:
 
 
 def cmd_add(args: argparse.Namespace) -> int:
-    return _scaffold_only("add")
+    root = Path(args.root).resolve()
+    try:
+        result = import_source(root, args.source)
+    except FileNotFoundError:
+        print(f"Source not found: {args.source}")
+        return 1
+    except Exception as exc:
+        print(f"Source import failed: {exc}")
+        return 1
+
+    if result.duplicate:
+        print(f"Source already imported: source_id={result.source_id} title={result.title}")
+    else:
+        print(f"Imported source: source_id={result.source_id} title={result.title}")
+    print(f"raw_path={result.raw_path}")
+    print(f"normalized_path={result.normalized_path}")
+    return 0
 
 
 def cmd_ingest(args: argparse.Namespace) -> int:
