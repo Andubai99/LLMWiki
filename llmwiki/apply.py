@@ -14,6 +14,8 @@ class UnsafePatchError(ValueError):
     pass
 
 
+# There is no separate reviewed command in v2 yet. Apply accepts staged runs
+# after the user has inspected them with review/review --detail/review --patches.
 ALLOWED_RUN_STATUSES = {"staged", "reviewed"}
 ALLOWED_PAGE_TYPES = {"source", "concept", "entity", "synthesis"}
 REQUIRED_FRONTMATTER = {"page_type", "title", "aliases", "source_count", "claim_ids", "updated_at"}
@@ -182,6 +184,16 @@ def validate_patch(
     ]
     if not cited_claims:
         raise UnsafePatchError("Unsafe patch has no cited claims")
+    weak_claim_ids = [
+        claim_id
+        for claim_id in claim_ids
+        if not claims_by_id[claim_id].get("citation_locator")
+        or claims_by_id[claim_id].get("confidence_status", "weak") in {"weak", "uncited"}
+    ]
+    if weak_claim_ids:
+        raise UnsafePatchError(
+            f"Unsafe patch references weak/uncited claim(s): {', '.join(weak_claim_ids)}"
+        )
     for section in REQUIRED_SECTIONS[page_type]:
         if not has_section(content, section):
             raise UnsafePatchError(f"Unsafe patch missing required section: {section}")
