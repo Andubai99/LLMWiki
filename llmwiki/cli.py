@@ -325,9 +325,17 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    if argv is None:
+        configure_utf8_stdio()
     parser = build_parser()
     args = parser.parse_args(argv)
     return args.func(args)
+
+
+def configure_utf8_stdio() -> None:
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8")
 
 
 def summarize_text(text: str, limit: int = 240) -> str:

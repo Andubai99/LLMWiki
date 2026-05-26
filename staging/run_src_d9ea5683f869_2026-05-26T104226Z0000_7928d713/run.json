@@ -1,0 +1,9 @@
+{
+  "run_id": "run_src_d9ea5683f869_2026-05-26T104226Z0000_7928d713",
+  "source_id": "src_d9ea5683f869",
+  "status": "staged",
+  "created_at": "2026-05-26T10:42:26+00:00",
+  "proposal_engine": "llm",
+  "llm_provider": "openai",
+  "llm_model": "deepseek-v4-pro"
+}

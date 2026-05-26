@@ -1008,7 +1008,16 @@ def similar_title(left: str, right: str) -> bool:
 
 
 def slugify(value: str) -> str:
-    slug = re.sub(r"[^a-z0-9]+", "-", value.casefold()).strip("-")
+    parts: list[str] = []
+    previous_separator = False
+    for char in value.casefold():
+        if char.isalnum():
+            parts.append(char)
+            previous_separator = False
+        elif not previous_separator:
+            parts.append("-")
+            previous_separator = True
+    slug = "".join(parts).strip("-")
     return slug or "untitled"
 
 

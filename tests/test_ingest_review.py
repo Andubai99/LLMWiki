@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 from pathlib import Path
 
 from llmwiki.cli import main
+from llmwiki.ingest import slugify
 from tests.helpers import disable_llm, make_workspace
 
 
@@ -122,6 +125,46 @@ def test_review_detail_shows_full_claims_and_triage(capsys):
     assert "## Candidate Patches" in out
 
 
+def test_review_subprocess_stdout_is_utf8_for_unicode_claims(capsys):
+    root = make_workspace()
+    assert main(["init", "--root", str(root)]) == 0
+    disable_llm(root)
+    source = root / "banana.md"
+    source.write_text(
+        "# 香蕉\n\n"
+        "香蕉 适合 作为 日常 加餐，也 可以 快速 补充 能量。\n",
+        encoding="utf-8",
+    )
+    assert main(["add", str(source), "--root", str(root)]) == 0
+    import sqlite3
+
+    with sqlite3.connect(root / "state" / "catalog.sqlite") as conn:
+        source_id = conn.execute("select source_id from sources").fetchone()[0]
+    assert main(["ingest", source_id, "--root", str(root)]) == 0
+    run_id = capsys.readouterr().out.split("run_id=", 1)[1].splitlines()[0].strip()
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "llmwiki",
+            "review",
+            run_id,
+            "--detail",
+            "--root",
+            str(root),
+        ],
+        cwd=Path(__file__).resolve().parents[1],
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+
+    out = result.stdout.decode("utf-8")
+    assert "香蕉 适合 作为 日常 加餐" in out
+    assert "\ufffd" not in out
+
+
 def test_review_patches_shows_candidate_markdown_content(capsys):
     root = make_workspace()
     source_id = add_sample_source(root)
@@ -179,3 +222,8 @@ def test_ingest_filters_non_claim_lines_and_adds_rich_locators(capsys):
     assert all("section:Retrieval Practice" in claim["citation_locator"] for claim in claims)
     assert all("paragraph:" in claim["citation_locator"] for claim in claims)
     assert all(claim["confidence_status"] == "cited" for claim in claims)
+
+
+def test_slugify_preserves_unicode_title_text():
+    assert slugify("草莓：酸甜可口的浆果类水果") == "草莓-酸甜可口的浆果类水果"
+    assert slugify("橙子：富含维生素 C 的柑橘类水果") == "橙子-富含维生素-c-的柑橘类水果"
