@@ -14,6 +14,9 @@ build/
 dist/
 *.egg-info/
 
+# Local secrets. Keep the example file committed, but never commit real keys.
+config/api-keys.toml
+
 # Runtime cache. Markdown and raw sources remain the durable assets.
 state/*.sqlite
 state/*.sqlite-*

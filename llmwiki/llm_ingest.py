@@ -35,7 +35,7 @@ def create_llm_ingest_proposal(
     config = load_llm_config(root)
     if not config.enabled:
         return None
-    provider = create_provider(config)
+    provider = create_provider(config, root=root)
     response = provider.complete(build_ingest_messages(source, normalized_text), schema=proposal_schema())
     content = str(response.get("content") or "")
     payload = parse_json_object(content)

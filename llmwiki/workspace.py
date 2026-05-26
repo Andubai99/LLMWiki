@@ -8,7 +8,9 @@ from .db import catalog_path, init_db, schema_status
 
 
 REQUIRED_PATHS = (
-    "config.toml",
+    "config/config.toml",
+    "config/api-keys.example.toml",
+    "config/api-keys.toml",
     "AGENTS.md",
     "sources/raw",
     "sources/normalized",
@@ -45,8 +47,19 @@ enabled = true
 provider = "openai"
 model = "deepseek-v4-pro"
 base_url = "https://api.deepseek.com"
-api_key_env = "DEEPSEEK_API_KEY"
+api_key_file = "config/api-keys.toml"
 timeout_seconds = 60
+"""
+
+DEFAULT_API_KEYS = """\
+[llm]
+api_key = ""
+"""
+
+DEFAULT_API_KEYS_EXAMPLE = """\
+[llm]
+# Copy this file to config/api-keys.toml and replace the placeholder value.
+api_key = "paste-your-deepseek-api-key-here"
 """
 
 DEFAULT_AGENTS = """\
@@ -64,8 +77,8 @@ This repository is a local, source-backed research wiki. Treat it as a knowledge
 - Keep Markdown readable in Obsidian.
 - Treat `state/catalog.sqlite` as a rebuildable cache. The durable assets are raw sources, normalized sources, and Markdown wiki pages.
 - Real LLM calls are allowed through the configured OpenAI-compatible DeepSeek provider.
-- API Key values, tokens, `.env` files, and sensitive logs must never be committed.
-- The DeepSeek API Key must be read from the `DEEPSEEK_API_KEY` environment variable.
+- API Key values, tokens, `.env` files, `config/api-keys.toml`, and sensitive logs must never be committed.
+- The DeepSeek API Key must be read from the local ignored `config/api-keys.toml` file.
 - LLM output must not bypass staging, review, and apply.
 - This version does not default to vector databases, MCP, Web UI, cloud sync, or team permissions.
 """
@@ -136,6 +149,7 @@ def utc_now() -> str:
 def init_workspace(root: Path) -> None:
     root.mkdir(parents=True, exist_ok=True)
     for directory in (
+        "config",
         "sources/raw",
         "sources/normalized",
         "wiki/sources",
@@ -148,7 +162,9 @@ def init_workspace(root: Path) -> None:
         (root / directory).mkdir(parents=True, exist_ok=True)
 
     now = utc_now()
-    write_if_missing(root / "config.toml", DEFAULT_CONFIG)
+    write_if_missing(root / "config" / "config.toml", DEFAULT_CONFIG)
+    write_if_missing(root / "config" / "api-keys.example.toml", DEFAULT_API_KEYS_EXAMPLE)
+    write_if_missing(root / "config" / "api-keys.toml", DEFAULT_API_KEYS)
     write_if_missing(root / "AGENTS.md", DEFAULT_AGENTS)
     write_if_missing(root / "wiki/index.md", DEFAULT_INDEX.format(updated_at=now))
     write_if_missing(root / "wiki/log.md", DEFAULT_LOG.format(updated_at=now))

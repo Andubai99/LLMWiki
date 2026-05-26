@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-import os
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -36,6 +36,24 @@ def _write_llm_sample(root: Path) -> Path:
     return source
 
 
+def _repo_api_key() -> str:
+    key_file = Path(__file__).resolve().parents[1] / "config" / "api-keys.toml"
+    if not key_file.exists():
+        return ""
+    data = tomllib.loads(key_file.read_text(encoding="utf-8"))
+    llm = data.get("llm", {}) if isinstance(data, dict) else {}
+    return str(llm.get("api_key") or "").strip() if isinstance(llm, dict) else ""
+
+
+def _write_api_key(root: Path, api_key: str) -> None:
+    escaped = json.dumps(api_key)
+    (root / "config" / "api-keys.toml").write_text(
+        f"[llm]\napi_key = {escaped}\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+
 def test_ingest_reports_missing_llm_api_key_without_modifying_wiki(monkeypatch, capsys):
     root = make_workspace()
     assert main(["init", "--root", str(root)]) == 0
@@ -43,27 +61,30 @@ def test_ingest_reports_missing_llm_api_key_without_modifying_wiki(monkeypatch, 
     assert main(["add", str(source), "--root", str(root)]) == 0
     source_id = _source_id(root)
     before = _wiki_snapshot(root)
-    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
-    monkeypatch.setenv("OTHER_SECRET", "sk-do-not-print-this")
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-env-should-not-print-this")
+    monkeypatch.setenv("OTHER_SECRET", "sk-other-do-not-print-this")
     capsys.readouterr()
 
     assert main(["ingest", source_id, "--root", str(root)]) == 1
     out = capsys.readouterr().out
 
     assert "Ingest failed" in out
-    assert "DEEPSEEK_API_KEY" in out
-    assert "sk-do-not-print-this" not in out
+    assert "config/api-keys.toml" in out
+    assert "DEEPSEEK_API_KEY" not in out
+    assert "sk-env-should-not-print-this" not in out
+    assert "sk-other-do-not-print-this" not in out
     assert _wiki_snapshot(root) == before
     assert not any((root / "staging").glob("run_*"))
 
 
 def test_real_llm_ingest_writes_staging_only_and_applies_safely(capsys):
-    api_key = os.environ.get("DEEPSEEK_API_KEY")
+    api_key = _repo_api_key()
     if not api_key:
-        pytest.fail("DEEPSEEK_API_KEY is required for the real LLM ingest integration test")
+        pytest.fail("config/api-keys.toml with [llm].api_key is required for the real LLM ingest integration test")
 
     root = make_workspace()
     assert main(["init", "--root", str(root)]) == 0
+    _write_api_key(root, api_key)
     source = _write_llm_sample(root)
     assert main(["add", str(source), "--root", str(root)]) == 0
     source_id = _source_id(root)

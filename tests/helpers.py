@@ -11,7 +11,7 @@ def make_workspace() -> Path:
 
 
 def disable_llm(root: Path) -> None:
-    config_path = root / "config.toml"
+    config_path = root / "config" / "config.toml"
     config = config_path.read_text(encoding="utf-8")
     config = config.replace("enabled = true", "enabled = false")
     config_path.write_text(config, encoding="utf-8", newline="\n")

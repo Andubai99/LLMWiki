@@ -32,9 +32,9 @@ This repository is a local, source-backed research wiki. Treat it as a knowledge
 ## LLM Provider Rules
 
 - Real LLM calls are allowed in stage 2 and are enabled by default through the OpenAI-compatible DeepSeek provider.
-- API Key values, tokens, `.env` files, and sensitive logs must never be committed.
-- The DeepSeek API Key must be read from the `DEEPSEEK_API_KEY` environment variable.
-- Do not write API keys into `config.toml`, README, tests, source files, logs, or staging artifacts.
+- API Key values, tokens, `.env` files, `config/api-keys.toml`, and sensitive logs must never be committed.
+- The DeepSeek API Key must be read from the local ignored `config/api-keys.toml` file.
+- Do not write API keys into `config/config.toml`, README, tests, source files, logs, staging artifacts, or committed examples.
 - LLM output must not bypass staging, review, and apply.
 - This stage must not let an LLM directly modify formal wiki pages.
 - Do not add a mock provider or no-network LLM test path for this stage.

@@ -157,9 +157,9 @@ def cmd_llm_test(args: argparse.Namespace) -> int:
         timeout_seconds=args.timeout,
     )
     if not config.enabled:
-        print("LLM test failed: [llm].enabled is false in config.toml")
+        print("LLM test failed: [llm].enabled is false in config/config.toml")
         return 1
-    provider = create_provider(config)
+    provider = create_provider(config, root=root)
     messages = [
         {
             "role": "system",

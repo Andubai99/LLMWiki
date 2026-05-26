@@ -210,7 +210,8 @@ def test_docs_describe_v1_commands_and_constraints():
     assert "LLM Ingest Proposal" in readme
     assert "llm-proposal.json" in readme
     assert "proposal_engine=llm" in readme
-    assert "DEEPSEEK_API_KEY" in readme
+    assert "config/api-keys.toml" in readme
+    assert "config/api-keys.example.toml" in readme
     assert "llmwiki llm-test --root ." in readme
     assert "python -m venv .venv" in readme
     assert ".\\.venv\\Scripts\\Activate.ps1" in readme
@@ -239,7 +240,7 @@ def test_docs_describe_v1_commands_and_constraints():
     assert "Do not forge claim ids" in agents
     assert "`contradicts` relationships must be exposed" in agents
     assert "API Key" in agents
-    assert "DEEPSEEK_API_KEY" in agents
+    assert "config/api-keys.toml" in agents
     assert "mock provider" in agents
     assert "llm-proposal.json" in agents
     assert "valid source locators" in agents
