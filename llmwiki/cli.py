@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import os
 import sys
 import tomllib
 from pathlib import Path
@@ -139,7 +140,9 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     schema_ok, schema_problems = schema_status(catalog_path(root))
     index_log_ok = (root / "wiki" / "index.md").exists() and (root / "wiki" / "log.md").exists()
     deps_ok, dep_problems = dependency_status()
+    _, venv_line = virtualenv_status()
     print(f"Python OK: {sys.version.split()[0]}")
+    print(venv_line)
     if result.ok and schema_ok and index_log_ok and deps_ok:
         print("dependencies OK")
         print(f"Workspace OK: {result.root}")
@@ -157,6 +160,18 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     for problem in dep_problems:
         print(f"- dependency {problem}")
     return 1
+
+
+def virtualenv_status() -> tuple[bool, str]:
+    in_virtualenv = (
+        sys.prefix != getattr(sys, "base_prefix", sys.prefix)
+        or hasattr(sys, "real_prefix")
+        or bool(os.environ.get("VIRTUAL_ENV"))
+    )
+    if in_virtualenv:
+        location = os.environ.get("VIRTUAL_ENV") or sys.prefix
+        return True, f"virtual environment OK: {location}"
+    return False, "warning: not running inside a Python virtual environment"
 
 
 def dependency_status() -> tuple[bool, list[str]]:

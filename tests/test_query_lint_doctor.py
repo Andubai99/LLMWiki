@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from pathlib import Path
+import sys
 
-from llmwiki.cli import main
+from llmwiki.cli import main, virtualenv_status
 from tests.helpers import make_workspace
 
 
@@ -55,6 +56,7 @@ def test_lint_and_doctor_report_workspace_health(capsys):
     doctor = capsys.readouterr().out
     assert "Python OK" in doctor
     assert "dependencies OK" in doctor
+    assert "virtual environment OK" in doctor
     assert "Workspace OK" in doctor
     assert "schema OK" in doctor
     assert "index/log OK" in doctor
@@ -82,3 +84,14 @@ def test_lint_reports_source_hash_drift(capsys):
     assert main(["lint", "--root", str(root)]) == 1
     lint = capsys.readouterr().out
     assert "source hash drift: 1" in lint
+
+
+def test_virtualenv_status_warns_when_not_running_in_virtualenv(monkeypatch):
+    monkeypatch.delenv("VIRTUAL_ENV", raising=False)
+    monkeypatch.setattr(sys, "prefix", sys.base_prefix, raising=False)
+
+    ok, line = virtualenv_status()
+
+    assert not ok
+    assert "warning" in line
+    assert "virtual environment" in line

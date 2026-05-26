@@ -204,6 +204,9 @@ def test_docs_describe_v1_commands_and_constraints():
     assert "--format prompt" in readme
     assert "retrieve_context" in readme
     assert "RAG/Agent evidence layer" in readme
+    assert "python -m venv .venv" in readme
+    assert ".\\.venv\\Scripts\\Activate.ps1" in readme
+    assert "python -m pip install -e ." in readme
     assert "Obsidian" in readme
     assert "Git" in readme
     assert "not supported" in readme
@@ -229,3 +232,11 @@ def test_docs_describe_v1_commands_and_constraints():
     assert "`contradicts` relationships must be exposed" in agents
     assert "vector" in agents
     assert "Web UI" in agents
+
+
+def test_gitignore_excludes_virtualenv_and_python_caches():
+    root = Path(__file__).resolve().parents[1]
+    gitignore = (root / ".gitignore").read_text(encoding="utf-8")
+
+    for pattern in (".venv/", "__pycache__/", ".pytest_cache/", "*.pyc"):
+        assert pattern in gitignore
