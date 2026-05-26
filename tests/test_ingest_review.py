@@ -4,11 +4,12 @@ import json
 from pathlib import Path
 
 from llmwiki.cli import main
-from tests.helpers import make_workspace
+from tests.helpers import disable_llm, make_workspace
 
 
 def add_sample_source(root: Path) -> str:
     assert main(["init", "--root", str(root)]) == 0
+    disable_llm(root)
     source = root / "minimal.md"
     source.write_text(
         "# Retrieval Notes\n\n"
@@ -140,6 +141,7 @@ def test_review_patches_shows_candidate_markdown_content(capsys):
 def test_ingest_filters_non_claim_lines_and_adds_rich_locators(capsys):
     root = make_workspace()
     assert main(["init", "--root", str(root)]) == 0
+    disable_llm(root)
     source = root / "claim-quality.md"
     source.write_text(
         "# Claim Quality Notes\n\n"

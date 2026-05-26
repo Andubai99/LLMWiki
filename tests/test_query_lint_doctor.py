@@ -4,7 +4,7 @@ from pathlib import Path
 import sys
 
 from llmwiki.cli import main, virtualenv_status
-from tests.helpers import make_workspace
+from tests.helpers import disable_llm, make_workspace
 
 
 def fixture(name: str) -> Path:
@@ -12,6 +12,7 @@ def fixture(name: str) -> Path:
 
 
 def add_ingest_apply(root: Path, source_path: Path) -> str:
+    disable_llm(root)
     assert main(["add", str(source_path), "--root", str(root)]) == 0
     # Caller must read capsys after invoking this helper if stdout matters.
     import sqlite3

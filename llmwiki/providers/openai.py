@@ -26,9 +26,7 @@ class OpenAIProvider(BaseLLMProvider):
         }
         # Reserved for later structured output support. DeepSeek-compatible
         # chat completions may not enforce a full JSON schema today, so v1
-        # accepts the parameter without silently inventing stronger guarantees.
-        if schema is not None:
-            payload["metadata"] = {"schema_requested": True}
+        # accepts the parameter without adding provider-specific request fields.
 
         raw = self._post_chat_completion(payload, api_key)
         choices = raw.get("choices") or []

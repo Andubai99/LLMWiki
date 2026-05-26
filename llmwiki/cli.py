@@ -79,6 +79,7 @@ def cmd_ingest(args: argparse.Namespace) -> int:
         return 1
     print(f"Created ingest run: run_id={result.run_id}")
     print(f"source_id={result.source_id}")
+    print(f"proposal_engine={result.proposal_engine}")
     print(f"claims={result.claim_count}")
     print(f"patches={result.patch_count}")
     print(f"citation_coverage={result.citation_coverage}%")

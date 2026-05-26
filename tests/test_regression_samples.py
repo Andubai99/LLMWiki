@@ -4,7 +4,7 @@ import sqlite3
 from pathlib import Path
 
 from llmwiki.cli import main
-from tests.helpers import make_workspace
+from tests.helpers import disable_llm, make_workspace
 from tests.test_query_lint_doctor import add_ingest_apply, fixture
 
 
@@ -58,6 +58,7 @@ def test_regression_samples_preserve_alias_entity_and_conflict(capsys):
 def test_identity_resolution_detects_alias_punctuation_and_entity_candidates(capsys):
     root = make_workspace()
     assert main(["init", "--root", str(root)]) == 0
+    disable_llm(root)
     add_ingest_apply(root, fixture("minimal_source.md"))
     add_ingest_apply(root, fixture("regression_entity.md"))
     capsys.readouterr()
@@ -147,6 +148,7 @@ def test_lint_distinguishes_recorded_and_unresolved_contradictions(capsys):
 def test_chinese_regression_sources_cover_alias_entity_conflict_and_support(capsys):
     root = make_workspace()
     assert main(["init", "--root", str(root)]) == 0
+    disable_llm(root)
 
     source_ids = [
         add_ingest_apply(root, fixture("zh_alias_entity.md")),
@@ -205,6 +207,9 @@ def test_docs_describe_v1_commands_and_constraints():
     assert "retrieve_context" in readme
     assert "RAG/Agent evidence layer" in readme
     assert "LLM Provider" in readme
+    assert "LLM Ingest Proposal" in readme
+    assert "llm-proposal.json" in readme
+    assert "proposal_engine=llm" in readme
     assert "DEEPSEEK_API_KEY" in readme
     assert "llmwiki llm-test --root ." in readme
     assert "python -m venv .venv" in readme
@@ -236,6 +241,8 @@ def test_docs_describe_v1_commands_and_constraints():
     assert "API Key" in agents
     assert "DEEPSEEK_API_KEY" in agents
     assert "mock provider" in agents
+    assert "llm-proposal.json" in agents
+    assert "valid source locators" in agents
     assert "vector" in agents
     assert "Web UI" in agents
 

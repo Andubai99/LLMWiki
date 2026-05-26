@@ -38,6 +38,8 @@ This repository is a local, source-backed research wiki. Treat it as a knowledge
 - LLM output must not bypass staging, review, and apply.
 - This stage must not let an LLM directly modify formal wiki pages.
 - Do not add a mock provider or no-network LLM test path for this stage.
+- LLM ingest proposals may create `claims.jsonl`, `triage.md`, `llm-proposal.json`, and patch files only under `staging/<run-id>/`.
+- Claims without valid source locators must remain weak/uncited and must not become formal wiki conclusions.
 
 ## First-Version Boundaries
 

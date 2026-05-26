@@ -76,7 +76,7 @@ timeout_seconds = 60
 API Key 必须放在环境变量里，不能写入仓库、代码、README、`config.toml`、测试文件或日志。PowerShell 示例：
 
 ```powershell
-$env:DEEPSEEK_API_KEY = "你的 DeepSeek API Key"
+# 先通过系统环境变量或当前 PowerShell 会话提供 DEEPSEEK_API_KEY，切勿把实际值写入仓库文件
 llmwiki llm-test --root .
 ```
 
@@ -89,6 +89,28 @@ llmwiki llm-test --root . --model deepseek-v4-pro --base-url https://api.deepsee
 代码层统一接口是 `provider.complete(messages, schema=None)`，其中 `messages` 使用 OpenAI Chat Completions 风格。`schema` 参数已保留给后续结构化输出；当前 DeepSeek OpenAI-compatible 调用层接受该参数，但不声称强制执行完整 JSON Schema。
 
 本阶段只建立真实 LLM 调用层。LLM 输出不得直接修改正式 wiki 页面；任何知识修改仍必须走 `ingest` 生成 staging、人工 `review`、再 `apply` 的流程。当前没有 mock provider，也没有 no-network 测试路径。
+
+## LLM Ingest Proposal v1
+
+`llmwiki ingest <source-id> --root .` 现在会在 `[llm].enabled = true` 时默认调用真实 DeepSeek API，让 LLM 参与 claim 抽取、source summary、concept/entity proposal、duplicate/conflict candidates 生成。LLM 的输出仍然只能写入 `staging/<run-id>/`：
+
+```text
+staging/<run-id>/
+  claims.jsonl
+  triage.md
+  llm-proposal.json
+  run.json
+  patches/
+```
+
+`run.json` 会记录 `proposal_engine=llm`、provider 和 model；`triage.md` 会包含 `## LLM Proposal` 审阅信息。`ingest` 不会写正式 `wiki/`，也不会修改 `sources/raw/` 或 `sources/normalized/`。只有 `llmwiki apply <run-id> --root .` 通过安全校验后，候选 patch 才能落入正式 wiki 和 SQLite catalog。
+
+LLM claims 必须带有效 source locator。没有合法 `line:N` 的 claim 会被标记为 weak/uncited，不能进入正式 patch 结论。需要运行旧的规则化 ingest 时，可以在工作区 `config.toml` 中设置：
+
+```toml
+[llm]
+enabled = false
+```
 
 LLM Wiki 是一个本地优先的个人研究库：用 Python CLI 管理资料导入、claim 抽取、staging 审阅、Markdown wiki 落盘和 SQLite 索引。它的定位是 source-backed knowledge compiler，而不是自由笔记文件夹。
 
