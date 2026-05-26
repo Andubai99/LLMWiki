@@ -59,6 +59,37 @@ JSON schema 会保持稳定，便于外部程序直接解析：
 
 当前检索限制：SQLite FTS/BM25 仍是词法检索，中文分词能力基础；alias expansion 是规则化实现；本阶段没有 vector store、reranker 或真实 LLM 调用。
 
+## LLM Provider v1
+
+LLM Provider 层用于让 LLMWiki 调用真实 LLM。当前默认启用 DeepSeek OpenAI-compatible API，配置来自 `config.toml` 的 `[llm]`：
+
+```toml
+[llm]
+enabled = true
+provider = "openai"
+model = "deepseek-v4-pro"
+base_url = "https://api.deepseek.com"
+api_key_env = "DEEPSEEK_API_KEY"
+timeout_seconds = 60
+```
+
+API Key 必须放在环境变量里，不能写入仓库、代码、README、`config.toml`、测试文件或日志。PowerShell 示例：
+
+```powershell
+$env:DEEPSEEK_API_KEY = "你的 DeepSeek API Key"
+llmwiki llm-test --root .
+```
+
+`llmwiki llm-test --root .` 会读取 `[llm]` 配置并真实调用 DeepSeek API，输出 provider、model、base_url、`real_call=true` 和返回内容摘要，但不会输出 API Key。可临时覆盖模型、base URL 或超时：
+
+```powershell
+llmwiki llm-test --root . --model deepseek-v4-pro --base-url https://api.deepseek.com --timeout 60
+```
+
+代码层统一接口是 `provider.complete(messages, schema=None)`，其中 `messages` 使用 OpenAI Chat Completions 风格。`schema` 参数已保留给后续结构化输出；当前 DeepSeek OpenAI-compatible 调用层接受该参数，但不声称强制执行完整 JSON Schema。
+
+本阶段只建立真实 LLM 调用层。LLM 输出不得直接修改正式 wiki 页面；任何知识修改仍必须走 `ingest` 生成 staging、人工 `review`、再 `apply` 的流程。当前没有 mock provider，也没有 no-network 测试路径。
+
 LLM Wiki 是一个本地优先的个人研究库：用 Python CLI 管理资料导入、claim 抽取、staging 审阅、Markdown wiki 落盘和 SQLite 索引。它的定位是 source-backed knowledge compiler，而不是自由笔记文件夹。
 
 核心原则是：`sources/raw/` 下的原始资料不可变；`ingest` 只能在 `staging/<run-id>/` 里提出候选 claims 和 wiki patch；只有 `llmwiki apply` 才能把审阅后的内容写入 `wiki/` 并同步 `state/catalog.sqlite`。
@@ -176,6 +207,7 @@ llmwiki doctor --root .
 - Markdown 和纯文本资料导入。
 - 可访问 `http`/`https` URL 的网页快照导入。
 - 通过 `pypdf` 导入文本 PDF。
+- 默认通过 OpenAI-compatible provider 调用 DeepSeek 真实 API。
 - claim-first staging，并为重要 claim 保留引用。
 - weak/uncited claim 可以进入 triage，但不能直接成为正式结论。
 - 生成 source summary、concept 和 entity Markdown 页面。
@@ -183,7 +215,6 @@ llmwiki doctor --root .
 
 ## 不支持内容 (not supported)
 
-- 默认调用外部 LLM API。
 - 向量数据库。
 - MCP server 集成。
 - Web UI 或 Obsidian 插件。
@@ -191,3 +222,4 @@ llmwiki doctor --root .
 - 团队权限或多人审阅流程。
 - 扫描 PDF OCR。
 - 自动裁决资料之间的冲突。
+- LLM 直接绕过 staging/review/apply 修改正式 wiki 页面。

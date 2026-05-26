@@ -39,6 +39,14 @@ root = "staging"
 
 [catalog]
 path = "state/catalog.sqlite"
+
+[llm]
+enabled = true
+provider = "openai"
+model = "deepseek-v4-pro"
+base_url = "https://api.deepseek.com"
+api_key_env = "DEEPSEEK_API_KEY"
+timeout_seconds = 60
 """
 
 DEFAULT_AGENTS = """\
@@ -55,7 +63,11 @@ This repository is a local, source-backed research wiki. Treat it as a knowledge
 - Prefer updating existing concept/entity pages over creating near-duplicate pages.
 - Keep Markdown readable in Obsidian.
 - Treat `state/catalog.sqlite` as a rebuildable cache. The durable assets are raw sources, normalized sources, and Markdown wiki pages.
-- First version does not default to vector databases, MCP, Web UI, cloud sync, or team permissions.
+- Real LLM calls are allowed through the configured OpenAI-compatible DeepSeek provider.
+- API Key values, tokens, `.env` files, and sensitive logs must never be committed.
+- The DeepSeek API Key must be read from the `DEEPSEEK_API_KEY` environment variable.
+- LLM output must not bypass staging, review, and apply.
+- This version does not default to vector databases, MCP, Web UI, cloud sync, or team permissions.
 """
 
 DEFAULT_INDEX = """\

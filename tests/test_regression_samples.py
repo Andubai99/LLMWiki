@@ -204,6 +204,9 @@ def test_docs_describe_v1_commands_and_constraints():
     assert "--format prompt" in readme
     assert "retrieve_context" in readme
     assert "RAG/Agent evidence layer" in readme
+    assert "LLM Provider" in readme
+    assert "DEEPSEEK_API_KEY" in readme
+    assert "llmwiki llm-test --root ." in readme
     assert "python -m venv .venv" in readme
     assert ".\\.venv\\Scripts\\Activate.ps1" in readme
     assert "python -m pip install -e ." in readme
@@ -230,6 +233,9 @@ def test_docs_describe_v1_commands_and_constraints():
     assert "`llmwiki retrieve` is the standard evidence interface" in agents
     assert "Do not forge claim ids" in agents
     assert "`contradicts` relationships must be exposed" in agents
+    assert "API Key" in agents
+    assert "DEEPSEEK_API_KEY" in agents
+    assert "mock provider" in agents
     assert "vector" in agents
     assert "Web UI" in agents
 

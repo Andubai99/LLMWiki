@@ -29,9 +29,18 @@ This repository is a local, source-backed research wiki. Treat it as a knowledge
 - `contradicts` relationships must be exposed to callers; do not hide conflicts or silently choose a winner.
 - Retrieval must not call external LLM APIs by default.
 
+## LLM Provider Rules
+
+- Real LLM calls are allowed in stage 2 and are enabled by default through the OpenAI-compatible DeepSeek provider.
+- API Key values, tokens, `.env` files, and sensitive logs must never be committed.
+- The DeepSeek API Key must be read from the `DEEPSEEK_API_KEY` environment variable.
+- Do not write API keys into `config.toml`, README, tests, source files, logs, or staging artifacts.
+- LLM output must not bypass staging, review, and apply.
+- This stage must not let an LLM directly modify formal wiki pages.
+- Do not add a mock provider or no-network LLM test path for this stage.
+
 ## First-Version Boundaries
 
-- Do not default to external LLM API calls.
 - Do not default to vector databases.
 - Do not default to MCP integrations.
 - Do not add a Web UI or Obsidian plugin by default.
