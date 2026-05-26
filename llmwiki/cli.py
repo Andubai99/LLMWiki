@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
+import json
 import sys
 import tomllib
 from pathlib import Path
@@ -11,11 +12,12 @@ from .db import catalog_path, schema_status
 from .ingest import ingest_source, review_run
 from .lint import lint_workspace
 from .query import query_context
+from .retrieval import format_retrieval_prompt, retrieve_context
 from .sources import import_source
 from .workspace import check_workspace, init_workspace
 
 
-COMMANDS = ("init", "add", "ingest", "review", "apply", "lint", "query", "doctor")
+COMMANDS = ("init", "add", "ingest", "review", "apply", "lint", "query", "retrieve", "doctor")
 
 
 def _scaffold_only(command: str) -> int:
@@ -114,6 +116,23 @@ def cmd_query(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_retrieve(args: argparse.Namespace) -> int:
+    root = Path(args.root).resolve()
+    result = retrieve_context(
+        root,
+        args.question,
+        limit=args.limit,
+        source_id=args.source_id,
+        page_type=args.page_type,
+        confidence=args.confidence,
+    )
+    if args.json or args.format == "json":
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+    else:
+        print(format_retrieval_prompt(result))
+    return 0
+
+
 def cmd_doctor(args: argparse.Namespace) -> int:
     root = Path(args.root).resolve()
     result = check_workspace(root)
@@ -201,6 +220,25 @@ def build_parser() -> argparse.ArgumentParser:
     query_parser.add_argument("question")
     query_parser.add_argument("--root", default=".")
     query_parser.set_defaults(func=cmd_query)
+
+    retrieve_parser = subparsers.add_parser(
+        "retrieve",
+        help="Return citation-backed retrieval contexts for RAG or agents.",
+    )
+    retrieve_parser.add_argument("question")
+    retrieve_parser.add_argument("--root", default=".")
+    retrieve_parser.add_argument("--json", action="store_true", help="Output stable machine-readable JSON.")
+    retrieve_parser.add_argument(
+        "--format",
+        choices=("json", "prompt"),
+        default="json",
+        help="Output format. Use prompt for an LLM evidence prompt.",
+    )
+    retrieve_parser.add_argument("--limit", type=int, default=8)
+    retrieve_parser.add_argument("--source-id")
+    retrieve_parser.add_argument("--page-type")
+    retrieve_parser.add_argument("--confidence")
+    retrieve_parser.set_defaults(func=cmd_retrieve)
 
     doctor_parser = subparsers.add_parser("doctor", help="Check workspace structure.")
     doctor_parser.add_argument("--root", default=".")

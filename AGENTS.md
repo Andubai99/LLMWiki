@@ -20,6 +20,15 @@ This repository is a local, source-backed research wiki. Treat it as a knowledge
 - Treat `state/catalog.sqlite` as a rebuildable cache. The durable assets are raw sources, normalized sources, and Markdown wiki pages.
 - `wiki/log.md` is append-only.
 
+## Retrieval Interface
+
+- `llmwiki retrieve` is the standard evidence interface for external RAG systems, agents, and LLM prompts.
+- Retrieval output must only expose claims, citations, page paths, and relationships that exist in the local catalog/wiki.
+- Do not forge claim ids, source ids, citation locators, page paths, scores, or relationships.
+- weak/uncited claims must not be treated as strong evidence by callers or agents.
+- `contradicts` relationships must be exposed to callers; do not hide conflicts or silently choose a winner.
+- Retrieval must not call external LLM APIs by default.
+
 ## First-Version Boundaries
 
 - Do not default to external LLM API calls.

@@ -52,7 +52,6 @@ def connect(db_path: Path) -> Iterator[sqlite3.Connection]:
     conn = sqlite3.connect(db_path)
     try:
         conn.row_factory = sqlite3.Row
-        conn.execute("pragma journal_mode = truncate")
         conn.execute("pragma temp_store = memory")
         conn.execute("pragma foreign_keys = on")
         yield conn

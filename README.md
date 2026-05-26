@@ -1,5 +1,64 @@
 # LLM Wiki
 
+## Retrieval Layer v1（检索层）
+
+`llmwiki retrieve` 是外部 RAG 系统、Agent 和 LLM prompt 调用 LLMWiki 的稳定证据接口。它从本地 SQLite catalog 检索 source-backed claims，并返回 citation、page path、relationship type、score 和 warning。这个命令不会调用外部 LLM API。
+
+面向工具的 JSON 输出：
+
+```bash
+llmwiki retrieve "RAG 为什么需要引用锚点？" --root . --json
+```
+
+面向 LLM 的 prompt 输出：
+
+```bash
+llmwiki retrieve "RAG 为什么需要引用锚点？" --root . --format prompt
+```
+
+常用过滤参数：
+
+```bash
+llmwiki retrieve "retrieval citation anchors" --root . --json --limit 5
+llmwiki retrieve "retrieval citation anchors" --root . --json --source-id src_xxx
+llmwiki retrieve "retrieval citation anchors" --root . --json --page-type concept
+llmwiki retrieve "retrieval citation anchors" --root . --json --confidence cited
+```
+
+Python API：
+
+```python
+from pathlib import Path
+from llmwiki.retrieval import retrieve_context
+
+context = retrieve_context(Path("."), "RAG 为什么需要引用锚点？", limit=8)
+```
+
+JSON schema 会保持稳定，便于外部程序直接解析：
+
+```json
+{
+  "question": "...",
+  "contexts": [
+    {
+      "claim_id": "...",
+      "source_id": "...",
+      "citation_locator": "line:5;section:...;paragraph:1",
+      "claim_text": "...",
+      "page_path": "wiki/sources/src_xxx.md",
+      "relationship_type": "supports",
+      "score": 0.0
+    }
+  ],
+  "relationships": [],
+  "warnings": []
+}
+```
+
+作为 RAG/Agent evidence layer，LLMWiki 应该在生成前被调用。调用方把返回的 evidence 交给模型，并要求回答中的关键结论引用 `source_id + citation_locator`。如果 `warnings` 提示证据不足、weak/uncited claim 或 `contradicts` relationship，模型应暴露这种不确定性，而不是编造答案。
+
+当前检索限制：SQLite FTS/BM25 仍是词法检索，中文分词能力基础；alias expansion 是规则化实现；本阶段没有 vector store、reranker 或真实 LLM 调用。
+
 LLM Wiki 是一个本地优先的个人研究库：用 Python CLI 管理资料导入、claim 抽取、staging 审阅、Markdown wiki 落盘和 SQLite 索引。它的定位是 source-backed knowledge compiler，而不是自由笔记文件夹。
 
 核心原则是：`sources/raw/` 下的原始资料不可变；`ingest` 只能在 `staging/<run-id>/` 里提出候选 claims 和 wiki patch；只有 `llmwiki apply` 才能把审阅后的内容写入 `wiki/` 并同步 `state/catalog.sqlite`。

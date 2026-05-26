@@ -198,8 +198,12 @@ def test_docs_describe_v1_commands_and_constraints():
     readme = (root / "README.md").read_text(encoding="utf-8")
     agents = (root / "AGENTS.md").read_text(encoding="utf-8")
 
-    for command in ("init", "add", "ingest", "review", "apply", "query", "lint", "doctor"):
+    for command in ("init", "add", "ingest", "review", "apply", "query", "retrieve", "lint", "doctor"):
         assert f"llmwiki {command}" in readme
+    assert "--json" in readme
+    assert "--format prompt" in readme
+    assert "retrieve_context" in readme
+    assert "RAG/Agent evidence layer" in readme
     assert "Obsidian" in readme
     assert "Git" in readme
     assert "not supported" in readme
@@ -220,5 +224,8 @@ def test_docs_describe_v1_commands_and_constraints():
     assert "must not bypass staging" in agents
     assert "must not overwrite user-authored wiki content without a recoverable backup" in agents
     assert "source locator" in agents
+    assert "`llmwiki retrieve` is the standard evidence interface" in agents
+    assert "Do not forge claim ids" in agents
+    assert "`contradicts` relationships must be exposed" in agents
     assert "vector" in agents
     assert "Web UI" in agents
