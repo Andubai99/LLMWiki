@@ -125,7 +125,6 @@ The lower-level functions remain independently testable:
 - `ingest_source`
 - `review_run`
 - `apply_run`
-- `lint_workspace`
 
 ## 6. Debug Commands
 
@@ -277,8 +276,7 @@ V2.1 is complete when:
 4. `ingest`, `review`, and `apply` still work for existing tests and debug use.
 5. Failed LLM/validation/apply runs do not leave partial wiki mutations.
 6. README primary workflow no longer presents manual review/apply as the normal path.
-7. `llmwiki lint --root .` passes after a successful add.
-8. Full test suite passes.
+7. Full test suite passes.
 
 ## 13. Test Plan
 
@@ -294,19 +292,15 @@ Add or update tests for:
 
 Existing tests around `ingest`, `review`, `apply`, `lint`, `doctor`, and retrieval should continue to pass.
 
-## 14. Open Decisions
+## 14. Operational Decisions
 
-The following decisions should be made during implementation planning:
-
-1. Should failed pipeline runs be marked `failed` in `run.json`?
-2. Should `add` run `lint` automatically after apply, or leave lint as a separate command?
-
-Recommended defaults:
+The following decisions are settled for V2.1:
 
 - Keep V2.1 single-source only.
 - Mark failed runs when a run exists.
 - Keep debug commands callable and visible, but label them as internal/debug.
-- Run lightweight post-apply validation inside `add`, but do not run full lint unless cheap enough.
+- Do not run full `lint` as part of `add`.
+- `lint` remains a separate maintenance action that the user can explicitly request from the LLM or run through `llmwiki lint --root .`.
 
 ## 15. Later Phases
 
