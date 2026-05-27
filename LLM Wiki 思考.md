@@ -299,7 +299,7 @@ synthesis 可以理解成“综合回答页”或“研究结论页”。
 
 
 
-## v2 已有能力
+## V2 已有能力
 
 目前这个项目已经是一个“本地资料 -> 结构化 wiki -> 可检索证据”的原型系统。
 
@@ -346,7 +346,7 @@ add -> ingest -> review -> apply -> retrieve/query
 
 
 
-## 20260527-13:25 开始做v2.1 
+## 20260527-13:25 V2.1 
 
 目标：把 llmwiki add 做成唯一的正常资料导入入口，让用户丢一个文件或 URL 后，系统自动完成“导入到生成 wiki”的整条链路。
 
@@ -368,4 +368,6 @@ add -> ingest -> review -> apply -> retrieve/query
 - 将回答回写到 `wiki/syntheses/`
 - MinerU parser 集成
 - 更强的搜索基础设施
+
+## 20260527-17:00 V2.2 **Evidence Answer + Writeback**
 
