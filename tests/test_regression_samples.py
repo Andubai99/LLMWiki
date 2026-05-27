@@ -250,3 +250,23 @@ def test_gitignore_excludes_virtualenv_and_python_caches():
 
     for pattern in (".venv/", "__pycache__/", ".pytest_cache/", "*.pyc"):
         assert pattern in gitignore
+
+
+def test_gitignore_excludes_generated_workspace_content():
+    root = Path(__file__).resolve().parents[1]
+    gitignore = (root / ".gitignore").read_text(encoding="utf-8")
+
+    for pattern in (
+        "sources/raw/*",
+        "!sources/raw/.gitkeep",
+        "sources/normalized/*",
+        "!sources/normalized/.gitkeep",
+        "staging/*",
+        "!staging/.gitkeep",
+        "state/*.sqlite",
+        "wiki/sources/*.md",
+        "wiki/concepts/*.md",
+        "wiki/entities/*.md",
+        "wiki/syntheses/*.md",
+    ):
+        assert pattern in gitignore
