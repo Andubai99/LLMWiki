@@ -23,7 +23,7 @@ The product direction is different. For source import, users should only need on
 llmwiki add <source-or-url>
 ```
 
-After that, LLMWiki should parse the source, run the LLM/wiki workflow, validate outputs, write the wiki, update the catalog, and report what happened. `ingest`, `review`, and `apply` remain available as hidden/internal debugging commands, not as the normal user workflow.
+After that, LLMWiki should parse the source, run the LLM/wiki workflow, validate outputs, write the wiki, update the catalog, and report what happened. `ingest`, `review`, and `apply` remain available as internal/debug commands, not as the normal user workflow.
 
 ## 2. Goal
 
@@ -139,11 +139,11 @@ llmwiki review <run-id> --patches --root .
 llmwiki apply <run-id> --root .
 ```
 
-They should be treated as hidden/internal commands:
+They should be treated as visible internal/debug commands:
 
 - They may remain in the CLI parser.
 - README primary workflow should not require them.
-- Help text should label them as internal/debug.
+- Help text should label them as internal/debug instead of hiding them.
 - Failure messages from `add` may mention them for diagnostics.
 
 This preserves debuggability without making manual review/apply part of normal use.
@@ -228,17 +228,15 @@ Proposed flags:
 
 ```bash
 llmwiki add <source> --root .
-llmwiki add <source> --root . --no-process
 ```
 
-`--no-process` is optional but useful for tests and debugging. It preserves the old behavior: import/normalize only.
+There is no `--no-process` or `--no-llm` mode in V2.1. Source import always proceeds into the LLM-backed autonomous pipeline. Import-only behavior can remain available through internal tests or lower-level Python functions, but it is not part of the public CLI contract.
 
 Potential future flags, not required in this phase:
 
 ```bash
 --dry-run
 --parser mineru
---no-llm
 --force-reprocess
 ```
 
@@ -277,11 +275,10 @@ V2.1 is complete when:
 2. A successful add updates `wiki/`, `wiki/index.md`, `wiki/log.md`, and `state/catalog.sqlite`.
 3. The generated staging run is still present and marked applied.
 4. `ingest`, `review`, and `apply` still work for existing tests and debug use.
-5. `llmwiki add <file> --no-process --root .` preserves import-only behavior if that flag is implemented.
-6. Failed LLM/validation/apply runs do not leave partial wiki mutations.
-7. README primary workflow no longer presents manual review/apply as the normal path.
-8. `llmwiki lint --root .` passes after a successful add.
-9. Full test suite passes.
+5. Failed LLM/validation/apply runs do not leave partial wiki mutations.
+6. README primary workflow no longer presents manual review/apply as the normal path.
+7. `llmwiki lint --root .` passes after a successful add.
+8. Full test suite passes.
 
 ## 13. Test Plan
 
@@ -293,7 +290,6 @@ Add or update tests for:
 - duplicate source add does not create duplicate wiki pages.
 - failure during apply rolls back wiki/catalog mutations.
 - debug commands still work on a generated run.
-- `--no-process` preserves import-only behavior, if implemented.
 - CLI output does not leak API keys.
 
 Existing tests around `ingest`, `review`, `apply`, `lint`, `doctor`, and retrieval should continue to pass.
@@ -302,17 +298,14 @@ Existing tests around `ingest`, `review`, `apply`, `lint`, `doctor`, and retriev
 
 The following decisions should be made during implementation planning:
 
-1. Should `--no-process` be implemented immediately, or should import-only behavior be internal-only?
-2. Should failed pipeline runs be marked `failed` in `run.json`?
-3. Should `ingest/review/apply` be hidden from top-level help, or only documented as internal?
-4. Should `add` run `lint` automatically after apply, or leave lint as a separate command?
+1. Should failed pipeline runs be marked `failed` in `run.json`?
+2. Should `add` run `lint` automatically after apply, or leave lint as a separate command?
 
 Recommended defaults:
 
-- Implement `--no-process`.
 - Keep V2.1 single-source only.
 - Mark failed runs when a run exists.
-- Keep debug commands callable but document them as internal.
+- Keep debug commands callable and visible, but label them as internal/debug.
 - Run lightweight post-apply validation inside `add`, but do not run full lint unless cheap enough.
 
 ## 15. Later Phases
