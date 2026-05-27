@@ -37,3 +37,6 @@ wiki/sources/*.md
 wiki/concepts/*.md
 wiki/entities/*.md
 wiki/syntheses/*.md
+
+# Local thinking notes.
+LLM Wiki 思考.md
