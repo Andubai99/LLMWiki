@@ -20,6 +20,7 @@ class ScaffoldTests(unittest.TestCase):
                 "lint",
                 "query",
                 "retrieve",
+                "ask",
                 "llm-test",
                 "doctor",
             },

@@ -25,11 +25,16 @@ This repository is a local, source-backed research wiki. Treat it as a knowledge
 ## Retrieval Interface
 
 - `llmwiki retrieve` is the standard evidence interface for external RAG systems, agents, and LLM prompts.
+- `llmwiki ask` is the standard local evidence question-answering interface for users.
 - Retrieval output must only expose claims, citations, page paths, and relationships that exist in the local catalog/wiki.
 - Do not forge claim ids, source ids, citation locators, page paths, scores, or relationships.
 - weak/uncited claims must not be treated as strong evidence by callers or agents.
 - `contradicts` relationships must be exposed to callers; do not hide conflicts or silently choose a winner.
 - Retrieval must not call external LLM APIs by default.
+- `ask` may call the configured LLM only after retrieving local evidence from wiki/catalog.
+- `ask` answers must be grounded in retrieved local evidence and must cite retrieved claim ids, source ids, and citation locators.
+- If `ask` writes a useful answer back, synthesis writeback must go through staging/apply and must not directly mutate formal wiki pages.
+- weak/uncited and contradicting evidence must remain visible in ask answers and synthesis pages.
 
 ## LLM Provider Rules
 
@@ -42,6 +47,7 @@ This repository is a local, source-backed research wiki. Treat it as a knowledge
 - Do not add a mock provider or no-network LLM test path for this stage.
 - LLM ingest proposals may create `claims.jsonl`, `triage.md`, `llm-proposal.json`, and patch files only under `staging/<run-id>/`.
 - `llmwiki add` may automatically apply a validated staging run, but the LLM itself must not write formal wiki pages.
+- `llmwiki ask --writeback` may automatically apply a validated synthesis run, but the LLM itself must not write formal wiki pages.
 - Claims without valid source locators must remain weak/uncited and must not become formal wiki conclusions.
 
 ## First-Version Boundaries
