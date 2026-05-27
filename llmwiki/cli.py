@@ -17,6 +17,7 @@ from .llm import create_provider, load_llm_config, override_llm_config
 from .pipeline import AddPipelineError, add_and_process_source
 from .providers.base import LLMProviderError
 from .query import query_context
+from .retrieval_eval import evaluate_retrieval, format_eval_report, sanitize_error
 from .retrieval import format_retrieval_prompt, retrieve_context
 from .synthesis import SynthesisWritebackError, SynthesisWritebackResult, create_synthesis_run
 from .workspace import check_workspace, init_workspace
@@ -32,6 +33,7 @@ COMMANDS = (
     "query",
     "retrieve",
     "ask",
+    "eval",
     "llm-test",
     "doctor",
 )
@@ -195,6 +197,21 @@ def cmd_ask(args: argparse.Namespace) -> int:
     if writeback_error is not None:
         return 1
     return 0 if result.status in {"answered", "insufficient_evidence"} else 1
+
+
+def cmd_eval_retrieval(args: argparse.Namespace) -> int:
+    root = Path(args.root).resolve()
+    dataset = Path(args.dataset).resolve()
+    try:
+        summary = evaluate_retrieval(root, dataset, limit=args.limit)
+    except Exception as exc:
+        print(f"Retrieval eval failed: {sanitize_error(exc)}")
+        return 1
+    if args.json:
+        print(json.dumps(summary.to_dict(), ensure_ascii=False, indent=2))
+    else:
+        print(format_eval_report(summary))
+    return 0
 
 
 def cmd_llm_test(args: argparse.Namespace) -> int:
@@ -379,6 +396,18 @@ def build_parser() -> argparse.ArgumentParser:
     ask_parser.add_argument("--page-type")
     ask_parser.add_argument("--confidence")
     ask_parser.set_defaults(func=cmd_ask)
+
+    eval_parser = subparsers.add_parser("eval", help="Run local evaluation suites.")
+    eval_subparsers = eval_parser.add_subparsers(dest="eval_command", required=True)
+    retrieval_eval_parser = eval_subparsers.add_parser(
+        "retrieval",
+        help="Evaluate retrieval quality and evidence contract metrics.",
+    )
+    retrieval_eval_parser.add_argument("--root", default=".")
+    retrieval_eval_parser.add_argument("--dataset", required=True)
+    retrieval_eval_parser.add_argument("--limit", type=int, default=5)
+    retrieval_eval_parser.add_argument("--json", action="store_true", help="Output stable machine-readable JSON.")
+    retrieval_eval_parser.set_defaults(func=cmd_eval_retrieval)
 
     llm_test_parser = subparsers.add_parser(
         "llm-test",

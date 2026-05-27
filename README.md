@@ -39,25 +39,48 @@ JSON schema 会保持稳定，便于外部程序直接解析：
 ```json
 {
   "question": "...",
+  "schema_version": "retrieval.v2.3",
   "contexts": [
     {
+      "rank": 1,
       "claim_id": "...",
       "source_id": "...",
       "citation_locator": "line:5;section:...;paragraph:1",
       "claim_text": "...",
       "page_path": "wiki/sources/src_xxx.md",
+      "page_type": "source",
       "relationship_type": "supports",
+      "confidence_status": "cited",
       "score": 0.0
     }
   ],
   "relationships": [],
-  "warnings": []
+  "warnings": [],
+  "diagnostics": {
+    "query_terms": [],
+    "candidate_count": 0,
+    "returned_count": 0,
+    "failure_stage": null
+  }
 }
 ```
 
 作为 RAG/Agent evidence layer，LLMWiki 应该在生成前被调用。调用方把返回的 evidence 交给模型，并要求回答中的关键结论引用 `source_id + citation_locator`。如果 `warnings` 提示证据不足、weak/uncited claim 或 `contradicts` relationship，模型应暴露这种不确定性，而不是编造答案。
 
 当前检索限制：SQLite FTS/BM25 仍是词法检索，中文分词能力基础；alias expansion 是规则化实现；`retrieve` 本身没有 vector store、reranker 或真实 LLM 调用。
+
+## Retrieval Evaluation v2.3（检索评测）
+
+`llmwiki eval retrieval` 是开发和质量检查命令，用 committed JSONL 数据集评测当前检索层的召回、排序、证据契约和失败阶段。它默认不调用 LLM，不写 `wiki/`、`staging/`、`sources/` 或 catalog，只读取本地 workspace。
+
+```bash
+llmwiki eval retrieval --root . --dataset tests/evals/retrieval_v2_3.jsonl
+llmwiki eval retrieval --root . --dataset tests/evals/retrieval_v2_3.jsonl --json
+```
+
+评测输出包含 `hit@5`、`recall@5`、`precision@5`、`MRR`，以及 LLMWiki 特有的 `claim_id_validity`、`source_id_validity`、`citation_locator_presence`、`page_path_validity`、`relationship_validity` 和 `contradiction_exposure_rate`。
+
+V2.3 是测量层，不宣称已经修复检索质量。后续修改检索、query planning、vector search 或 reranker 前后，都应该运行该 eval 命令并比较结果。
 
 ## LLM Provider v1
 
@@ -289,6 +312,7 @@ llmwiki doctor --root .
 - `llmwiki add` 自动完成单个资料的导入、LLM ingest、staging 验证和 apply。
 - `llmwiki ask` 基于本地 evidence 调用 LLM 生成带 citation 的回答。
 - `llmwiki ask --writeback` 通过 staging/apply 生成 synthesis 页面。
+- `llmwiki eval retrieval` 用本地 committed eval 数据集检查 retrieval 质量和 evidence contract。
 - claim-first staging，并为重要 claim 保留引用。
 - weak/uncited claim 可以进入 triage，但不能直接成为正式结论。
 - 生成 source summary、concept 和 entity Markdown 页面。

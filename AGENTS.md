@@ -31,6 +31,12 @@ This repository is a local, source-backed research wiki. Treat it as a knowledge
 - weak/uncited claims must not be treated as strong evidence by callers or agents.
 - `contradicts` relationships must be exposed to callers; do not hide conflicts or silently choose a winner.
 - Retrieval must not call external LLM APIs by default.
+- `llmwiki eval retrieval` is the standard development quality check for retrieval changes.
+- Retrieval eval must not call external LLM APIs by default.
+- Retrieval eval must not write `wiki/`, `staging/`, `sources/`, or catalog mutations; it reads the local catalog and committed eval datasets.
+- Run retrieval eval before and after retrieval quality changes, and compare metrics instead of relying on ad hoc questions.
+- Eval output must not include API keys, secret config contents, or sensitive local files.
+- The committed eval dataset is the golden local suite; large public benchmark downloads should remain gitignored raw material unless explicitly curated into committed eval cases.
 - `ask` may call the configured LLM only after retrieving local evidence from wiki/catalog.
 - `ask` answers must be grounded in retrieved local evidence and must cite retrieved claim ids, source ids, and citation locators.
 - If `ask` writes a useful answer back, synthesis writeback must go through staging/apply and must not directly mutate formal wiki pages.
