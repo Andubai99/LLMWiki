@@ -23,16 +23,24 @@ def retrieve_context(
     scoring_terms = base_terms(question)
     terms = expanded_terms(question)
     result: dict[str, Any] = {
+        "schema_version": "retrieval.v2.3",
         "question": question,
         "contexts": [],
         "relationships": [],
         "warnings": [],
+        "diagnostics": {
+            "query_terms": terms,
+            "candidate_count": 0,
+            "returned_count": 0,
+            "failure_stage": None,
+        },
     }
     if limit == 0:
         result["warnings"].append("Limit is 0; no contexts returned.")
         return result
     if not terms:
         result["warnings"].append("Question produced no searchable terms.")
+        result["diagnostics"]["failure_stage"] = "no_terms"
         return result
 
     with connect(catalog_path(root)) as conn:
@@ -44,24 +52,28 @@ def retrieve_context(
             confidence,
             limit,
         )
+        result["diagnostics"]["candidate_count"] = len(candidate_rows)
         relationships_by_key: dict[tuple[str, str, str, str, str], dict[str, str]] = {}
         contexts: list[dict[str, Any]] = []
         for row in candidate_rows:
             claim_id = str(row["claim_id"])
             row_source_id = str(row["source_id"])
             relationships = load_relationships(conn, claim_id, row_source_id)
-            context_page_path = select_page_path(conn, relationships, row_source_id, page_type)
-            if page_type and context_page_path is None:
+            context_page = select_page_info(conn, relationships, row_source_id, page_type)
+            if page_type and context_page is None:
                 continue
 
             relationship_type = best_relationship_type(relationships, claim_id)
             context = {
+                "rank": len(contexts) + 1,
                 "claim_id": claim_id,
                 "source_id": row_source_id,
                 "citation_locator": str(row["citation_locator"] or ""),
                 "claim_text": str(row["claim_text"]),
-                "page_path": context_page_path or f"wiki/sources/{row_source_id}.md",
+                "page_path": str(context_page["path"]) if context_page else f"wiki/sources/{row_source_id}.md",
+                "page_type": str(context_page["page_type"]) if context_page else "source",
                 "relationship_type": relationship_type,
+                "confidence_status": str(row["confidence_status"]),
                 "score": float(row["score"]),
             }
             contexts.append(context)
@@ -93,6 +105,7 @@ def retrieve_context(
                 break
 
     result["contexts"] = contexts
+    result["diagnostics"]["returned_count"] = len(contexts)
     result["relationships"] = sorted(
         relationships_by_key.values(),
         key=lambda item: (
@@ -104,6 +117,10 @@ def retrieve_context(
     )
     if not contexts:
         result["warnings"].append("No matching claims found.")
+        if result["diagnostics"]["candidate_count"] == 0:
+            result["diagnostics"]["failure_stage"] = "candidate_miss"
+        else:
+            result["diagnostics"]["failure_stage"] = "ranking_miss"
     elif any(item["relationship_type"] == "contradicts" for item in result["relationships"]):
         add_warning(
             result,
@@ -266,6 +283,16 @@ def select_page_path(
     source_id: str,
     page_type: str | None,
 ) -> str | None:
+    page_info = select_page_info(conn, relationships, source_id, page_type)
+    return str(page_info["path"]) if page_info else None
+
+
+def select_page_info(
+    conn,
+    relationships: list[dict[str, str]],
+    source_id: str,
+    page_type: str | None,
+) -> dict[str, str] | None:
     page_ids = {source_id}
     for relationship in relationships:
         page_ids.add(str(relationship["subject_id"]))
@@ -292,12 +319,12 @@ def select_page_path(
     if page_type:
         for page in pages:
             if page["page_type"] == page_type:
-                return str(page["path"])
+                return page
         return None
     for page in pages:
         if page["page_type"] == "source":
-            return str(page["path"])
-    return str(pages[0]["path"]) if pages else None
+            return page
+    return pages[0] if pages else None
 
 
 def add_warning(result: dict[str, Any], warning: str) -> None:

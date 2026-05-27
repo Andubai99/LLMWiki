@@ -4,6 +4,7 @@ import sqlite3
 from pathlib import Path
 
 from llmwiki.cli import main
+from llmwiki.sources import import_source
 from tests.helpers import make_workspace
 
 
@@ -13,9 +14,10 @@ def fetch_rows(db_path: Path, sql: str) -> list[sqlite3.Row]:
         return conn.execute(sql).fetchall()
 
 
-def test_add_markdown_imports_raw_normalized_and_deduplicates(capsys):
+def test_import_source_markdown_writes_raw_normalized_and_deduplicates(capsys):
     root = make_workspace()
     assert main(["init", "--root", str(root)]) == 0
+    capsys.readouterr()
 
     source = root / "minimal.md"
     source.write_text(
@@ -25,14 +27,12 @@ def test_add_markdown_imports_raw_normalized_and_deduplicates(capsys):
         encoding="utf-8",
     )
 
-    assert main(["add", str(source), "--root", str(root)]) == 0
-    first_out = capsys.readouterr().out
-    assert "Imported source" in first_out
-    assert "source_id=" in first_out
+    first = import_source(root, str(source))
+    assert not first.duplicate
 
-    assert main(["add", str(source), "--root", str(root)]) == 0
-    second_out = capsys.readouterr().out
-    assert "already imported" in second_out
+    second = import_source(root, str(source))
+    assert second.duplicate
+    assert second.source_id == first.source_id
 
     rows = fetch_rows(
         root / "state" / "catalog.sqlite",
@@ -64,4 +64,5 @@ def test_add_missing_file_returns_nonzero(capsys):
 
     assert main(["add", str(root / "missing.md"), "--root", str(root)]) == 1
     out = capsys.readouterr().out
+    assert "Add pipeline failed at: import" in out
     assert "Source not found" in out

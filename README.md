@@ -39,25 +39,48 @@ JSON schema 会保持稳定，便于外部程序直接解析：
 ```json
 {
   "question": "...",
+  "schema_version": "retrieval.v2.3",
   "contexts": [
     {
+      "rank": 1,
       "claim_id": "...",
       "source_id": "...",
       "citation_locator": "line:5;section:...;paragraph:1",
       "claim_text": "...",
       "page_path": "wiki/sources/src_xxx.md",
+      "page_type": "source",
       "relationship_type": "supports",
+      "confidence_status": "cited",
       "score": 0.0
     }
   ],
   "relationships": [],
-  "warnings": []
+  "warnings": [],
+  "diagnostics": {
+    "query_terms": [],
+    "candidate_count": 0,
+    "returned_count": 0,
+    "failure_stage": null
+  }
 }
 ```
 
 作为 RAG/Agent evidence layer，LLMWiki 应该在生成前被调用。调用方把返回的 evidence 交给模型，并要求回答中的关键结论引用 `source_id + citation_locator`。如果 `warnings` 提示证据不足、weak/uncited claim 或 `contradicts` relationship，模型应暴露这种不确定性，而不是编造答案。
 
-当前检索限制：SQLite FTS/BM25 仍是词法检索，中文分词能力基础；alias expansion 是规则化实现；本阶段没有 vector store、reranker 或真实 LLM 调用。
+当前检索限制：SQLite FTS/BM25 仍是词法检索，中文分词能力基础；alias expansion 是规则化实现；`retrieve` 本身没有 vector store、reranker 或真实 LLM 调用。
+
+## Retrieval Evaluation v2.3（检索评测）
+
+`llmwiki eval retrieval` 是开发和质量检查命令，用 committed JSONL 数据集评测当前检索层的召回、排序、证据契约和失败阶段。它默认不调用 LLM，不写 `wiki/`、`staging/`、`sources/` 或 catalog，只读取本地 workspace。
+
+```bash
+llmwiki eval retrieval --root . --dataset tests/evals/retrieval_v2_3.jsonl
+llmwiki eval retrieval --root . --dataset tests/evals/retrieval_v2_3.jsonl --json
+```
+
+评测输出包含 `hit@5`、`recall@5`、`precision@5`、`MRR`，以及 LLMWiki 特有的 `claim_id_validity`、`source_id_validity`、`citation_locator_presence`、`page_path_validity`、`relationship_validity` 和 `contradiction_exposure_rate`。
+
+V2.3 是测量层，不宣称已经修复检索质量。后续修改检索、query planning、vector search 或 reranker 前后，都应该运行该 eval 命令并比较结果。
 
 ## LLM Provider v1
 
@@ -101,11 +124,11 @@ llmwiki llm-test --root . --model deepseek-v4-pro --base-url https://api.deepsee
 
 代码层统一接口是 `provider.complete(messages, schema=None)`，其中 `messages` 使用 OpenAI Chat Completions 风格。provider 默认请求 `thinking = {type = "disabled"}`，避免普通抽取任务进入长推理路径；当传入 `schema` 时会请求 `response_format = {"type": "json_object"}`，但不声称强制执行完整 JSON Schema。
 
-本阶段只建立真实 LLM 调用层。LLM 输出不得直接修改正式 wiki 页面；任何知识修改仍必须走 `ingest` 生成 staging、人工 `review`、再 `apply` 的流程。当前没有 mock provider，也没有 no-network 测试路径。
+本阶段只建立真实 LLM 调用层。LLM 输出不得直接修改正式 wiki 页面；正常导入由 `llmwiki add` 自动生成 staging、执行安全验证、再通过 `apply` 写入 wiki/catalog。当前没有 mock provider，也没有 no-network 测试路径。
 
 ## LLM Ingest Proposal v1
 
-`llmwiki ingest <source-id> --root .` 现在会在 `[llm].enabled = true` 时默认调用真实 DeepSeek API，让 LLM 参与 claim 抽取、source summary、concept/entity proposal、duplicate/conflict candidates 生成。LLM 的输出仍然只能写入 `staging/<run-id>/`：
+`llmwiki add <source> --root .` 现在是正常资料导入入口。它会导入并 normalize source，然后调用真实 DeepSeek API，让 LLM 参与 claim 抽取、source summary、concept/entity proposal、duplicate/conflict candidates 生成。LLM 的输出仍然只能先写入 `staging/<run-id>/`：
 
 ```text
 staging/<run-id>/
@@ -116,18 +139,42 @@ staging/<run-id>/
   patches/
 ```
 
-`run.json` 会记录 `proposal_engine=llm`、provider 和 model；`triage.md` 会包含 `## LLM Proposal` 审阅信息。`ingest` 不会写正式 `wiki/`，也不会修改 `sources/raw/` 或 `sources/normalized/`。只有 `llmwiki apply <run-id> --root .` 通过安全校验后，候选 patch 才能落入正式 wiki 和 SQLite catalog。
+`run.json` 会记录 `proposal_engine=llm`、provider、model 和 `trigger=add`；`triage.md` 会包含 `## LLM Proposal` 调试信息。`add` 不会让 LLM 直接写正式 `wiki/`，也不会在 ingest 阶段修改 `sources/raw/` 或 `sources/normalized/`。只有内部 `apply` 安全校验通过后，候选 patch 才能落入正式 wiki 和 SQLite catalog。
 
-LLM claims 必须带有效 source locator。没有合法 `line:N` 的 claim 会被标记为 weak/uncited，不能进入正式 patch 结论。需要运行旧的规则化 ingest 时，可以在工作区 `config/config.toml` 中设置：
+LLM claims 必须带有效 source locator。没有合法 `line:N` 的 claim 会被标记为 weak/uncited，不能进入正式 patch 结论。内部/调试场景仍可直接运行 `llmwiki ingest <source-id> --root .`。需要运行旧的规则化 ingest 时，可以在工作区 `config/config.toml` 中设置：
 
 ```toml
 [llm]
 enabled = false
 ```
 
+## Ask + Synthesis Writeback v2.2
+
+`llmwiki ask` 是正常问答入口。它先从本地 `wiki/` 和 `state/catalog.sqlite` 检索 evidence，再调用配置好的 LLM 生成 grounded answer。答案必须引用 retrieved claim id、source id 和 citation locator；如果证据不足、存在 weak/uncited evidence 或 `contradicts` relationship，输出必须暴露这种不确定性。
+
+```bash
+llmwiki ask "RAG 为什么需要引用锚点？" --root .
+```
+
+默认情况下，`ask` 只输出答案，不写 wiki。用户确认答案值得保存时，可以显式写回：
+
+```bash
+llmwiki ask "RAG 为什么需要引用锚点？" --root . --writeback
+```
+
+写回会创建 `staging/<run-id>/`，生成 synthesis patch，并通过 `apply` 安全校验后写入 `wiki/syntheses/*.md`、刷新 `wiki/index.md`、追加 `wiki/log.md`、同步 catalog。LLM 不能直接写正式 wiki 页面。
+
+机器可读输出：
+
+```bash
+llmwiki ask "RAG 为什么需要引用锚点？" --root . --json
+```
+
+`retrieve` 仍然是外部系统使用的稳定 evidence API；`query` 仍然是确定性的本地 context 命令，不调用 LLM。
+
 LLM Wiki 是一个本地优先的个人研究库：用 Python CLI 管理资料导入、claim 抽取、staging 审阅、Markdown wiki 落盘和 SQLite 索引。它的定位是 source-backed knowledge compiler，而不是自由笔记文件夹。
 
-核心原则是：`sources/raw/` 下的原始资料不可变；`ingest` 只能在 `staging/<run-id>/` 里提出候选 claims 和 wiki patch；只有 `llmwiki apply` 才能把审阅后的内容写入 `wiki/` 并同步 `state/catalog.sqlite`。
+核心原则是：`sources/raw/` 下的原始资料不可变；LLM ingest 只能在 `staging/<run-id>/` 里提出候选 claims 和 wiki patch；只有内部 `apply` 安全校验通过后，内容才能写入 `wiki/` 并同步 `state/catalog.sqlite`。
 
 ## 目录结构
 
@@ -173,19 +220,35 @@ llmwiki init --root .
 llmwiki add tests/fixtures/minimal_source.md --root .
 ```
 
-把资料复制到 `sources/raw/`，在 `sources/normalized/` 生成带引用锚点的规范化 Markdown，计算 SHA-256，并按 hash 去重。
+正常导入入口。该命令会把资料复制到 `sources/raw/`，在 `sources/normalized/` 生成带引用锚点的规范化 Markdown，调用 LLM 生成 staging proposal，自动验证并 apply 到 `wiki/` 和 `state/catalog.sqlite`。成功输出会包含 source id、run id、proposal engine、claims、patches、写入页面和 warnings。
+
+重复导入已完成 apply 的同一 source 时，`add` 会直接提示 wiki 已是最新，不创建重复 run 或重复页面。
+
+```bash
+llmwiki ask "retrieval citation anchors" --root .
+```
+
+正常问答入口。该命令只从本地 wiki/catalog 检索 evidence，再调用 LLM 生成带 citations 的 answer；默认不写回 wiki。
+
+```bash
+llmwiki ask "retrieval citation anchors" --root . --writeback
+```
+
+把用户认可的问题结果写回为 synthesis 页面。写回仍然必须经过 `staging/<run-id>/` 和内部 apply 安全校验。
+
+### Advanced/debug commands
 
 ```bash
 llmwiki ingest <source-id> --root .
 ```
 
-先抽取带引用的 claims，再执行简单的 identity/conflict 检查，只写入 `staging/<run-id>/`，不会修改正式 `wiki/`。
+内部/调试命令。先抽取带引用的 claims，再执行简单的 identity/conflict 检查，只写入 `staging/<run-id>/`，不会修改正式 `wiki/`。
 
 ```bash
 llmwiki review <run-id> --root .
 ```
 
-review/apply v2 中，`review` 是只读审阅命令：展示 run_id、source_id、状态、创建时间、claim 数、patch 数、citation 覆盖率、triage 摘要、claims 表、patch 表、新增/更新页面、duplicate candidates、conflict candidates 和 weak/uncited claims。它只读取 `staging/` 和 SQLite，不会修改 `wiki/`、`wiki/index.md`、`wiki/log.md` 或 `state/catalog.sqlite`。
+advanced/debug review/apply v2 中，`review` 是只读检查命令：展示 run_id、source_id、状态、创建时间、claim 数、patch 数、citation 覆盖率、triage 摘要、claims 表、patch 表、新增/更新页面、duplicate candidates、conflict candidates 和 weak/uncited claims。它只读取 `staging/` 和 SQLite，不会修改 `wiki/`、`wiki/index.md`、`wiki/log.md` 或 `state/catalog.sqlite`。
 
 ```bash
 llmwiki review <run-id> --detail --root .
@@ -203,7 +266,7 @@ llmwiki review <run-id> --patches --root .
 llmwiki apply <run-id> --root .
 ```
 
-校验 staged patch 安全性，写入 `wiki/` 下的 Markdown 页面，刷新 `wiki/index.md`，追加 `wiki/log.md`，并同步 SQLite 中的 claims、pages、links、relationships 和 runs。当前实现允许 `staged` 或 `reviewed` 状态进入 apply；还没有强制单独的 reviewed 命令，所以 apply 前的人工确认依赖用户运行 `review`、`review --detail` 或 `review --patches`。apply 成功后，SQLite 和 staging manifest 中的 run 状态会变为 `applied`。
+内部/调试命令。校验 staged patch 安全性，写入 `wiki/` 下的 Markdown 页面，刷新 `wiki/index.md`，追加 `wiki/log.md`，并同步 SQLite 中的 claims、pages、links、relationships 和 runs。当前实现允许 `staged` 或 `reviewed` 状态进入 apply；正常用户不需要手动运行它。apply 成功后，SQLite 和 staging manifest 中的 run 状态会变为 `applied`。
 
 apply 安全校验包括：
 
@@ -220,7 +283,7 @@ apply 安全校验包括：
 llmwiki query "retrieval citation anchors" --root .
 ```
 
-优先使用 SQLite FTS/BM25 检索 claim store，必要时回退到简单文本检索，输出带 `source_id` 和 citation locator 的 retrieval context。第一版不会调用外部 LLM API。
+优先使用 SQLite FTS/BM25 检索 claim store，必要时回退到简单文本检索，输出带 `source_id` 和 citation locator 的 retrieval context。该命令是确定性的本地上下文命令，不调用外部 LLM API。
 
 ```bash
 llmwiki lint --root .
@@ -228,7 +291,7 @@ llmwiki lint --root .
 
 检查断链、孤页、重复 alias、无引用 claim、source hash drift、缺 citation 状态和潜在矛盾。
 
-lint 会区分已经记录的 `contradicts` relationships 和未处理的潜在矛盾。已记录冲突是审计信息，不会自动让 lint 失败；未处理的潜在矛盾仍然需要进入 triage 或 relationship。
+lint 是独立维护动作，不属于 `add` 的默认流程。用户可以显式要求 LLM 运行 `llmwiki lint --root .`，或手动运行。lint 会区分已经记录的 `contradicts` relationships 和未处理的潜在矛盾。已记录冲突是审计信息，不会自动让 lint 失败；未处理的潜在矛盾仍然需要进入 triage 或 relationship。
 
 ```bash
 llmwiki doctor --root .
@@ -246,6 +309,10 @@ llmwiki doctor --root .
 - 可访问 `http`/`https` URL 的网页快照导入。
 - 通过 `pypdf` 导入文本 PDF。
 - 默认通过 OpenAI-compatible provider 调用 DeepSeek 真实 API。
+- `llmwiki add` 自动完成单个资料的导入、LLM ingest、staging 验证和 apply。
+- `llmwiki ask` 基于本地 evidence 调用 LLM 生成带 citation 的回答。
+- `llmwiki ask --writeback` 通过 staging/apply 生成 synthesis 页面。
+- `llmwiki eval retrieval` 用本地 committed eval 数据集检查 retrieval 质量和 evidence contract。
 - claim-first staging，并为重要 claim 保留引用。
 - weak/uncited claim 可以进入 triage，但不能直接成为正式结论。
 - 生成 source summary、concept 和 entity Markdown 页面。
@@ -260,4 +327,4 @@ llmwiki doctor --root .
 - 团队权限或多人审阅流程。
 - 扫描 PDF OCR。
 - 自动裁决资料之间的冲突。
-- LLM 直接绕过 staging/review/apply 修改正式 wiki 页面。
+- LLM 直接绕过 staging/apply 修改正式 wiki 页面。

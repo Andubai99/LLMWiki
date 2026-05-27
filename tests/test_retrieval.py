@@ -18,10 +18,12 @@ def test_retrieve_json_schema_and_python_api(capsys):
     data = json.loads(capsys.readouterr().out)
 
     assert data["question"] == "retrieval citation anchors"
-    assert set(data) == {"question", "contexts", "relationships", "warnings"}
+    assert {"question", "contexts", "relationships", "warnings"}.issubset(data)
+    assert data["schema_version"] == "retrieval.v2.3"
+    assert "diagnostics" in data
     assert data["contexts"]
     context = data["contexts"][0]
-    assert set(context) == {
+    assert {
         "claim_id",
         "source_id",
         "citation_locator",
@@ -29,7 +31,10 @@ def test_retrieve_json_schema_and_python_api(capsys):
         "page_path",
         "relationship_type",
         "score",
-    }
+    }.issubset(context)
+    assert context["rank"] == 1
+    assert context["confidence_status"] == "cited"
+    assert context["page_type"] in {"source", "concept", "entity", "synthesis"}
     assert context["source_id"] == source_id
     assert context["citation_locator"].startswith("line:")
     assert context["page_path"].startswith("wiki/")

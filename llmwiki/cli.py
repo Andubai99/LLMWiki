@@ -8,15 +8,18 @@ import sys
 import tomllib
 from pathlib import Path
 
+from .answer import AskOptions, AskResult, answer_question
 from .apply import UnsafePatchError, apply_run
 from .db import catalog_path, schema_status
 from .ingest import ingest_source, review_run
 from .lint import lint_workspace
 from .llm import create_provider, load_llm_config, override_llm_config
+from .pipeline import AddPipelineError, add_and_process_source
 from .providers.base import LLMProviderError
 from .query import query_context
+from .retrieval_eval import evaluate_retrieval, format_eval_report, sanitize_error
 from .retrieval import format_retrieval_prompt, retrieve_context
-from .sources import import_source
+from .synthesis import SynthesisWritebackError, SynthesisWritebackResult, create_synthesis_run
 from .workspace import check_workspace, init_workspace
 
 
@@ -29,6 +32,8 @@ COMMANDS = (
     "lint",
     "query",
     "retrieve",
+    "ask",
+    "eval",
     "llm-test",
     "doctor",
 )
@@ -53,20 +58,37 @@ def cmd_init(args: argparse.Namespace) -> int:
 def cmd_add(args: argparse.Namespace) -> int:
     root = Path(args.root).resolve()
     try:
-        result = import_source(root, args.source)
-    except FileNotFoundError:
-        print(f"Source not found: {args.source}")
-        return 1
-    except Exception as exc:
-        print(f"Source import failed: {exc}")
+        result = add_and_process_source(root, args.source)
+    except AddPipelineError as exc:
+        print(f"Add pipeline failed at: {exc.stage}")
+        if exc.source_id:
+            print(f"source_id: {exc.source_id}")
+        if exc.run_id:
+            print(f"run_id: {exc.run_id}")
+        print(f"reason: {exc.reason}")
+        if exc.debug_command:
+            print(f"Debug: {exc.debug_command}")
         return 1
 
-    if result.duplicate:
-        print(f"Source already imported: source_id={result.source_id} title={result.title}")
+    if result.status == "already_applied":
+        print(f"Source already imported: {result.source_id}")
+        print("Wiki is already up to date for this source.")
+        return 0
+
+    print(f"Added source: {result.source_id}")
+    print(f"Processed with: {result.proposal_engine}")
+    print(f"Applied run: {result.run_id}")
+    print(f"Claims: {result.claim_count}")
+    print(f"Patches: {result.patch_count}")
+    print("Pages:")
+    for page in result.applied_pages:
+        print(f"- {page}")
+    if result.warnings:
+        print("Warnings:")
+        for warning in result.warnings:
+            print(f"- {warning}")
     else:
-        print(f"Imported source: source_id={result.source_id} title={result.title}")
-    print(f"raw_path={result.raw_path}")
-    print(f"normalized_path={result.normalized_path}")
+        print("Warnings: none")
     return 0
 
 
@@ -145,6 +167,50 @@ def cmd_retrieve(args: argparse.Namespace) -> int:
         print(json.dumps(result, ensure_ascii=False, indent=2))
     else:
         print(format_retrieval_prompt(result))
+    return 0
+
+
+def cmd_ask(args: argparse.Namespace) -> int:
+    root = Path(args.root).resolve()
+    result = answer_question(
+        root,
+        args.question,
+        AskOptions(
+            limit=args.limit,
+            source_id=args.source_id,
+            page_type=args.page_type,
+            confidence=args.confidence,
+        ),
+    )
+    writeback: SynthesisWritebackResult | None = None
+    writeback_error: SynthesisWritebackError | None = None
+    if result.status == "answered" and should_writeback(args):
+        try:
+            writeback = create_synthesis_run(root, result)
+        except SynthesisWritebackError as exc:
+            writeback_error = exc
+
+    if args.json:
+        print(json.dumps(ask_output_dict(result, writeback, writeback_error), ensure_ascii=False, indent=2))
+    else:
+        print(format_ask_result(result, writeback, writeback_error))
+    if writeback_error is not None:
+        return 1
+    return 0 if result.status in {"answered", "insufficient_evidence"} else 1
+
+
+def cmd_eval_retrieval(args: argparse.Namespace) -> int:
+    root = Path(args.root).resolve()
+    dataset = Path(args.dataset).resolve()
+    try:
+        summary = evaluate_retrieval(root, dataset, limit=args.limit)
+    except Exception as exc:
+        print(f"Retrieval eval failed: {sanitize_error(exc)}")
+        return 1
+    if args.json:
+        print(json.dumps(summary.to_dict(), ensure_ascii=False, indent=2))
+    else:
+        print(format_eval_report(summary))
     return 0
 
 
@@ -262,19 +328,28 @@ def build_parser() -> argparse.ArgumentParser:
     add_parser.add_argument("--root", default=".")
     add_parser.set_defaults(func=cmd_add)
 
-    ingest_parser = subparsers.add_parser("ingest", help="Create a staged ingest run for a source.")
+    ingest_parser = subparsers.add_parser(
+        "ingest",
+        help="Internal/debug: create a staged ingest run for a source.",
+    )
     ingest_parser.add_argument("source_id")
     ingest_parser.add_argument("--root", default=".")
     ingest_parser.set_defaults(func=cmd_ingest)
 
-    review_parser = subparsers.add_parser("review", help="Review a staged ingest run.")
+    review_parser = subparsers.add_parser(
+        "review",
+        help="Internal/debug: inspect a staged or applied ingest run.",
+    )
     review_parser.add_argument("run_id")
     review_parser.add_argument("--detail", action="store_true", help="Show full claims and triage details.")
     review_parser.add_argument("--patches", action="store_true", help="Show candidate Markdown patch contents.")
     review_parser.add_argument("--root", default=".")
     review_parser.set_defaults(func=cmd_review)
 
-    apply_parser = subparsers.add_parser("apply", help="Apply a reviewed ingest run.")
+    apply_parser = subparsers.add_parser(
+        "apply",
+        help="Internal/debug: apply a staged ingest run.",
+    )
     apply_parser.add_argument("run_id")
     apply_parser.add_argument("--root", default=".")
     apply_parser.set_defaults(func=cmd_apply)
@@ -306,6 +381,33 @@ def build_parser() -> argparse.ArgumentParser:
     retrieve_parser.add_argument("--page-type")
     retrieve_parser.add_argument("--confidence")
     retrieve_parser.set_defaults(func=cmd_retrieve)
+
+    ask_parser = subparsers.add_parser(
+        "ask",
+        help="Answer a question using local wiki evidence and the configured LLM.",
+    )
+    ask_parser.add_argument("question")
+    ask_parser.add_argument("--root", default=".")
+    ask_parser.add_argument("--limit", type=int, default=8)
+    ask_parser.add_argument("--json", action="store_true", help="Output stable machine-readable JSON.")
+    ask_parser.add_argument("--writeback", action="store_true", help="Write the answer back as a synthesis page.")
+    ask_parser.add_argument("--no-writeback", action="store_true", help="Do not prompt or write back.")
+    ask_parser.add_argument("--source-id")
+    ask_parser.add_argument("--page-type")
+    ask_parser.add_argument("--confidence")
+    ask_parser.set_defaults(func=cmd_ask)
+
+    eval_parser = subparsers.add_parser("eval", help="Run local evaluation suites.")
+    eval_subparsers = eval_parser.add_subparsers(dest="eval_command", required=True)
+    retrieval_eval_parser = eval_subparsers.add_parser(
+        "retrieval",
+        help="Evaluate retrieval quality and evidence contract metrics.",
+    )
+    retrieval_eval_parser.add_argument("--root", default=".")
+    retrieval_eval_parser.add_argument("--dataset", required=True)
+    retrieval_eval_parser.add_argument("--limit", type=int, default=5)
+    retrieval_eval_parser.add_argument("--json", action="store_true", help="Output stable machine-readable JSON.")
+    retrieval_eval_parser.set_defaults(func=cmd_eval_retrieval)
 
     llm_test_parser = subparsers.add_parser(
         "llm-test",
@@ -343,3 +445,86 @@ def summarize_text(text: str, limit: int = 240) -> str:
     if len(compact) <= limit:
         return compact
     return compact[: limit - 3].rstrip() + "..."
+
+
+def format_ask_result(
+    result: AskResult,
+    writeback: SynthesisWritebackResult | None = None,
+    writeback_error: SynthesisWritebackError | None = None,
+) -> str:
+    lines = [
+        f"Question: {result.question}",
+        "",
+        "Answer:",
+    ]
+    if result.status == "insufficient_evidence":
+        lines.append("insufficient_evidence")
+    elif result.answer:
+        lines.append(result.answer)
+    else:
+        lines.append(result.status)
+
+    lines.extend(["", "Citations:"])
+    if result.citations:
+        for citation in result.citations:
+            lines.append(
+                f"- {citation.claim_id} {citation.source_id} "
+                f"{citation.citation_locator} {citation.page_path}"
+            )
+    else:
+        lines.append("- none")
+
+    if result.warnings:
+        lines.extend(["", "Warnings:"])
+        for warning in result.warnings:
+            lines.append(f"- {warning}")
+    else:
+        lines.extend(["", "Warnings: none"])
+
+    lines.extend(["", "Writeback:"])
+    if writeback is not None:
+        lines.append(f"Applied synthesis run: {writeback.run_id}")
+        lines.append("Page:")
+        for page in writeback.pages:
+            lines.append(f"- {page}")
+    elif writeback_error is not None:
+        lines.append(f"Writeback failed at: {writeback_error.stage}")
+        lines.append(f"reason: {writeback_error.reason}")
+        if writeback_error.run_id:
+            lines.append(f"Debug: llmwiki review {writeback_error.run_id} --detail --root .")
+    else:
+        lines.append("Not written. Run with --writeback or answer yes when prompted to create a synthesis page.")
+    return "\n".join(lines)
+
+
+def should_writeback(args: argparse.Namespace) -> bool:
+    if args.writeback:
+        return True
+    if args.no_writeback or args.json:
+        return False
+    if not sys.stdin.isatty():
+        return False
+    return confirm_writeback()
+
+
+def confirm_writeback() -> bool:
+    answer = input("Write this answer back as a synthesis page? [y/N] ").strip().casefold()
+    return answer in {"y", "yes"}
+
+
+def ask_output_dict(
+    result: AskResult,
+    writeback: SynthesisWritebackResult | None,
+    writeback_error: SynthesisWritebackError | None,
+) -> dict[str, object]:
+    data = result.to_dict()
+    if writeback is not None:
+        data["writeback"] = writeback.to_dict()
+    elif writeback_error is not None:
+        data["writeback"] = {
+            "status": "failed",
+            "run_id": writeback_error.run_id,
+            "pages": [],
+            "reason": writeback_error.reason,
+        }
+    return data

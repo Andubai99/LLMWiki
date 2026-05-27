@@ -4,6 +4,7 @@ import sqlite3
 from pathlib import Path
 
 from llmwiki.cli import main
+from llmwiki.sources import import_source
 from tests.helpers import disable_llm, make_workspace
 from tests.test_query_lint_doctor import add_ingest_apply, fixture
 
@@ -69,11 +70,7 @@ def test_identity_resolution_detects_alias_punctuation_and_entity_candidates(cap
         "Retrieval-augmented_generation should preserve citation anchors for audit review.\n",
         encoding="utf-8",
     )
-    assert main(["add", str(alias_source), "--root", str(root)]) == 0
-    source_id = scalar(
-        root,
-        "select source_id from sources where title = 'Retrieval-Augmented_Generation Notes'",
-    )
+    source_id = import_source(root, str(alias_source)).source_id
     assert main(["ingest", source_id, "--root", str(root)]) == 0
     alias_run = capsys.readouterr().out.split("run_id=", 1)[1].splitlines()[0].strip()
     assert main(["review", alias_run, "--root", str(root)]) == 0
@@ -89,8 +86,7 @@ def test_identity_resolution_detects_alias_punctuation_and_entity_candidates(cap
         "Open-AI develops language models for applied research systems.\n",
         encoding="utf-8",
     )
-    assert main(["add", str(entity_source), "--root", str(root)]) == 0
-    source_id = scalar(root, "select source_id from sources where title = 'Open-AI Entity Variant'")
+    source_id = import_source(root, str(entity_source)).source_id
     assert main(["ingest", source_id, "--root", str(root)]) == 0
     entity_run = capsys.readouterr().out.split("run_id=", 1)[1].splitlines()[0].strip()
     triage = (root / "staging" / entity_run / "triage.md").read_text(encoding="utf-8")
@@ -200,11 +196,12 @@ def test_docs_describe_v1_commands_and_constraints():
     readme = (root / "README.md").read_text(encoding="utf-8")
     agents = (root / "AGENTS.md").read_text(encoding="utf-8")
 
-    for command in ("init", "add", "ingest", "review", "apply", "query", "retrieve", "lint", "doctor"):
+    for command in ("init", "add", "ingest", "review", "apply", "query", "retrieve", "ask", "lint", "doctor"):
         assert f"llmwiki {command}" in readme
     assert "--json" in readme
     assert "--format prompt" in readme
     assert "retrieve_context" in readme
+    assert "llmwiki ask" in readme
     assert "RAG/Agent evidence layer" in readme
     assert "LLM Provider" in readme
     assert "LLM Ingest Proposal" in readme
@@ -237,6 +234,7 @@ def test_docs_describe_v1_commands_and_constraints():
     assert "must not overwrite user-authored wiki content without a recoverable backup" in agents
     assert "source locator" in agents
     assert "`llmwiki retrieve` is the standard evidence interface" in agents
+    assert "`llmwiki ask` is the standard local evidence question-answering interface" in agents
     assert "Do not forge claim ids" in agents
     assert "`contradicts` relationships must be exposed" in agents
     assert "API Key" in agents
@@ -253,4 +251,24 @@ def test_gitignore_excludes_virtualenv_and_python_caches():
     gitignore = (root / ".gitignore").read_text(encoding="utf-8")
 
     for pattern in (".venv/", "__pycache__/", ".pytest_cache/", "*.pyc"):
+        assert pattern in gitignore
+
+
+def test_gitignore_excludes_generated_workspace_content():
+    root = Path(__file__).resolve().parents[1]
+    gitignore = (root / ".gitignore").read_text(encoding="utf-8")
+
+    for pattern in (
+        "sources/raw/*",
+        "!sources/raw/.gitkeep",
+        "sources/normalized/*",
+        "!sources/normalized/.gitkeep",
+        "staging/*",
+        "!staging/.gitkeep",
+        "state/*.sqlite",
+        "wiki/sources/*.md",
+        "wiki/concepts/*.md",
+        "wiki/entities/*.md",
+        "wiki/syntheses/*.md",
+    ):
         assert pattern in gitignore

@@ -17,7 +17,12 @@ dist/
 # Local secrets. Keep the example file committed, but never commit real keys.
 config/api-keys.toml
 
-# Runtime cache. Markdown and raw sources remain the durable assets.
+# Generated workspace content. Keep directory skeletons, not local research output.
+sources/raw/*
+!sources/raw/.gitkeep
+sources/normalized/*
+!sources/normalized/.gitkeep
+
 state/*.sqlite
 state/*.sqlite-*
 state/*.db
@@ -26,3 +31,14 @@ state/*.db-*
 # Staging runs are review workspaces; keep the directory but do not commit runs by default.
 staging/*
 !staging/.gitkeep
+
+# Compiled wiki pages generated from local sources.
+wiki/index.md
+wiki/log.md
+wiki/sources/*.md
+wiki/concepts/*.md
+wiki/entities/*.md
+wiki/syntheses/*.md
+
+# Local thinking notes.
+LLM Wiki 思考.md
