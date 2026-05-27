@@ -6,7 +6,8 @@ import sys
 from pathlib import Path
 
 from llmwiki.cli import main
-from llmwiki.ingest import slugify
+from llmwiki.ingest import Claim, proposal_concept, slugify
+from llmwiki.llm_ingest import LLMIngestProposal
 from tests.helpers import disable_llm, make_workspace
 
 
@@ -227,3 +228,37 @@ def test_ingest_filters_non_claim_lines_and_adds_rich_locators(capsys):
 def test_slugify_preserves_unicode_title_text():
     assert slugify("草莓：酸甜可口的浆果类水果") == "草莓-酸甜可口的浆果类水果"
     assert slugify("橙子：富含维生素 C 的柑橘类水果") == "橙子-富含维生素-c-的柑橘类水果"
+
+
+def test_proposal_concept_keeps_source_title_out_of_concept_aliases():
+    source = {"title": "苹果：营养均衡的日常水果"}
+    claims = [
+        Claim(
+            claim_id="clm_src_apple_llm_001",
+            source_id="src_apple",
+            claim_text="苹果 是 一种 常见 日常 水果。",
+            citation_locator="line:1",
+            confidence_status="cited",
+            created_at="2026-05-26T00:00:00+00:00",
+        )
+    ]
+    proposal = LLMIngestProposal(
+        claims=[],
+        concept_title="苹果：营养均衡的日常水果",
+        aliases=["苹果", "苹果：营养均衡的日常水果"],
+        entity_title=None,
+        entity_aliases=[],
+        duplicate_candidates=[],
+        conflict_candidates=[],
+        source_summary=None,
+        concept_definition=None,
+        provider="openai",
+        model="test",
+        raw_content="{}",
+        usage={},
+    )
+
+    title, aliases = proposal_concept(source, claims, proposal)
+
+    assert title == "苹果"
+    assert aliases == ["苹果"]

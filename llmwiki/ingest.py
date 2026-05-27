@@ -216,8 +216,9 @@ def proposal_concept(
     fallback_title, fallback_aliases = infer_concept(source["title"], claims)
     if not proposal or not proposal.concept_title:
         return fallback_title, fallback_aliases
-    aliases = proposal.aliases or fallback_aliases
-    return proposal.concept_title, aliases
+    title = concise_concept_title(proposal.concept_title, source["title"])
+    aliases = concept_aliases(title, proposal.aliases or fallback_aliases, source["title"])
+    return title, aliases
 
 
 def proposal_entity(
@@ -270,7 +271,32 @@ def infer_concept(source_title: str, claims: list[Claim]) -> tuple[str, list[str
     if re.search(r"\bconflict|contradict", combined, re.I):
         return "Conflict Preservation", ["conflict", "contradiction"]
     title = re.sub(r"\b(notes|source|overview)\b", "", source_title, flags=re.I).strip()
-    return title or source_title, [source_title]
+    title = concise_concept_title(title or source_title, source_title)
+    return title, concept_aliases(title, [title], source_title)
+
+
+def concise_concept_title(title: str, source_title: str) -> str:
+    if normalize_alias(title) != normalize_alias(source_title):
+        return title
+    for separator in ("：", ":"):
+        if separator in source_title:
+            prefix = source_title.split(separator, 1)[0].strip()
+            if prefix:
+                return prefix
+    return title
+
+
+def concept_aliases(title: str, aliases: list[str], source_title: str) -> list[str]:
+    source_key = normalize_alias(source_title)
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for alias in [title, *aliases]:
+        key = normalize_alias(alias)
+        if not key or key == source_key or key in seen:
+            continue
+        cleaned.append(alias)
+        seen.add(key)
+    return cleaned or [title]
 
 
 def infer_entity(claims: list[Claim]) -> tuple[str, list[str]] | None:
