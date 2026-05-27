@@ -33,6 +33,8 @@ staging/*
 !staging/.gitkeep
 
 # Compiled wiki pages generated from local sources.
+wiki/index.md
+wiki/log.md
 wiki/sources/*.md
 wiki/concepts/*.md
 wiki/entities/*.md
