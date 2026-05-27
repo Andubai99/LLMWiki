@@ -38,7 +38,7 @@
 ## Key Changes / Interfaces
 提供一个 `llmwiki` Python CLI，第一版命令固定如下：
 
-- `llmwiki init`：创建目录、`config.toml`、初始 `AGENTS.md`、空索引和数据库。
+- `llmwiki init`：创建目录、`config/config.toml`、本地 `config/api-keys.toml`、初始 `AGENTS.md`、空索引和数据库。
 - `llmwiki add <file-or-url>`：导入 PDF/Markdown/网页，生成 raw + normalized source，并写入 source catalog。
 - `llmwiki ingest <source-id>`：生成 agent ingest context，要求 LLM 产出 claims、候选 wiki patch 和 triage。
 - `llmwiki review <run-id>`：展示候选修改、冲突、重复页和引用覆盖率。

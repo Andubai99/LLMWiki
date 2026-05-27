@@ -4,7 +4,7 @@ import sqlite3
 from pathlib import Path
 
 from llmwiki.cli import main
-from tests.helpers import make_workspace
+from tests.helpers import disable_llm, make_workspace
 from tests.test_query_lint_doctor import add_ingest_apply, fixture
 
 
@@ -58,6 +58,7 @@ def test_regression_samples_preserve_alias_entity_and_conflict(capsys):
 def test_identity_resolution_detects_alias_punctuation_and_entity_candidates(capsys):
     root = make_workspace()
     assert main(["init", "--root", str(root)]) == 0
+    disable_llm(root)
     add_ingest_apply(root, fixture("minimal_source.md"))
     add_ingest_apply(root, fixture("regression_entity.md"))
     capsys.readouterr()
@@ -147,6 +148,7 @@ def test_lint_distinguishes_recorded_and_unresolved_contradictions(capsys):
 def test_chinese_regression_sources_cover_alias_entity_conflict_and_support(capsys):
     root = make_workspace()
     assert main(["init", "--root", str(root)]) == 0
+    disable_llm(root)
 
     source_ids = [
         add_ingest_apply(root, fixture("zh_alias_entity.md")),
@@ -198,8 +200,22 @@ def test_docs_describe_v1_commands_and_constraints():
     readme = (root / "README.md").read_text(encoding="utf-8")
     agents = (root / "AGENTS.md").read_text(encoding="utf-8")
 
-    for command in ("init", "add", "ingest", "review", "apply", "query", "lint", "doctor"):
+    for command in ("init", "add", "ingest", "review", "apply", "query", "retrieve", "lint", "doctor"):
         assert f"llmwiki {command}" in readme
+    assert "--json" in readme
+    assert "--format prompt" in readme
+    assert "retrieve_context" in readme
+    assert "RAG/Agent evidence layer" in readme
+    assert "LLM Provider" in readme
+    assert "LLM Ingest Proposal" in readme
+    assert "llm-proposal.json" in readme
+    assert "proposal_engine=llm" in readme
+    assert "config/api-keys.toml" in readme
+    assert "config/api-keys.example.toml" in readme
+    assert "llmwiki llm-test --root ." in readme
+    assert "python -m venv .venv" in readme
+    assert ".\\.venv\\Scripts\\Activate.ps1" in readme
+    assert "python -m pip install -e ." in readme
     assert "Obsidian" in readme
     assert "Git" in readme
     assert "not supported" in readme
@@ -220,5 +236,21 @@ def test_docs_describe_v1_commands_and_constraints():
     assert "must not bypass staging" in agents
     assert "must not overwrite user-authored wiki content without a recoverable backup" in agents
     assert "source locator" in agents
+    assert "`llmwiki retrieve` is the standard evidence interface" in agents
+    assert "Do not forge claim ids" in agents
+    assert "`contradicts` relationships must be exposed" in agents
+    assert "API Key" in agents
+    assert "config/api-keys.toml" in agents
+    assert "mock provider" in agents
+    assert "llm-proposal.json" in agents
+    assert "valid source locators" in agents
     assert "vector" in agents
     assert "Web UI" in agents
+
+
+def test_gitignore_excludes_virtualenv_and_python_caches():
+    root = Path(__file__).resolve().parents[1]
+    gitignore = (root / ".gitignore").read_text(encoding="utf-8")
+
+    for pattern in (".venv/", "__pycache__/", ".pytest_cache/", "*.pyc"):
+        assert pattern in gitignore

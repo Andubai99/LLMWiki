@@ -1,0 +1,384 @@
+{
+  "provider": "openai",
+  "model": "deepseek-v4-pro",
+  "usage": {
+    "prompt_tokens": 2763,
+    "completion_tokens": 2125,
+    "total_tokens": 4888,
+    "prompt_tokens_details": {
+      "cached_tokens": 2688
+    },
+    "prompt_cache_hit_tokens": 2688,
+    "prompt_cache_miss_tokens": 75
+  },
+  "content": "{\n  \"claims\": [\n    {\"claim_text\": \"香蕉是一种常见的热带水果，果肉柔软，味道香甜，食用非常方便。\", \"citation_locator\": \"line:5\", \"confidence_status\": \"cited\"},\n    {\"claim_text\": \"香蕉不需要清洗，也不需要复杂处理，只要剥皮就可以直接吃。\", \"citation_locator\": \"line:5\", \"confidence_status\": \"cited\"},\n    {\"claim_text\": \"香蕉很适合作为早餐、运动前后加餐或日常零食。\", \"citation_locator\": \"line:5\", \"confidence_status\": \"cited\"},\n    {\"claim_text\": \"香蕉食用方便，便于携带。\", \"citation_locator\": \"line:9\", \"confidence_status\": \"cited\"},\n    {\"claim_text\": \"香蕉口感软糯，味道偏甜。\", \"citation_locator\": \"line:10\", \"confidence_status\": \"cited\"},\n    {\"claim_text\": \"香蕉含有碳水化合物，可以较快补充能量。\", \"citation_locator\": \"line:11\", \"confidence_status\": \"cited\"},\n    {\"claim_text\": \"香蕉适合直接食用，也可以加入酸奶、燕麦、奶昔和甜点中。\", \"citation_locator\": \"line:12\", \"confidence_status\": \"cited\"},\n    {\"claim_text\": \"香蕉的主要优势在于可以提供较稳定的能量，同时含有一定量的膳食纤维、钾和多种维生素。\", \"citation_locator\": \"line:16\", \"confidence_status\": \"cited\"},\n    {\"claim_text\": \"香蕉中含有较多碳水化合物，因此能量密度比一些水分特别高的水果更高。\", \"citation_locator\": \"line:20\", \"confidence_status\": \"cited\"},\n    {\"claim_text\": \"对于运动、学习或工作后感到饥饿的人来说，香蕉是一种方便的能量补充选择。\", \"citation_locator\": \"line:20\", \"confidence_status\": \"cited\"},\n    {\"claim_text\": \"成熟香蕉口感更甜，是因为其中部分淀粉转化成了糖分。\", \"citation_locator\": \"line:22\", \"confidence_status\": \"cited\"},\n    {\"claim_text\": \"香蕉含有一定量的钾。\", \"citation_locator\": \"line:26\", \"confidence_status\": \"cited\"},\n    {\"claim_text\": \"钾是人体需要的重要矿物质之一，与肌肉和神经功能有关。\", \"citation_locator\": \"line:26\", \"confidence_status\": \"cited\"},\n    {\"claim_text\": \"对于日常饮食来说，香蕉可以作为钾的来源之一。\", \"citation_locator\": \"line:26\", \"confidence_status\": \"cited\"},\n    {\"claim_text\": \"香蕉中也含有膳食纤维，有助于增加饱腹感。\", \"citation_locator\": \"line:30\", \"confidence_status\": \"cited\"},\n    {\"claim_text\": \"不同成熟度的香蕉，口感和纤维状态会有所不同。\", \"citation_locator\": \"line:30\", \"confidence_status\": \"cited\"},\n    {\"claim_text\": \"偏生的香蕉：口感较硬，甜味较弱。\", \"citation_locator\": \"line:32\", \"confidence_status\": \"cited\"},\n    {\"claim_text\": \"成熟香蕉：口感软糯，甜味明显。\", \"citation_locator\": \"line:33\", \"confidence_status\": \"cited\"},\n    {\"claim_text\": \"过熟香蕉：果皮有黑斑，适合做甜点或奶昔。\", \"citation_locator\": \"line:34\", \"confidence_status\": \"cited\"},\n    {\"claim_text\": \"香蕉的种类较多，日常生活中最常见的是普通香蕉和小米蕉。\", \"citation_locator\": \"line:38\", \"confidence_status\": \"cited\"},\n    {\"claim_text\": \"普通香蕉：个头较大，口感软糯，甜度适中，适合直接食用、做奶昔。\", \"citation_locator\": \"line:42\", \"confidence_status\": \"cited\"},\n    {\"claim_text\": \"小米蕉：个头较小，香味浓，甜度较高，适合直接食用。\", \"citation_locator\": \"line:43\", \"confidence_status\": \"cited\"},\n    {\"claim_text\": \"皇帝蕉：果肉细腻，口感香甜，适合直接食用、甜品。\", \"citation_locator\": \"line:44\", \"confidence_status\": \"cited\"},\n    {\"claim_text\": \"青香蕉：成熟度低，口感偏硬，甜味弱，适合烹饪或等待成熟后食用。\", \"citation_locator\": \"line:45\", \"confidence_status\": \"cited\"},\n    {\"claim_text\": \"过熟香蕉：果皮有黑点，果肉更软更甜，适合做香蕉饼、蛋糕、奶昔。\", \"citation_locator\": \"line:46\", \"confidence_status\": \"cited\"},\n    {\"claim_text\": \"香蕉适合早餐搭配牛奶、燕麦或面包。\", \"citation_locator\": \"line:52\", \"confidence_status\": \"cited\"},\n    {\"claim_text\": \"香蕉适合运动前作为能量补充。\", \"citation_locator\": \"line:53\", \"confidence_status\": \"cited\"},\n    {\"claim_text\": \"香蕉适合运动后搭配蛋白质食物。\", \"citation_locator\": \"line:54\", \"confidence_status\": \"cited\"},\n    {\"claim_text\": \"香蕉适合下午感到饥饿时作为加餐。\", \"citation_locator\": \"line:55\", \"confidence_status\": \"cited\"},\n    {\"claim_text\": \"香蕉适合做成香蕉奶昔、香蕉松饼或香蕉蛋糕。\", \"citation_locator\": \"line:56\", \"confidence_status\": \"cited\"},\n    {\"claim_text\": \"香蕉搭配酸奶和燕麦是一种简单的搭配方式。\", \"citation_locator\": \"line:61\", \"confidence_status\": \"cited\"},\n    {\"claim_text\": \"香蕉搭配牛奶和坚果是一种简单的搭配方式。\", \"citation_locator\": \"line:62\", \"confidence_status\": \"cited\"},\n    {\"claim_text\": \"香蕉搭配全麦面包是一种简单的搭配方式。\", \"citation_locator\": \"line:63\", \"confidence_status\": \"cited\"},\n    {\"claim_text\": \"香蕉搭配鸡蛋和面粉可以做成香蕉饼。\", \"citation_locator\": \"line:64\", \"confidence_status\": \"cited\"},\n    {\"claim_text\": \"香蕉虽然方便健康，但含糖量和能量都不算特别低。\", \"citation_locator\": \"line:67\", \"confidence_status\": \"cited\"},\n    {\"claim_text\": \"如果一天已经吃了较多主食或甜食，就不建议再大量吃香蕉。\", \"citation_locator\": \"line:67\", \"confidence_status\": \"cited\"},\n    {\"claim_text\": \"香蕉对温度比较敏感，保存时要注意避免低温和挤压。\", \"citation_locator\": \"line:71\", \"confidence_status\": \"cited\"},\n    {\"claim_text\": \"未完全成熟的香蕉适合放在室温下自然成熟。\", \"citation_locator\": \"line:75\", \"confidence_status\": \"cited\"},\n    {\"claim_text\": \"未完全成熟的香蕉可以放在阴凉通风处，避免阳光直射。\", \"citation_locator\": \"line:75\", \"confidence_status\": \"cited\"},\n    {\"claim_text\": \"香蕉放入冰箱后，果皮容易变黑。\", \"citation_locator\": \"line:79\", \"confidence_status\": \"cited\"},\n    {\"claim_text\": \"果皮变黑不一定代表果肉已经坏掉，但会影响外观。\", \"citation_locator\": \"line:79\", \"confidence_status\": \"cited\"},\n    {\"claim_text\": \"如果香蕉已经完全成熟，又暂时吃不完，可以短时间冷藏，但最好尽快食用。\", \"citation_locator\": \"line:79\", \"confidence_status\": \"cited\"},\n    {\"claim_text\": \"香蕉果肉较软，受到挤压后容易变黑、变软，影响口感。\", \"citation_locator\": \"line:83\", \"confidence_status\": \"cited\"},\n    {\"claim_text\": \"存放时不要把重物压在香蕉上。\", \"citation_locator\": \"line:83\", \"confidence_status\": \"cited\"},\n    {\"claim_text\": \"香蕉适合大多数人群食用，尤其适合需要方便加餐的人，比如学生、上班族、运动人群等。\", \"citation_locator\": \"line:87\", \"confidence_status\": \"cited\"},\n    {\"claim_text\": \"血糖控制要求较高的人，应注意香蕉的摄入量。\", \"citation_locator\": \"line:91\", \"confidence_status\": \"cited\"},\n    {\"claim_text\": \"胃肠较敏感的人，不建议一次吃太多香蕉。\", \"citation_locator\": \"line:92\", \"confidence_status\": \"cited\"},\n    {\"claim_text\": \"香蕉能量相对较高，减脂期间应控制总量。\", \"citation_locator\": \"line:93\", \"confidence_status\": \"cited\"},\n    {\"claim_text\": \"香蕉变质、发酸、有异味时不应继续食用。\", \"citation_locator\": \"line:94\", \"confidence_status\": \"cited\"},\n    {\"claim_text\": \"香蕉是一种非常适合作为日常加餐的水果。它最大的优点是方便、香甜、能快速补充能量，并且可以和牛奶、酸奶、燕麦、坚果等食物搭配。\", \"citation_locator\": \"line:98\", \"confidence_status\": \"cited\"},\n    {\"claim_text\": \"对于普通人来说，香蕉适合作为饮食中的一部分，但不建议把它当作唯一水果或大量食用。\", \"citation_locator\": \"line:98\", \"confidence_status\": \"cited\"}\n  ],\n  \"concept\": {\n    \"title\": \"香蕉：方便食用的能量补充水果\",\n    \"aliases\": [\"香蕉\"]\n  },\n  \"entity\": null,\n  \"duplicate_candidates\": [],\n  \"conflict_candidates\": [],\n  \"source_summary\": \"本文介绍香蕉作为一种方便食用的能量补充水果，涵盖概述、营养特点（碳水化合物、钾、膳食纤维）、常见类型、食用建议、保存方法、适合人群与注意事项，并总结其优点和搭配方式。\",\n  \"concept_definition\": \"香蕉是一种常见的热带水果，果肉柔软，味道香甜，食用方便，含有碳水化合物、膳食纤维、钾和多种维生素，能快速补充能量，适合日常加餐。\"\n}",
+  "claims": [
+    {
+      "claim_id": "clm_src_0b40b6933c5b_llm_001",
+      "source_id": "src_0b40b6933c5b",
+      "claim_text": "香蕉是一种常见的热带水果，果肉柔软，味道香甜，食用非常方便。",
+      "citation_locator": "line:5;section:1. 概述;paragraph:1",
+      "confidence_status": "cited"
+    },
+    {
+      "claim_id": "clm_src_0b40b6933c5b_llm_002",
+      "source_id": "src_0b40b6933c5b",
+      "claim_text": "香蕉不需要清洗，也不需要复杂处理，只要剥皮就可以直接吃。",
+      "citation_locator": "line:5;section:1. 概述;paragraph:1",
+      "confidence_status": "cited"
+    },
+    {
+      "claim_id": "clm_src_0b40b6933c5b_llm_003",
+      "source_id": "src_0b40b6933c5b",
+      "claim_text": "香蕉很适合作为早餐、运动前后加餐或日常零食。",
+      "citation_locator": "line:5;section:1. 概述;paragraph:1",
+      "confidence_status": "cited"
+    },
+    {
+      "claim_id": "clm_src_0b40b6933c5b_llm_004",
+      "source_id": "src_0b40b6933c5b",
+      "claim_text": "香蕉食用方便，便于携带。",
+      "citation_locator": "line:9;section:1. 概述;paragraph:3",
+      "confidence_status": "cited"
+    },
+    {
+      "claim_id": "clm_src_0b40b6933c5b_llm_005",
+      "source_id": "src_0b40b6933c5b",
+      "claim_text": "香蕉口感软糯，味道偏甜。",
+      "citation_locator": "line:10;section:1. 概述;paragraph:3",
+      "confidence_status": "cited"
+    },
+    {
+      "claim_id": "clm_src_0b40b6933c5b_llm_006",
+      "source_id": "src_0b40b6933c5b",
+      "claim_text": "香蕉含有碳水化合物，可以较快补充能量。",
+      "citation_locator": "line:11;section:1. 概述;paragraph:3",
+      "confidence_status": "cited"
+    },
+    {
+      "claim_id": "clm_src_0b40b6933c5b_llm_007",
+      "source_id": "src_0b40b6933c5b",
+      "claim_text": "香蕉适合直接食用，也可以加入酸奶、燕麦、奶昔和甜点中。",
+      "citation_locator": "line:12;section:1. 概述;paragraph:3",
+      "confidence_status": "cited"
+    },
+    {
+      "claim_id": "clm_src_0b40b6933c5b_llm_008",
+      "source_id": "src_0b40b6933c5b",
+      "claim_text": "香蕉的主要优势在于可以提供较稳定的能量，同时含有一定量的膳食纤维、钾和多种维生素。",
+      "citation_locator": "line:16;section:2. 主要营养特点;paragraph:4",
+      "confidence_status": "cited"
+    },
+    {
+      "claim_id": "clm_src_0b40b6933c5b_llm_009",
+      "source_id": "src_0b40b6933c5b",
+      "claim_text": "香蕉中含有较多碳水化合物，因此能量密度比一些水分特别高的水果更高。",
+      "citation_locator": "line:20;section:2.1 碳水化合物;paragraph:5",
+      "confidence_status": "cited"
+    },
+    {
+      "claim_id": "clm_src_0b40b6933c5b_llm_010",
+      "source_id": "src_0b40b6933c5b",
+      "claim_text": "对于运动、学习或工作后感到饥饿的人来说，香蕉是一种方便的能量补充选择。",
+      "citation_locator": "line:20;section:2.1 碳水化合物;paragraph:5",
+      "confidence_status": "cited"
+    },
+    {
+      "claim_id": "clm_src_0b40b6933c5b_llm_011",
+      "source_id": "src_0b40b6933c5b",
+      "claim_text": "成熟香蕉口感更甜，是因为其中部分淀粉转化成了糖分。",
+      "citation_locator": "line:22;section:2.1 碳水化合物;paragraph:6",
+      "confidence_status": "cited"
+    },
+    {
+      "claim_id": "clm_src_0b40b6933c5b_llm_012",
+      "source_id": "src_0b40b6933c5b",
+      "claim_text": "香蕉含有一定量的钾。",
+      "citation_locator": "line:26;section:2.2 钾元素;paragraph:7",
+      "confidence_status": "cited"
+    },
+    {
+      "claim_id": "clm_src_0b40b6933c5b_llm_013",
+      "source_id": "src_0b40b6933c5b",
+      "claim_text": "钾是人体需要的重要矿物质之一，与肌肉和神经功能有关。",
+      "citation_locator": "line:26;section:2.2 钾元素;paragraph:7",
+      "confidence_status": "cited"
+    },
+    {
+      "claim_id": "clm_src_0b40b6933c5b_llm_014",
+      "source_id": "src_0b40b6933c5b",
+      "claim_text": "对于日常饮食来说，香蕉可以作为钾的来源之一。",
+      "citation_locator": "line:26;section:2.2 钾元素;paragraph:7",
+      "confidence_status": "cited"
+    },
+    {
+      "claim_id": "clm_src_0b40b6933c5b_llm_015",
+      "source_id": "src_0b40b6933c5b",
+      "claim_text": "香蕉中也含有膳食纤维，有助于增加饱腹感。",
+      "citation_locator": "line:30;section:2.3 膳食纤维;paragraph:8",
+      "confidence_status": "cited"
+    },
+    {
+      "claim_id": "clm_src_0b40b6933c5b_llm_016",
+      "source_id": "src_0b40b6933c5b",
+      "claim_text": "不同成熟度的香蕉，口感和纤维状态会有所不同。",
+      "citation_locator": "line:30;section:2.3 膳食纤维;paragraph:8",
+      "confidence_status": "cited"
+    },
+    {
+      "claim_id": "clm_src_0b40b6933c5b_llm_017",
+      "source_id": "src_0b40b6933c5b",
+      "claim_text": "偏生的香蕉：口感较硬，甜味较弱。",
+      "citation_locator": "line:32;section:2.3 膳食纤维;paragraph:9",
+      "confidence_status": "cited"
+    },
+    {
+      "claim_id": "clm_src_0b40b6933c5b_llm_018",
+      "source_id": "src_0b40b6933c5b",
+      "claim_text": "成熟香蕉：口感软糯，甜味明显。",
+      "citation_locator": "line:33;section:2.3 膳食纤维;paragraph:9",
+      "confidence_status": "cited"
+    },
+    {
+      "claim_id": "clm_src_0b40b6933c5b_llm_019",
+      "source_id": "src_0b40b6933c5b",
+      "claim_text": "过熟香蕉：果皮有黑斑，适合做甜点或奶昔。",
+      "citation_locator": "line:34;section:2.3 膳食纤维;paragraph:9",
+      "confidence_status": "cited"
+    },
+    {
+      "claim_id": "clm_src_0b40b6933c5b_llm_020",
+      "source_id": "src_0b40b6933c5b",
+      "claim_text": "香蕉的种类较多，日常生活中最常见的是普通香蕉和小米蕉。",
+      "citation_locator": "line:38;section:3. 常见香蕉类型;paragraph:10",
+      "confidence_status": "cited"
+    },
+    {
+      "claim_id": "clm_src_0b40b6933c5b_llm_021",
+      "source_id": "src_0b40b6933c5b",
+      "claim_text": "普通香蕉：个头较大，口感软糯，甜度适中，适合直接食用、做奶昔。",
+      "citation_locator": "line:42;section:3. 常见香蕉类型;paragraph:11",
+      "confidence_status": "cited"
+    },
+    {
+      "claim_id": "clm_src_0b40b6933c5b_llm_022",
+      "source_id": "src_0b40b6933c5b",
+      "claim_text": "小米蕉：个头较小，香味浓，甜度较高，适合直接食用。",
+      "citation_locator": "line:43;section:3. 常见香蕉类型;paragraph:11",
+      "confidence_status": "cited"
+    },
+    {
+      "claim_id": "clm_src_0b40b6933c5b_llm_023",
+      "source_id": "src_0b40b6933c5b",
+      "claim_text": "皇帝蕉：果肉细腻，口感香甜，适合直接食用、甜品。",
+      "citation_locator": "line:44;section:3. 常见香蕉类型;paragraph:11",
+      "confidence_status": "cited"
+    },
+    {
+      "claim_id": "clm_src_0b40b6933c5b_llm_024",
+      "source_id": "src_0b40b6933c5b",
+      "claim_text": "青香蕉：成熟度低，口感偏硬，甜味弱，适合烹饪或等待成熟后食用。",
+      "citation_locator": "line:45;section:3. 常见香蕉类型;paragraph:11",
+      "confidence_status": "cited"
+    },
+    {
+      "claim_id": "clm_src_0b40b6933c5b_llm_025",
+      "source_id": "src_0b40b6933c5b",
+      "claim_text": "过熟香蕉：果皮有黑点，果肉更软更甜，适合做香蕉饼、蛋糕、奶昔。",
+      "citation_locator": "line:46;section:3. 常见香蕉类型;paragraph:11",
+      "confidence_status": "cited"
+    },
+    {
+      "claim_id": "clm_src_0b40b6933c5b_llm_026",
+      "source_id": "src_0b40b6933c5b",
+      "claim_text": "香蕉适合早餐搭配牛奶、燕麦或面包。",
+      "citation_locator": "line:52;section:4. 食用建议;paragraph:13",
+      "confidence_status": "cited"
+    },
+    {
+      "claim_id": "clm_src_0b40b6933c5b_llm_027",
+      "source_id": "src_0b40b6933c5b",
+      "claim_text": "香蕉适合运动前作为能量补充。",
+      "citation_locator": "line:53;section:4. 食用建议;paragraph:13",
+      "confidence_status": "cited"
+    },
+    {
+      "claim_id": "clm_src_0b40b6933c5b_llm_028",
+      "source_id": "src_0b40b6933c5b",
+      "claim_text": "香蕉适合运动后搭配蛋白质食物。",
+      "citation_locator": "line:54;section:4. 食用建议;paragraph:13",
+      "confidence_status": "cited"
+    },
+    {
+      "claim_id": "clm_src_0b40b6933c5b_llm_029",
+      "source_id": "src_0b40b6933c5b",
+      "claim_text": "香蕉适合下午感到饥饿时作为加餐。",
+      "citation_locator": "line:55;section:4. 食用建议;paragraph:13",
+      "confidence_status": "cited"
+    },
+    {
+      "claim_id": "clm_src_0b40b6933c5b_llm_030",
+      "source_id": "src_0b40b6933c5b",
+      "claim_text": "香蕉适合做成香蕉奶昔、香蕉松饼或香蕉蛋糕。",
+      "citation_locator": "line:56;section:4. 食用建议;paragraph:13",
+      "confidence_status": "cited"
+    },
+    {
+      "claim_id": "clm_src_0b40b6933c5b_llm_031",
+      "source_id": "src_0b40b6933c5b",
+      "claim_text": "香蕉搭配酸奶和燕麦是一种简单的搭配方式。",
+      "citation_locator": "line:61;section:4. 食用建议;paragraph:15",
+      "confidence_status": "cited"
+    },
+    {
+      "claim_id": "clm_src_0b40b6933c5b_llm_032",
+      "source_id": "src_0b40b6933c5b",
+      "claim_text": "香蕉搭配牛奶和坚果是一种简单的搭配方式。",
+      "citation_locator": "line:62;section:4. 食用建议;paragraph:15",
+      "confidence_status": "cited"
+    },
+    {
+      "claim_id": "clm_src_0b40b6933c5b_llm_033",
+      "source_id": "src_0b40b6933c5b",
+      "claim_text": "香蕉搭配全麦面包是一种简单的搭配方式。",
+      "citation_locator": "line:63;section:4. 食用建议;paragraph:15",
+      "confidence_status": "cited"
+    },
+    {
+      "claim_id": "clm_src_0b40b6933c5b_llm_034",
+      "source_id": "src_0b40b6933c5b",
+      "claim_text": "香蕉搭配鸡蛋和面粉可以做成香蕉饼。",
+      "citation_locator": "line:64;section:4. 食用建议;paragraph:15",
+      "confidence_status": "cited"
+    },
+    {
+      "claim_id": "clm_src_0b40b6933c5b_llm_035",
+      "source_id": "src_0b40b6933c5b",
+      "claim_text": "香蕉虽然方便健康，但含糖量和能量都不算特别低。",
+      "citation_locator": "line:67;section:4. 食用建议;paragraph:16",
+      "confidence_status": "cited"
+    },
+    {
+      "claim_id": "clm_src_0b40b6933c5b_llm_036",
+      "source_id": "src_0b40b6933c5b",
+      "claim_text": "如果一天已经吃了较多主食或甜食，就不建议再大量吃香蕉。",
+      "citation_locator": "line:67;section:4. 食用建议;paragraph:16",
+      "confidence_status": "cited"
+    },
+    {
+      "claim_id": "clm_src_0b40b6933c5b_llm_037",
+      "source_id": "src_0b40b6933c5b",
+      "claim_text": "香蕉对温度比较敏感，保存时要注意避免低温和挤压。",
+      "citation_locator": "line:71;section:5. 保存方法;paragraph:17",
+      "confidence_status": "cited"
+    },
+    {
+      "claim_id": "clm_src_0b40b6933c5b_llm_038",
+      "source_id": "src_0b40b6933c5b",
+      "claim_text": "未完全成熟的香蕉适合放在室温下自然成熟。",
+      "citation_locator": "line:75;section:5.1 常温保存;paragraph:18",
+      "confidence_status": "cited"
+    },
+    {
+      "claim_id": "clm_src_0b40b6933c5b_llm_039",
+      "source_id": "src_0b40b6933c5b",
+      "claim_text": "未完全成熟的香蕉可以放在阴凉通风处，避免阳光直射。",
+      "citation_locator": "line:75;section:5.1 常温保存;paragraph:18",
+      "confidence_status": "cited"
+    },
+    {
+      "claim_id": "clm_src_0b40b6933c5b_llm_040",
+      "source_id": "src_0b40b6933c5b",
+      "claim_text": "香蕉放入冰箱后，果皮容易变黑。",
+      "citation_locator": "line:79;section:5.2 不建议过早冷藏;paragraph:19",
+      "confidence_status": "cited"
+    },
+    {
+      "claim_id": "clm_src_0b40b6933c5b_llm_041",
+      "source_id": "src_0b40b6933c5b",
+      "claim_text": "果皮变黑不一定代表果肉已经坏掉，但会影响外观。",
+      "citation_locator": "line:79;section:5.2 不建议过早冷藏;paragraph:19",
+      "confidence_status": "cited"
+    },
+    {
+      "claim_id": "clm_src_0b40b6933c5b_llm_042",
+      "source_id": "src_0b40b6933c5b",
+      "claim_text": "如果香蕉已经完全成熟，又暂时吃不完，可以短时间冷藏，但最好尽快食用。",
+      "citation_locator": "line:79;section:5.2 不建议过早冷藏;paragraph:19",
+      "confidence_status": "cited"
+    },
+    {
+      "claim_id": "clm_src_0b40b6933c5b_llm_043",
+      "source_id": "src_0b40b6933c5b",
+      "claim_text": "香蕉果肉较软，受到挤压后容易变黑、变软，影响口感。",
+      "citation_locator": "line:83;section:5.3 避免挤压;paragraph:20",
+      "confidence_status": "cited"
+    },
+    {
+      "claim_id": "clm_src_0b40b6933c5b_llm_044",
+      "source_id": "src_0b40b6933c5b",
+      "claim_text": "存放时不要把重物压在香蕉上。",
+      "citation_locator": "line:83;section:5.3 避免挤压;paragraph:20",
+      "confidence_status": "cited"
+    },
+    {
+      "claim_id": "clm_src_0b40b6933c5b_llm_045",
+      "source_id": "src_0b40b6933c5b",
+      "claim_text": "香蕉适合大多数人群食用，尤其适合需要方便加餐的人，比如学生、上班族、运动人群等。",
+      "citation_locator": "line:87;section:6. 适合人群与注意事项;paragraph:21",
+      "confidence_status": "cited"
+    },
+    {
+      "claim_id": "clm_src_0b40b6933c5b_llm_046",
+      "source_id": "src_0b40b6933c5b",
+      "claim_text": "血糖控制要求较高的人，应注意香蕉的摄入量。",
+      "citation_locator": "line:91;section:6. 适合人群与注意事项;paragraph:23",
+      "confidence_status": "cited"
+    },
+    {
+      "claim_id": "clm_src_0b40b6933c5b_llm_047",
+      "source_id": "src_0b40b6933c5b",
+      "claim_text": "胃肠较敏感的人，不建议一次吃太多香蕉。",
+      "citation_locator": "line:92;section:6. 适合人群与注意事项;paragraph:23",
+      "confidence_status": "cited"
+    },
+    {
+      "claim_id": "clm_src_0b40b6933c5b_llm_048",
+      "source_id": "src_0b40b6933c5b",
+      "claim_text": "香蕉能量相对较高，减脂期间应控制总量。",
+      "citation_locator": "line:93;section:6. 适合人群与注意事项;paragraph:23",
+      "confidence_status": "cited"
+    },
+    {
+      "claim_id": "clm_src_0b40b6933c5b_llm_049",
+      "source_id": "src_0b40b6933c5b",
+      "claim_text": "香蕉变质、发酸、有异味时不应继续食用。",
+      "citation_locator": "line:94;section:6. 适合人群与注意事项;paragraph:23",
+      "confidence_status": "cited"
+    },
+    {
+      "claim_id": "clm_src_0b40b6933c5b_llm_050",
+      "source_id": "src_0b40b6933c5b",
+      "claim_text": "香蕉是一种非常适合作为日常加餐的水果。它最大的优点是方便、香甜、能快速补充能量，并且可以和牛奶、酸奶、燕麦、坚果等食物搭配。",
+      "citation_locator": "line:98;section:7. 简要总结;paragraph:24",
+      "confidence_status": "cited"
+    },
+    {
+      "claim_id": "clm_src_0b40b6933c5b_llm_051",
+      "source_id": "src_0b40b6933c5b",
+      "claim_text": "对于普通人来说，香蕉适合作为饮食中的一部分，但不建议把它当作唯一水果或大量食用。",
+      "citation_locator": "line:98;section:7. 简要总结;paragraph:24",
+      "confidence_status": "cited"
+    }
+  ],
+  "concept_title": "香蕉：方便食用的能量补充水果",
+  "aliases": [
+    "香蕉"
+  ],
+  "entity_title": null,
+  "entity_aliases": [],
+  "duplicate_candidates": [],
+  "conflict_candidates": [],
+  "source_summary": "本文介绍香蕉作为一种方便食用的能量补充水果，涵盖概述、营养特点（碳水化合物、钾、膳食纤维）、常见类型、食用建议、保存方法、适合人群与注意事项，并总结其优点和搭配方式。",
+  "concept_definition": "香蕉是一种常见的热带水果，果肉柔软，味道香甜，食用方便，含有碳水化合物、膳食纤维、钾和多种维生素，能快速补充能量，适合日常加餐。"
+}

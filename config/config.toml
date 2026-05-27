@@ -24,3 +24,11 @@ catalog = "state/catalog.sqlite"
 [agent]
 contract = "AGENTS.md"
 write_policy = "staged_review"
+
+[llm]
+enabled = true
+provider = "openai"
+model = "deepseek-v4-pro"
+base_url = "https://api.deepseek.com"
+api_key_file = "config/api-keys.toml"
+timeout_seconds = 60

@@ -1,14 +1,19 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 from pathlib import Path
 
 from llmwiki.cli import main
-from tests.helpers import make_workspace
+from llmwiki.ingest import Claim, proposal_concept, slugify
+from llmwiki.llm_ingest import LLMIngestProposal
+from tests.helpers import disable_llm, make_workspace
 
 
 def add_sample_source(root: Path) -> str:
     assert main(["init", "--root", str(root)]) == 0
+    disable_llm(root)
     source = root / "minimal.md"
     source.write_text(
         "# Retrieval Notes\n\n"
@@ -121,6 +126,46 @@ def test_review_detail_shows_full_claims_and_triage(capsys):
     assert "## Candidate Patches" in out
 
 
+def test_review_subprocess_stdout_is_utf8_for_unicode_claims(capsys):
+    root = make_workspace()
+    assert main(["init", "--root", str(root)]) == 0
+    disable_llm(root)
+    source = root / "banana.md"
+    source.write_text(
+        "# 香蕉\n\n"
+        "香蕉 适合 作为 日常 加餐，也 可以 快速 补充 能量。\n",
+        encoding="utf-8",
+    )
+    assert main(["add", str(source), "--root", str(root)]) == 0
+    import sqlite3
+
+    with sqlite3.connect(root / "state" / "catalog.sqlite") as conn:
+        source_id = conn.execute("select source_id from sources").fetchone()[0]
+    assert main(["ingest", source_id, "--root", str(root)]) == 0
+    run_id = capsys.readouterr().out.split("run_id=", 1)[1].splitlines()[0].strip()
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "llmwiki",
+            "review",
+            run_id,
+            "--detail",
+            "--root",
+            str(root),
+        ],
+        cwd=Path(__file__).resolve().parents[1],
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+
+    out = result.stdout.decode("utf-8")
+    assert "香蕉 适合 作为 日常 加餐" in out
+    assert "\ufffd" not in out
+
+
 def test_review_patches_shows_candidate_markdown_content(capsys):
     root = make_workspace()
     source_id = add_sample_source(root)
@@ -140,6 +185,7 @@ def test_review_patches_shows_candidate_markdown_content(capsys):
 def test_ingest_filters_non_claim_lines_and_adds_rich_locators(capsys):
     root = make_workspace()
     assert main(["init", "--root", str(root)]) == 0
+    disable_llm(root)
     source = root / "claim-quality.md"
     source.write_text(
         "# Claim Quality Notes\n\n"
@@ -177,3 +223,42 @@ def test_ingest_filters_non_claim_lines_and_adds_rich_locators(capsys):
     assert all("section:Retrieval Practice" in claim["citation_locator"] for claim in claims)
     assert all("paragraph:" in claim["citation_locator"] for claim in claims)
     assert all(claim["confidence_status"] == "cited" for claim in claims)
+
+
+def test_slugify_preserves_unicode_title_text():
+    assert slugify("草莓：酸甜可口的浆果类水果") == "草莓-酸甜可口的浆果类水果"
+    assert slugify("橙子：富含维生素 C 的柑橘类水果") == "橙子-富含维生素-c-的柑橘类水果"
+
+
+def test_proposal_concept_keeps_source_title_out_of_concept_aliases():
+    source = {"title": "苹果：营养均衡的日常水果"}
+    claims = [
+        Claim(
+            claim_id="clm_src_apple_llm_001",
+            source_id="src_apple",
+            claim_text="苹果 是 一种 常见 日常 水果。",
+            citation_locator="line:1",
+            confidence_status="cited",
+            created_at="2026-05-26T00:00:00+00:00",
+        )
+    ]
+    proposal = LLMIngestProposal(
+        claims=[],
+        concept_title="苹果：营养均衡的日常水果",
+        aliases=["苹果", "苹果：营养均衡的日常水果"],
+        entity_title=None,
+        entity_aliases=[],
+        duplicate_candidates=[],
+        conflict_candidates=[],
+        source_summary=None,
+        concept_definition=None,
+        provider="openai",
+        model="test",
+        raw_content="{}",
+        usage={},
+    )
+
+    title, aliases = proposal_concept(source, claims, proposal)
+
+    assert title == "苹果"
+    assert aliases == ["苹果"]

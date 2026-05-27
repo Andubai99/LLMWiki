@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .db import catalog_path, connect
+from .llm_ingest import LLMIngestProposal, create_llm_ingest_proposal
 from .workspace import utc_now
 
 
@@ -28,6 +29,7 @@ class IngestResult:
     claim_count: int
     patch_count: int
     citation_coverage: int
+    proposal_engine: str
 
 
 def ingest_source(root: Path, source_id: str) -> IngestResult:
@@ -35,24 +37,39 @@ def ingest_source(root: Path, source_id: str) -> IngestResult:
     source = load_source(root, source_id)
     normalized_path = root / source["normalized_path"]
     normalized_text = normalized_path.read_text(encoding="utf-8")
-    claims = extract_claims(source_id, normalized_text)
+    created_at = utc_now()
+    llm_proposal = create_llm_ingest_proposal(root, source, normalized_text)
+    if llm_proposal:
+        claims = claims_from_llm_proposal(llm_proposal, created_at)
+        proposal_engine = "llm"
+    else:
+        claims = extract_claims(source_id, normalized_text, created_at=created_at)
+        proposal_engine = "heuristic"
     if not claims:
         raise ValueError(f"no claims found for source {source_id}")
+    patch_claims = formal_claims(claims)
+    if not patch_claims:
+        raise ValueError(f"no cited claims found for source {source_id}")
 
-    created_at = utc_now()
     run_id = f"run_{source_id}_{created_at.replace(':', '').replace('+', 'Z')}_{uuid.uuid4().hex[:8]}"
     run_dir = root / "staging" / run_id
     patches_dir = run_dir / "patches"
     patches_dir.mkdir(parents=True, exist_ok=False)
 
-    concept_title, aliases = infer_concept(source["title"], claims)
-    entity = infer_entity(claims)
+    concept_title, aliases = proposal_concept(source, patch_claims, llm_proposal)
+    entity = proposal_entity(patch_claims, llm_proposal)
     duplicate_candidates = find_duplicate_candidates(root, concept_title, aliases)
     if entity:
         entity_title, entity_aliases = entity
         duplicate_candidates.extend(find_duplicate_candidates(root, entity_title, entity_aliases))
         duplicate_candidates = list(dict.fromkeys(duplicate_candidates))
-    conflict_candidates = find_conflict_candidates(root, claims)
+    if llm_proposal:
+        duplicate_candidates.extend(llm_proposal.duplicate_candidates)
+        duplicate_candidates = list(dict.fromkeys(duplicate_candidates))
+    conflict_candidates = find_conflict_candidates(root, patch_claims)
+    if llm_proposal:
+        conflict_candidates.extend(llm_proposal.conflict_candidates)
+        conflict_candidates = list(dict.fromkeys(conflict_candidates))
     coverage = citation_coverage(claims)
 
     write_jsonl(run_dir / "claims.jsonl", [claim.__dict__ for claim in claims])
@@ -62,15 +79,30 @@ def ingest_source(root: Path, source_id: str) -> IngestResult:
         source_id=source_id,
         status="staged",
         created_at=created_at,
+        extra={
+            "proposal_engine": proposal_engine,
+            **(
+                {
+                    "llm_provider": llm_proposal.provider,
+                    "llm_model": llm_proposal.model,
+                }
+                if llm_proposal
+                else {}
+            ),
+        },
     )
+    if llm_proposal:
+        write_llm_proposal(run_dir / "llm-proposal.json", llm_proposal)
     patches = build_patches(
         source=source,
-        claims=claims,
+        claims=patch_claims,
         concept_title=concept_title,
         aliases=aliases,
         duplicate_candidates=duplicate_candidates,
         conflict_candidates=conflict_candidates,
         entity=entity,
+        source_summary=llm_proposal.source_summary if llm_proposal else None,
+        concept_definition=llm_proposal.concept_definition if llm_proposal else None,
     )
     for index, patch in enumerate(patches, start=1):
         patch_path = patches_dir / f"{index:03d}-{patch['page_type']}-{patch['page_id']}.json"
@@ -88,6 +120,8 @@ def ingest_source(root: Path, source_id: str) -> IngestResult:
         duplicate_candidates=duplicate_candidates,
         conflict_candidates=conflict_candidates,
         coverage=coverage,
+        llm_proposal=llm_proposal,
+        proposal_engine=proposal_engine,
     )
     return IngestResult(
         run_id=run_id,
@@ -96,6 +130,7 @@ def ingest_source(root: Path, source_id: str) -> IngestResult:
         claim_count=len(claims),
         patch_count=len(patches),
         citation_coverage=coverage,
+        proposal_engine=proposal_engine,
     )
 
 
@@ -110,8 +145,8 @@ def load_source(root: Path, source_id: str) -> dict[str, str]:
     return dict(row)
 
 
-def extract_claims(source_id: str, normalized_text: str) -> list[Claim]:
-    created_at = utc_now()
+def extract_claims(source_id: str, normalized_text: str, created_at: str | None = None) -> list[Claim]:
+    created_at = created_at or utc_now()
     claims: list[Claim] = []
     current_section = ""
     current_paragraph = ""
@@ -149,6 +184,51 @@ def extract_claims(source_id: str, normalized_text: str) -> list[Claim]:
             )
         )
     return claims
+
+
+def claims_from_llm_proposal(proposal: LLMIngestProposal, created_at: str) -> list[Claim]:
+    return [
+        Claim(
+            claim_id=claim["claim_id"],
+            source_id=claim["source_id"],
+            claim_text=claim["claim_text"],
+            citation_locator=claim.get("citation_locator", ""),
+            confidence_status=claim.get("confidence_status", "weak"),
+            created_at=created_at,
+        )
+        for claim in proposal.claims
+    ]
+
+
+def formal_claims(claims: list[Claim]) -> list[Claim]:
+    return [
+        claim
+        for claim in claims
+        if claim.citation_locator and claim.confidence_status not in {"weak", "uncited"}
+    ]
+
+
+def proposal_concept(
+    source: dict[str, str],
+    claims: list[Claim],
+    proposal: LLMIngestProposal | None,
+) -> tuple[str, list[str]]:
+    fallback_title, fallback_aliases = infer_concept(source["title"], claims)
+    if not proposal or not proposal.concept_title:
+        return fallback_title, fallback_aliases
+    title = concise_concept_title(proposal.concept_title, source["title"])
+    aliases = concept_aliases(title, proposal.aliases or fallback_aliases, source["title"])
+    return title, aliases
+
+
+def proposal_entity(
+    claims: list[Claim],
+    proposal: LLMIngestProposal | None,
+) -> tuple[str, list[str]] | None:
+    if proposal and proposal.entity_title:
+        aliases = proposal.entity_aliases or [proposal.entity_title]
+        return proposal.entity_title, aliases
+    return infer_entity(claims)
 
 
 def is_claim_text(text: str) -> bool:
@@ -191,7 +271,32 @@ def infer_concept(source_title: str, claims: list[Claim]) -> tuple[str, list[str
     if re.search(r"\bconflict|contradict", combined, re.I):
         return "Conflict Preservation", ["conflict", "contradiction"]
     title = re.sub(r"\b(notes|source|overview)\b", "", source_title, flags=re.I).strip()
-    return title or source_title, [source_title]
+    title = concise_concept_title(title or source_title, source_title)
+    return title, concept_aliases(title, [title], source_title)
+
+
+def concise_concept_title(title: str, source_title: str) -> str:
+    if normalize_alias(title) != normalize_alias(source_title):
+        return title
+    for separator in ("：", ":"):
+        if separator in source_title:
+            prefix = source_title.split(separator, 1)[0].strip()
+            if prefix:
+                return prefix
+    return title
+
+
+def concept_aliases(title: str, aliases: list[str], source_title: str) -> list[str]:
+    source_key = normalize_alias(source_title)
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for alias in [title, *aliases]:
+        key = normalize_alias(alias)
+        if not key or key == source_key or key in seen:
+            continue
+        cleaned.append(alias)
+        seen.add(key)
+    return cleaned or [title]
 
 
 def infer_entity(claims: list[Claim]) -> tuple[str, list[str]] | None:
@@ -275,6 +380,8 @@ def build_patches(
     duplicate_candidates: list[str],
     conflict_candidates: list[str],
     entity: tuple[str, list[str]] | None,
+    source_summary: str | None = None,
+    concept_definition: str | None = None,
 ) -> list[dict[str, object]]:
     source_page_id = source["source_id"]
     concept_page_id = slugify(concept_title)
@@ -293,7 +400,14 @@ def build_patches(
             "aliases": [source["title"], source["source_id"]],
             "claim_ids": claim_ids,
             "source_id": source["source_id"],
-            "content": render_source_page(source, claims, conflict_candidates, concept_path, now),
+            "content": render_source_page(
+                source,
+                claims,
+                conflict_candidates,
+                concept_path,
+                now,
+                source_summary=source_summary,
+            ),
             "links": [
                 {"from_page": source_path, "to_page": concept_path, "link_type": "mentions"}
             ],
@@ -318,7 +432,14 @@ def build_patches(
             "claim_ids": claim_ids,
             "source_id": source["source_id"],
             "content": render_concept_page(
-                concept_title, aliases, claims, source, duplicate_candidates, conflict_candidates, now
+                concept_title,
+                aliases,
+                claims,
+                source,
+                duplicate_candidates,
+                conflict_candidates,
+                now,
+                concept_definition=concept_definition,
             ),
             "links": [
                 {"from_page": concept_path, "to_page": source_path, "link_type": "supports"}
@@ -404,6 +525,7 @@ def render_source_page(
     conflict_candidates: list[str],
     concept_path: str,
     updated_at: str,
+    source_summary: str | None = None,
 ) -> str:
     claim_ids = [claim.claim_id for claim in claims]
     return "\n".join(
@@ -433,7 +555,7 @@ def render_source_page(
             "",
             "## Summary",
             "",
-            f"This source contributes {len(claims)} cited claim(s).",
+            source_summary or f"This source contributes {len(claims)} cited claim(s).",
             "",
             "## Important Evidence",
             "",
@@ -459,6 +581,7 @@ def render_concept_page(
     duplicate_candidates: list[str],
     conflict_candidates: list[str],
     updated_at: str,
+    concept_definition: str | None = None,
 ) -> str:
     claim_ids = [claim.claim_id for claim in claims]
     return "\n".join(
@@ -476,7 +599,8 @@ def render_concept_page(
             "",
             "## Definition",
             "",
-            f"Candidate definition derived from `{source['source_id']}` and pending user review.",
+            concept_definition
+            or f"Candidate definition derived from `{source['source_id']}` and pending user review.",
             "",
             "## Key Claims",
             "",
@@ -579,14 +703,21 @@ def write_triage(
     duplicate_candidates: list[str],
     conflict_candidates: list[str],
     coverage: int,
+    llm_proposal: LLMIngestProposal | None = None,
+    proposal_engine: str = "heuristic",
 ) -> None:
     lines = [
         f"# Triage: {run_id}",
         "",
         f"- source_id: `{source['source_id']}`",
         f"- title: {source['title']}",
+        f"- proposal_engine: `{proposal_engine}`",
         f"- claims: {len(claims)}",
         f"- Citation coverage: {coverage}%",
+        "",
+        "## LLM Proposal",
+        "",
+        *llm_proposal_lines(llm_proposal),
         "",
         "## Candidate Patches",
         "",
@@ -617,19 +748,59 @@ def write_jsonl(path: Path, rows: list[dict[str, str]]) -> None:
     )
 
 
-def write_run_manifest(path: Path, run_id: str, source_id: str, status: str, created_at: str) -> None:
+def llm_proposal_lines(proposal: LLMIngestProposal | None) -> list[str]:
+    if not proposal:
+        return ["- proposal_engine: `heuristic`", "- LLM provider was not called."]
+    return [
+        "- proposal_engine: `llm`",
+        f"- provider: `{proposal.provider}`",
+        f"- model: `{proposal.model}`",
+        f"- usage: `{json.dumps(proposal.usage, ensure_ascii=False)}`",
+    ]
+
+
+def write_run_manifest(
+    path: Path,
+    run_id: str,
+    source_id: str,
+    status: str,
+    created_at: str,
+    extra: dict[str, str] | None = None,
+) -> None:
+    payload = {
+        "run_id": run_id,
+        "source_id": source_id,
+        "status": status,
+        "created_at": created_at,
+    }
+    if extra:
+        payload.update(extra)
     path.write_text(
-        json.dumps(
-            {
-                "run_id": run_id,
-                "source_id": source_id,
-                "status": status,
-                "created_at": created_at,
-            },
-            ensure_ascii=False,
-            indent=2,
-        )
+        json.dumps(payload, ensure_ascii=False, indent=2)
         + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+
+def write_llm_proposal(path: Path, proposal: LLMIngestProposal) -> None:
+    payload = {
+        "provider": proposal.provider,
+        "model": proposal.model,
+        "usage": proposal.usage,
+        "content": proposal.raw_content,
+        "claims": proposal.claims,
+        "concept_title": proposal.concept_title,
+        "aliases": proposal.aliases,
+        "entity_title": proposal.entity_title,
+        "entity_aliases": proposal.entity_aliases,
+        "duplicate_candidates": proposal.duplicate_candidates,
+        "conflict_candidates": proposal.conflict_candidates,
+        "source_summary": proposal.source_summary,
+        "concept_definition": proposal.concept_definition,
+    }
+    path.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
         newline="\n",
     )
@@ -863,7 +1034,16 @@ def similar_title(left: str, right: str) -> bool:
 
 
 def slugify(value: str) -> str:
-    slug = re.sub(r"[^a-z0-9]+", "-", value.casefold()).strip("-")
+    parts: list[str] = []
+    previous_separator = False
+    for char in value.casefold():
+        if char.isalnum():
+            parts.append(char)
+            previous_separator = False
+        elif not previous_separator:
+            parts.append("-")
+            previous_separator = True
+    slug = "".join(parts).strip("-")
     return slug or "untitled"
 
 

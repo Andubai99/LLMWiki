@@ -10,6 +10,9 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = ["pypdf>=4"]
 
+[project.optional-dependencies]
+dev = ["pytest>=7"]
+
 [project.scripts]
 llmwiki = "llmwiki.cli:main"
 

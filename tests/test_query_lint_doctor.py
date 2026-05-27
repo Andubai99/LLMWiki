@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from pathlib import Path
+import sys
 
-from llmwiki.cli import main
-from tests.helpers import make_workspace
+from llmwiki.cli import main, virtualenv_status
+from tests.helpers import disable_llm, make_workspace
 
 
 def fixture(name: str) -> Path:
@@ -11,6 +12,7 @@ def fixture(name: str) -> Path:
 
 
 def add_ingest_apply(root: Path, source_path: Path) -> str:
+    disable_llm(root)
     assert main(["add", str(source_path), "--root", str(root)]) == 0
     # Caller must read capsys after invoking this helper if stdout matters.
     import sqlite3
@@ -55,6 +57,7 @@ def test_lint_and_doctor_report_workspace_health(capsys):
     doctor = capsys.readouterr().out
     assert "Python OK" in doctor
     assert "dependencies OK" in doctor
+    assert "virtual environment OK" in doctor
     assert "Workspace OK" in doctor
     assert "schema OK" in doctor
     assert "index/log OK" in doctor
@@ -82,3 +85,14 @@ def test_lint_reports_source_hash_drift(capsys):
     assert main(["lint", "--root", str(root)]) == 1
     lint = capsys.readouterr().out
     assert "source hash drift: 1" in lint
+
+
+def test_virtualenv_status_warns_when_not_running_in_virtualenv(monkeypatch):
+    monkeypatch.delenv("VIRTUAL_ENV", raising=False)
+    monkeypatch.setattr(sys, "prefix", sys.base_prefix, raising=False)
+
+    ok, line = virtualenv_status()
+
+    assert not ok
+    assert "warning" in line
+    assert "virtual environment" in line

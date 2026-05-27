@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
+import json
+import os
 import sys
 import tomllib
 from pathlib import Path
@@ -10,12 +12,26 @@ from .apply import UnsafePatchError, apply_run
 from .db import catalog_path, schema_status
 from .ingest import ingest_source, review_run
 from .lint import lint_workspace
+from .llm import create_provider, load_llm_config, override_llm_config
+from .providers.base import LLMProviderError
 from .query import query_context
+from .retrieval import format_retrieval_prompt, retrieve_context
 from .sources import import_source
 from .workspace import check_workspace, init_workspace
 
 
-COMMANDS = ("init", "add", "ingest", "review", "apply", "lint", "query", "doctor")
+COMMANDS = (
+    "init",
+    "add",
+    "ingest",
+    "review",
+    "apply",
+    "lint",
+    "query",
+    "retrieve",
+    "llm-test",
+    "doctor",
+)
 
 
 def _scaffold_only(command: str) -> int:
@@ -63,6 +79,7 @@ def cmd_ingest(args: argparse.Namespace) -> int:
         return 1
     print(f"Created ingest run: run_id={result.run_id}")
     print(f"source_id={result.source_id}")
+    print(f"proposal_engine={result.proposal_engine}")
     print(f"claims={result.claim_count}")
     print(f"patches={result.patch_count}")
     print(f"citation_coverage={result.citation_coverage}%")
@@ -114,13 +131,70 @@ def cmd_query(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_retrieve(args: argparse.Namespace) -> int:
+    root = Path(args.root).resolve()
+    result = retrieve_context(
+        root,
+        args.question,
+        limit=args.limit,
+        source_id=args.source_id,
+        page_type=args.page_type,
+        confidence=args.confidence,
+    )
+    if args.json or args.format == "json":
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+    else:
+        print(format_retrieval_prompt(result))
+    return 0
+
+
+def cmd_llm_test(args: argparse.Namespace) -> int:
+    root = Path(args.root).resolve()
+    config = override_llm_config(
+        load_llm_config(root),
+        model=args.model,
+        base_url=args.base_url,
+        timeout_seconds=args.timeout,
+    )
+    if not config.enabled:
+        print("LLM test failed: [llm].enabled is false in config/config.toml")
+        return 1
+    provider = create_provider(config, root=root)
+    messages = [
+        {
+            "role": "system",
+            "content": "You are a concise test responder for LLMWiki.",
+        },
+        {
+            "role": "user",
+            "content": "Reply with one short sentence saying LLMWiki LLM provider is reachable.",
+        },
+    ]
+    try:
+        result = provider.complete(messages)
+    except (LLMProviderError, ValueError) as exc:
+        print(f"LLM test failed: {exc}")
+        return 1
+
+    print(f"provider={result['provider']}")
+    print(f"model={result['model']}")
+    print(f"base_url={config.base_url}")
+    print("real_call=true")
+    print(f"finish_reason={result.get('finish_reason')}")
+    print(f"usage={result.get('usage')}")
+    print(f"content_summary={summarize_text(str(result.get('content') or ''))}")
+    return 0
+
+
 def cmd_doctor(args: argparse.Namespace) -> int:
     root = Path(args.root).resolve()
     result = check_workspace(root)
     schema_ok, schema_problems = schema_status(catalog_path(root))
     index_log_ok = (root / "wiki" / "index.md").exists() and (root / "wiki" / "log.md").exists()
     deps_ok, dep_problems = dependency_status()
+    _, venv_line = virtualenv_status()
     print(f"Python OK: {sys.version.split()[0]}")
+    print(venv_line)
     if result.ok and schema_ok and index_log_ok and deps_ok:
         print("dependencies OK")
         print(f"Workspace OK: {result.root}")
@@ -138,6 +212,18 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     for problem in dep_problems:
         print(f"- dependency {problem}")
     return 1
+
+
+def virtualenv_status() -> tuple[bool, str]:
+    in_virtualenv = (
+        sys.prefix != getattr(sys, "base_prefix", sys.prefix)
+        or hasattr(sys, "real_prefix")
+        or bool(os.environ.get("VIRTUAL_ENV"))
+    )
+    if in_virtualenv:
+        location = os.environ.get("VIRTUAL_ENV") or sys.prefix
+        return True, f"virtual environment OK: {location}"
+    return False, "warning: not running inside a Python virtual environment"
 
 
 def dependency_status() -> tuple[bool, list[str]]:
@@ -202,6 +288,35 @@ def build_parser() -> argparse.ArgumentParser:
     query_parser.add_argument("--root", default=".")
     query_parser.set_defaults(func=cmd_query)
 
+    retrieve_parser = subparsers.add_parser(
+        "retrieve",
+        help="Return citation-backed retrieval contexts for RAG or agents.",
+    )
+    retrieve_parser.add_argument("question")
+    retrieve_parser.add_argument("--root", default=".")
+    retrieve_parser.add_argument("--json", action="store_true", help="Output stable machine-readable JSON.")
+    retrieve_parser.add_argument(
+        "--format",
+        choices=("json", "prompt"),
+        default="json",
+        help="Output format. Use prompt for an LLM evidence prompt.",
+    )
+    retrieve_parser.add_argument("--limit", type=int, default=8)
+    retrieve_parser.add_argument("--source-id")
+    retrieve_parser.add_argument("--page-type")
+    retrieve_parser.add_argument("--confidence")
+    retrieve_parser.set_defaults(func=cmd_retrieve)
+
+    llm_test_parser = subparsers.add_parser(
+        "llm-test",
+        help="Call the configured real LLM provider once.",
+    )
+    llm_test_parser.add_argument("--root", default=".")
+    llm_test_parser.add_argument("--model")
+    llm_test_parser.add_argument("--base-url")
+    llm_test_parser.add_argument("--timeout", type=int)
+    llm_test_parser.set_defaults(func=cmd_llm_test)
+
     doctor_parser = subparsers.add_parser("doctor", help="Check workspace structure.")
     doctor_parser.add_argument("--root", default=".")
     doctor_parser.set_defaults(func=cmd_doctor)
@@ -210,6 +325,21 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    if argv is None:
+        configure_utf8_stdio()
     parser = build_parser()
     args = parser.parse_args(argv)
     return args.func(args)
+
+
+def configure_utf8_stdio() -> None:
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8")
+
+
+def summarize_text(text: str, limit: int = 240) -> str:
+    compact = " ".join(text.split())
+    if len(compact) <= limit:
+        return compact
+    return compact[: limit - 3].rstrip() + "..."
