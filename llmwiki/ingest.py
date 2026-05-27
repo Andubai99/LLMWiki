@@ -32,7 +32,13 @@ class IngestResult:
     proposal_engine: str
 
 
-def ingest_source(root: Path, source_id: str) -> IngestResult:
+def ingest_source(
+    root: Path,
+    source_id: str,
+    *,
+    require_llm: bool = False,
+    trigger: str | None = None,
+) -> IngestResult:
     root = root.resolve()
     source = load_source(root, source_id)
     normalized_path = root / source["normalized_path"]
@@ -42,6 +48,8 @@ def ingest_source(root: Path, source_id: str) -> IngestResult:
     if llm_proposal:
         claims = claims_from_llm_proposal(llm_proposal, created_at)
         proposal_engine = "llm"
+    elif require_llm:
+        raise ValueError("LLM ingest is required for add, but no LLM proposal was produced")
     else:
         claims = extract_claims(source_id, normalized_text, created_at=created_at)
         proposal_engine = "heuristic"
@@ -89,6 +97,7 @@ def ingest_source(root: Path, source_id: str) -> IngestResult:
                 if llm_proposal
                 else {}
             ),
+            **({"trigger": trigger} if trigger else {}),
         },
     )
     if llm_proposal:

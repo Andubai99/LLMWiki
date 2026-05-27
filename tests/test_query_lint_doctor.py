@@ -4,6 +4,7 @@ from pathlib import Path
 import sys
 
 from llmwiki.cli import main, virtualenv_status
+from llmwiki.sources import import_source
 from tests.helpers import disable_llm, make_workspace
 
 
@@ -13,16 +14,9 @@ def fixture(name: str) -> Path:
 
 def add_ingest_apply(root: Path, source_path: Path) -> str:
     disable_llm(root)
-    assert main(["add", str(source_path), "--root", str(root)]) == 0
+    result = import_source(root, str(source_path))
     # Caller must read capsys after invoking this helper if stdout matters.
-    import sqlite3
-    import hashlib
-
-    digest = hashlib.sha256(source_path.read_bytes()).hexdigest()
-    with sqlite3.connect(root / "state" / "catalog.sqlite") as conn:
-        source_id = conn.execute(
-            "select source_id from sources where sha256 = ?", (digest,)
-        ).fetchone()[0]
+    source_id = result.source_id
     before_runs = set(path.name for path in (root / "staging").glob("run_*"))
     assert main(["ingest", source_id, "--root", str(root)]) == 0
     after_runs = set(path.name for path in (root / "staging").glob("run_*"))

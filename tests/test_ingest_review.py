@@ -8,6 +8,7 @@ from pathlib import Path
 from llmwiki.cli import main
 from llmwiki.ingest import Claim, proposal_concept, slugify
 from llmwiki.llm_ingest import LLMIngestProposal
+from llmwiki.sources import import_source
 from tests.helpers import disable_llm, make_workspace
 
 
@@ -22,12 +23,7 @@ def add_sample_source(root: Path) -> str:
         "Contradiction markers should be preserved when sources conflict.\n",
         encoding="utf-8",
     )
-    assert main(["add", str(source), "--root", str(root)]) == 0
-    db_path = root / "state" / "catalog.sqlite"
-    import sqlite3
-
-    with sqlite3.connect(db_path) as conn:
-        return conn.execute("select source_id from sources").fetchone()[0]
+    return import_source(root, str(source)).source_id
 
 
 def snapshot_tree(path: Path) -> dict[str, str]:
@@ -136,11 +132,7 @@ def test_review_subprocess_stdout_is_utf8_for_unicode_claims(capsys):
         "香蕉 适合 作为 日常 加餐，也 可以 快速 补充 能量。\n",
         encoding="utf-8",
     )
-    assert main(["add", str(source), "--root", str(root)]) == 0
-    import sqlite3
-
-    with sqlite3.connect(root / "state" / "catalog.sqlite") as conn:
-        source_id = conn.execute("select source_id from sources").fetchone()[0]
+    source_id = import_source(root, str(source)).source_id
     assert main(["ingest", source_id, "--root", str(root)]) == 0
     run_id = capsys.readouterr().out.split("run_id=", 1)[1].splitlines()[0].strip()
 
@@ -198,7 +190,7 @@ def test_ingest_filters_non_claim_lines_and_adds_rich_locators(capsys):
         "Citation-aware review makes later synthesis auditable.\n",
         encoding="utf-8",
     )
-    assert main(["add", str(source), "--root", str(root)]) == 0
+    import_source(root, str(source))
     import sqlite3
 
     with sqlite3.connect(root / "state" / "catalog.sqlite") as conn:

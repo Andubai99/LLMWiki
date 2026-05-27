@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from llmwiki.cli import main
+from llmwiki.sources import import_source
 from tests.helpers import make_workspace
 
 
@@ -58,8 +59,7 @@ def test_ingest_reports_missing_llm_api_key_without_modifying_wiki(monkeypatch, 
     root = make_workspace()
     assert main(["init", "--root", str(root)]) == 0
     source = _write_llm_sample(root)
-    assert main(["add", str(source), "--root", str(root)]) == 0
-    source_id = _source_id(root)
+    source_id = import_source(root, str(source)).source_id
     before = _wiki_snapshot(root)
     monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-env-should-not-print-this")
     monkeypatch.setenv("OTHER_SECRET", "sk-other-do-not-print-this")
@@ -86,8 +86,7 @@ def test_real_llm_ingest_writes_staging_only_and_applies_safely(capsys):
     assert main(["init", "--root", str(root)]) == 0
     _write_api_key(root, api_key)
     source = _write_llm_sample(root)
-    assert main(["add", str(source), "--root", str(root)]) == 0
-    source_id = _source_id(root)
+    source_id = import_source(root, str(source)).source_id
     before = _wiki_snapshot(root)
     capsys.readouterr()
 

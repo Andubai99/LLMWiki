@@ -13,10 +13,10 @@ from .db import catalog_path, schema_status
 from .ingest import ingest_source, review_run
 from .lint import lint_workspace
 from .llm import create_provider, load_llm_config, override_llm_config
+from .pipeline import AddPipelineError, add_and_process_source
 from .providers.base import LLMProviderError
 from .query import query_context
 from .retrieval import format_retrieval_prompt, retrieve_context
-from .sources import import_source
 from .workspace import check_workspace, init_workspace
 
 
@@ -53,20 +53,37 @@ def cmd_init(args: argparse.Namespace) -> int:
 def cmd_add(args: argparse.Namespace) -> int:
     root = Path(args.root).resolve()
     try:
-        result = import_source(root, args.source)
-    except FileNotFoundError:
-        print(f"Source not found: {args.source}")
-        return 1
-    except Exception as exc:
-        print(f"Source import failed: {exc}")
+        result = add_and_process_source(root, args.source)
+    except AddPipelineError as exc:
+        print(f"Add pipeline failed at: {exc.stage}")
+        if exc.source_id:
+            print(f"source_id: {exc.source_id}")
+        if exc.run_id:
+            print(f"run_id: {exc.run_id}")
+        print(f"reason: {exc.reason}")
+        if exc.debug_command:
+            print(f"Debug: {exc.debug_command}")
         return 1
 
-    if result.duplicate:
-        print(f"Source already imported: source_id={result.source_id} title={result.title}")
+    if result.status == "already_applied":
+        print(f"Source already imported: {result.source_id}")
+        print("Wiki is already up to date for this source.")
+        return 0
+
+    print(f"Added source: {result.source_id}")
+    print(f"Processed with: {result.proposal_engine}")
+    print(f"Applied run: {result.run_id}")
+    print(f"Claims: {result.claim_count}")
+    print(f"Patches: {result.patch_count}")
+    print("Pages:")
+    for page in result.applied_pages:
+        print(f"- {page}")
+    if result.warnings:
+        print("Warnings:")
+        for warning in result.warnings:
+            print(f"- {warning}")
     else:
-        print(f"Imported source: source_id={result.source_id} title={result.title}")
-    print(f"raw_path={result.raw_path}")
-    print(f"normalized_path={result.normalized_path}")
+        print("Warnings: none")
     return 0
 
 
@@ -262,19 +279,28 @@ def build_parser() -> argparse.ArgumentParser:
     add_parser.add_argument("--root", default=".")
     add_parser.set_defaults(func=cmd_add)
 
-    ingest_parser = subparsers.add_parser("ingest", help="Create a staged ingest run for a source.")
+    ingest_parser = subparsers.add_parser(
+        "ingest",
+        help="Internal/debug: create a staged ingest run for a source.",
+    )
     ingest_parser.add_argument("source_id")
     ingest_parser.add_argument("--root", default=".")
     ingest_parser.set_defaults(func=cmd_ingest)
 
-    review_parser = subparsers.add_parser("review", help="Review a staged ingest run.")
+    review_parser = subparsers.add_parser(
+        "review",
+        help="Internal/debug: inspect a staged or applied ingest run.",
+    )
     review_parser.add_argument("run_id")
     review_parser.add_argument("--detail", action="store_true", help="Show full claims and triage details.")
     review_parser.add_argument("--patches", action="store_true", help="Show candidate Markdown patch contents.")
     review_parser.add_argument("--root", default=".")
     review_parser.set_defaults(func=cmd_review)
 
-    apply_parser = subparsers.add_parser("apply", help="Apply a reviewed ingest run.")
+    apply_parser = subparsers.add_parser(
+        "apply",
+        help="Internal/debug: apply a staged ingest run.",
+    )
     apply_parser.add_argument("run_id")
     apply_parser.add_argument("--root", default=".")
     apply_parser.set_defaults(func=cmd_apply)

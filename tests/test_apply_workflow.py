@@ -5,6 +5,7 @@ import sqlite3
 from pathlib import Path
 
 from llmwiki.cli import main
+from llmwiki.sources import import_source
 from tests.helpers import make_workspace
 from tests.test_ingest_review import add_sample_source
 
@@ -327,8 +328,7 @@ def test_apply_backs_up_existing_page_before_update(capsys):
         "Retrieval augmented generation benefits from duplicate concept checks.\n",
         encoding="utf-8",
     )
-    assert main(["add", str(second_source), "--root", str(root)]) == 0
-    source_id = rows(root, "select source_id from sources order by imported_at desc limit 1")[0][0]
+    source_id = import_source(root, str(second_source)).source_id
     assert main(["ingest", source_id, "--root", str(root)]) == 0
     second_run = capsys.readouterr().out.split("run_id=", 1)[1].splitlines()[0].strip()
 

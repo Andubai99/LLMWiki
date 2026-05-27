@@ -4,6 +4,7 @@ import sqlite3
 from pathlib import Path
 
 from llmwiki.cli import main
+from llmwiki.sources import import_source
 from tests.helpers import disable_llm, make_workspace
 from tests.test_query_lint_doctor import add_ingest_apply, fixture
 
@@ -69,11 +70,7 @@ def test_identity_resolution_detects_alias_punctuation_and_entity_candidates(cap
         "Retrieval-augmented_generation should preserve citation anchors for audit review.\n",
         encoding="utf-8",
     )
-    assert main(["add", str(alias_source), "--root", str(root)]) == 0
-    source_id = scalar(
-        root,
-        "select source_id from sources where title = 'Retrieval-Augmented_Generation Notes'",
-    )
+    source_id = import_source(root, str(alias_source)).source_id
     assert main(["ingest", source_id, "--root", str(root)]) == 0
     alias_run = capsys.readouterr().out.split("run_id=", 1)[1].splitlines()[0].strip()
     assert main(["review", alias_run, "--root", str(root)]) == 0
@@ -89,8 +86,7 @@ def test_identity_resolution_detects_alias_punctuation_and_entity_candidates(cap
         "Open-AI develops language models for applied research systems.\n",
         encoding="utf-8",
     )
-    assert main(["add", str(entity_source), "--root", str(root)]) == 0
-    source_id = scalar(root, "select source_id from sources where title = 'Open-AI Entity Variant'")
+    source_id = import_source(root, str(entity_source)).source_id
     assert main(["ingest", source_id, "--root", str(root)]) == 0
     entity_run = capsys.readouterr().out.split("run_id=", 1)[1].splitlines()[0].strip()
     triage = (root / "staging" / entity_run / "triage.md").read_text(encoding="utf-8")
