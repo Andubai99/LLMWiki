@@ -114,7 +114,7 @@ def ingest_source(
         concept_definition=llm_proposal.concept_definition if llm_proposal else None,
     )
     for index, patch in enumerate(patches, start=1):
-        patch_path = patches_dir / f"{index:03d}-{patch['page_type']}-{patch['page_id']}.json"
+        patch_path = patches_dir / f"{index:03d}-{patch['page_type']}-{safe_patch_file_stem(str(patch['page_id']))}.json"
         patch_path.write_text(
             json.dumps(patch, ensure_ascii=False, indent=2),
             encoding="utf-8",
@@ -393,9 +393,10 @@ def build_patches(
     concept_definition: str | None = None,
 ) -> list[dict[str, object]]:
     source_page_id = source["source_id"]
-    concept_page_id = slugify(concept_title)
+    concept_slug = slugify(concept_title)
+    concept_page_id = typed_page_id("concept", concept_slug)
     source_path = f"wiki/sources/{source_page_id}.md"
-    concept_path = f"wiki/concepts/{concept_page_id}.md"
+    concept_path = f"wiki/concepts/{concept_slug}.md"
     claim_ids = [claim.claim_id for claim in claims]
     now = utc_now()
     patches: list[dict[str, object]] = [
@@ -460,8 +461,9 @@ def build_patches(
     ]
     if entity:
         entity_title, entity_aliases = entity
-        entity_page_id = slugify(entity_title)
-        entity_path = f"wiki/entities/{entity_page_id}.md"
+        entity_slug = slugify(entity_title)
+        entity_page_id = typed_page_id("entity", entity_slug)
+        entity_path = f"wiki/entities/{entity_slug}.md"
         patches.append(
             {
                 "patch_id": f"patch_{entity_page_id}_entity",
@@ -495,6 +497,14 @@ def build_patches(
             }
         )
     return patches
+
+
+def typed_page_id(page_type: str, slug: str) -> str:
+    return f"{page_type}:{slug}"
+
+
+def safe_patch_file_stem(page_id: str) -> str:
+    return page_id.replace(":", "-")
 
 
 def build_relationships(

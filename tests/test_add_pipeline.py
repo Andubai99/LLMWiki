@@ -66,6 +66,44 @@ def patch_llm_proposal(monkeypatch) -> None:
     monkeypatch.setattr("llmwiki.ingest.create_llm_ingest_proposal", fake_create)
 
 
+def test_add_keeps_same_title_concept_and_entity_with_distinct_page_ids(monkeypatch, capsys):
+    root = make_workspace()
+    assert main(["init", "--root", str(root)]) == 0
+    source = write_source(root, "orange.md")
+
+    def fake_create(root: Path, source: dict[str, str], normalized_text: str) -> LLMIngestProposal:
+        proposal = deterministic_proposal(source, normalized_text)
+        return LLMIngestProposal(
+            claims=proposal.claims,
+            concept_title="Orange",
+            aliases=["orange"],
+            entity_title="Orange",
+            entity_aliases=["orange"],
+            duplicate_candidates=[],
+            conflict_candidates=[],
+            source_summary=proposal.source_summary,
+            concept_definition=proposal.concept_definition,
+            provider=proposal.provider,
+            model=proposal.model,
+            raw_content=proposal.raw_content,
+            usage=proposal.usage,
+        )
+
+    monkeypatch.setattr("llmwiki.ingest.create_llm_ingest_proposal", fake_create)
+    capsys.readouterr()
+
+    assert main(["add", str(source), "--root", str(root)]) == 0
+
+    page_rows = rows(
+        root,
+        "select page_id, path, page_type from pages where title = 'Orange' order by page_type",
+    )
+    assert [row["page_type"] for row in page_rows] == ["concept", "entity"]
+    assert {row["page_id"] for row in page_rows} == {"concept:orange", "entity:orange"}
+    assert (root / "wiki" / "concepts" / "orange.md").exists()
+    assert (root / "wiki" / "entities" / "orange.md").exists()
+
+
 def test_add_runs_llm_ingest_apply_and_summarizes_result(monkeypatch, capsys):
     root = make_workspace()
     assert main(["init", "--root", str(root)]) == 0
