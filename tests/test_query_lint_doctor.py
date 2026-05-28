@@ -44,6 +44,25 @@ def test_query_returns_retrieval_context_with_citations(capsys):
     assert "Retrieval augmented generation" in out
 
 
+def test_query_does_not_call_llm_planner_or_provider(monkeypatch, capsys):
+    root = make_workspace()
+    assert main(["init", "--root", str(root)]) == 0
+    add_ingest_apply(root, fixture("minimal_source.md"))
+    capsys.readouterr()
+
+    def fail_provider(*args, **kwargs):
+        raise AssertionError("query must not call an LLM provider or planner")
+
+    monkeypatch.setattr("llmwiki.llm.create_provider", fail_provider)
+    monkeypatch.setattr("llmwiki.planner.create_provider", fail_provider)
+
+    assert main(["query", "retrieval citation anchors", "--root", str(root)]) == 0
+    out = capsys.readouterr().out
+
+    assert "Retrieval context" in out
+    assert "source_id=" in out
+
+
 def test_query_reuses_retrieve_for_natural_chinese_question(capsys):
     root = setup_seeded_workspace()
     capsys.readouterr()

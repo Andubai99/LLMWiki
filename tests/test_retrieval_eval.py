@@ -107,6 +107,22 @@ def test_evaluate_retrieval_computes_metrics_and_contract(capsys):
     assert not contains_secret_text(data)
 
 
+def test_eval_retrieval_does_not_call_llm_planner_or_provider(monkeypatch, capsys):
+    root = setup_minimal_workspace(capsys)
+
+    def fail_provider(*args, **kwargs):
+        raise AssertionError("retrieval eval must not call an LLM provider or planner")
+
+    monkeypatch.setattr("llmwiki.llm.create_provider", fail_provider)
+    monkeypatch.setattr("llmwiki.planner.create_provider", fail_provider)
+
+    assert main(["eval", "retrieval", "--root", str(root), "--dataset", str(DATASET)]) == 0
+    out = capsys.readouterr().out
+
+    assert "Retrieval eval:" in out
+    assert "Cases:" in out
+
+
 def test_eval_no_evidence_case_passes_when_contexts_are_empty(capsys, tmp_path: Path):
     from llmwiki.retrieval_eval import evaluate_retrieval
 
