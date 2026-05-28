@@ -175,19 +175,13 @@ class ExactFormulaSymbolRetriever:
                 select distinct c.claim_id, c.source_id, c.claim_text, c.citation_locator, c.confidence_status
                 from claims c
                 left join sources s on s.source_id = c.source_id
-                left join pages p on p.page_id = c.source_id or p.page_id in (
-                    select target_id from aliases where target_id = p.page_id
-                )
-                left join aliases a on a.target_id = p.page_id
                 where lower(c.claim_text) like ? escape '\\'
                    or lower(c.citation_locator) like ? escape '\\'
                    or lower(coalesce(s.title, '')) like ? escape '\\'
-                   or lower(coalesce(p.title, '')) like ? escape '\\'
-                   or lower(coalesce(a.alias, '')) like ? escape '\\'
                 order by c.created_at, c.claim_id
                 limit ?
                 """,
-                (*(like_pattern(span) for _ in range(5)), max(limit * 4, 20)),
+                (*(like_pattern(span) for _ in range(3)), max(limit * 4, 20)),
             ).fetchall()
             for row in rows:
                 candidate = candidate_from_claim_row(
@@ -200,6 +194,33 @@ class ExactFormulaSymbolRetriever:
                     matched_terms=[span],
                 )
                 remember_candidate(candidates, candidate)
+            page_rows = conn.execute(
+                """
+                select distinct p.page_id, p.path, p.page_type, p.title
+                from pages p
+                left join aliases a on a.target_id = p.page_id
+                where lower(p.title) like ? escape '\\'
+                   or lower(coalesce(a.alias, '')) like ? escape '\\'
+                   or lower(coalesce(a.normalized_alias, '')) like ? escape '\\'
+                order by p.page_type, p.title
+                limit ?
+                """,
+                (*(like_pattern(span) for _ in range(3)), max(limit * 2, 20)),
+            ).fetchall()
+            for page_row in page_rows:
+                page = page_dict(page_row)
+                for source_id in source_ids_for_page(conn, page):
+                    for row in claim_rows_for_source(conn, source_id):
+                        candidate = candidate_from_claim_row(
+                            conn,
+                            row,
+                            page_info=page,
+                            raw_score=1.0,
+                            retriever=self.name,
+                            reasons=[f"exact_span:{span}", "page_source_claims"],
+                            matched_terms=[span],
+                        )
+                        remember_candidate(candidates, candidate)
         return ranked_result(self.name, candidates.values(), limit, filters)
 
 

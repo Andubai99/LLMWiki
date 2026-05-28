@@ -194,6 +194,18 @@ def test_exact_formula_symbol_retriever_preserves_symbols():
     assert any("exact_span:H₂O" in reason for candidate in result.candidates for reason in candidate.reasons)
 
 
+def test_exact_formula_symbol_retriever_does_not_pollute_plain_alias_matches():
+    root = setup_seeded_workspace()
+    query = analyze_query("草莓应该怎么保存？", catalog_terms=["草莓", "橙子"])
+
+    with connect_catalog(root) as conn:
+        result = ExactFormulaSymbolRetriever().retrieve(conn, query, limit=20, filters=RetrievalFilters())
+
+    claim_ids = {candidate.claim_id for candidate in result.candidates}
+    assert "clm_strawberry_storage" in claim_ids
+    assert "clm_orange_vitamin_c" not in claim_ids
+
+
 def test_graph_retriever_expands_one_hop_from_seed_candidates():
     root = setup_seeded_workspace()
     seed = RetrievalCandidate(
