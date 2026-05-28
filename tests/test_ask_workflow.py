@@ -7,6 +7,7 @@ from pathlib import Path
 from llmwiki.cli import main
 from llmwiki.retrieval import retrieve_context
 from tests.helpers import make_workspace
+from tests.test_hybrid_retrieval import setup_seeded_workspace
 from tests.test_query_lint_doctor import add_ingest_apply, fixture
 
 
@@ -107,6 +108,30 @@ def test_ask_answers_from_retrieved_evidence_and_does_not_write_by_default(monke
     assert "Warnings: none" in out
     assert "Writeback:" in out
     assert "Not written" in out
+    assert synthesis_pages(root) == []
+
+
+def test_ask_answers_natural_chinese_question_from_hybrid_retrieval(monkeypatch, capsys):
+    root = setup_seeded_workspace()
+    context = retrieve_context(root, "草莓应该怎么保存？", limit=1)["contexts"][0]
+    calls = patch_answer_provider(monkeypatch, answer_payload(context, title="草莓保存方法"))
+    capsys.readouterr()
+
+    assert main(["ask", "草莓应该怎么保存？", "--root", str(root), "--no-writeback", "--json"]) == 0
+    data = json.loads(capsys.readouterr().out)
+
+    assert calls
+    assert data["status"] == "answered"
+    assert data["citations"] == [
+        {
+            "claim_id": context["claim_id"],
+            "source_id": context["source_id"],
+            "citation_locator": context["citation_locator"],
+            "page_path": context["page_path"],
+        }
+    ]
+    assert context["claim_id"] == "clm_strawberry_storage"
+    assert data["writeback"] == {"status": "skipped", "run_id": None, "pages": []}
     assert synthesis_pages(root) == []
 
 
