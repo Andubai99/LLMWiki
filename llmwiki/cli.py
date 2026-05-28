@@ -196,7 +196,7 @@ def cmd_ask(args: argparse.Namespace) -> int:
         print(format_ask_result(result, writeback, writeback_error))
     if writeback_error is not None:
         return 1
-    return 0 if result.status in {"answered", "insufficient_evidence"} else 1
+    return 0 if result.status in {"answered", "insufficient_evidence", "planned_insufficient_evidence"} else 1
 
 
 def cmd_eval_retrieval(args: argparse.Namespace) -> int:
@@ -463,6 +463,12 @@ def format_ask_result(
         lines.append(result.answer)
     else:
         lines.append(result.status)
+
+    if result.planning:
+        lines.extend(["", "Planning:"])
+        lines.append(f"- status: {result.planning.get('status', '')}")
+        lines.append(f"- subqueries: {result.planning.get('subquery_count', 0)}")
+        lines.append(f"- evidence contexts: {result.planning.get('retrieved_context_count', 0)}")
 
     lines.extend(["", "Citations:"])
     if result.citations:

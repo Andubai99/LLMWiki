@@ -7,8 +7,9 @@ from pathlib import Path
 from typing import Any
 
 from .llm import create_provider, load_llm_config
+from .planned_retrieval import PlannedRetrievalResult, execute_query_plan
+from .planner import PlanningOptions, PlanningResult, plan_question
 from .providers.base import LLMProviderError
-from .retrieval import retrieve_context
 
 
 @dataclass(frozen=True)
@@ -48,10 +49,11 @@ class AskResult:
     suggested_title: str = ""
     contexts: list[dict[str, Any]] = field(default_factory=list)
     relationships: list[dict[str, Any]] = field(default_factory=list)
+    planning: dict[str, Any] | None = None
     error: str = ""
 
     def to_dict(self) -> dict[str, object]:
-        return {
+        data: dict[str, object] = {
             "question": self.question,
             "answer": self.answer,
             "status": self.status,
@@ -59,29 +61,49 @@ class AskResult:
             "warnings": self.warnings,
             "writeback": {"status": "skipped", "run_id": None, "pages": []},
         }
+        if self.planning is not None:
+            data["planning"] = self.planning
+        return data
 
 
 def answer_question(root: Path, question: str, options: AskOptions | None = None) -> AskResult:
     root = root.resolve()
     options = options or AskOptions()
-    retrieval = retrieve_context(
+    planning = plan_question(
         root,
         question,
-        limit=options.limit,
-        source_id=options.source_id,
-        page_type=options.page_type,
-        confidence=options.confidence,
+        PlanningOptions(
+            limit=options.limit,
+            source_id=options.source_id,
+            page_type=options.page_type,
+            confidence=options.confidence,
+        ),
     )
-    contexts = list(retrieval.get("contexts", []))
-    relationships = list(retrieval.get("relationships", []))
-    warnings = [str(warning) for warning in retrieval.get("warnings", [])]
-    if not contexts:
+    if planning.status != "planned" or planning.plan is None:
+        planning_dict = planning.to_dict()
         return AskResult(
             question=question,
-            status="insufficient_evidence",
+            status=planning.status,
+            warnings=[planning.error] if planning.error else planning.warnings,
+            planning=planning_dict,
+            error=planning.error,
+        )
+
+    planned_retrieval = execute_query_plan(root, planning.plan, options)
+    retrieval = planned_retrieval.to_retrieval_dict(question)
+    planning_dict = planning_output(planning, planned_retrieval)
+    contexts = list(planned_retrieval.contexts)
+    relationships = list(planned_retrieval.relationships)
+    warnings = [str(warning) for warning in planned_retrieval.warnings]
+    if not contexts:
+        planning_dict["status"] = "planned_insufficient_evidence"
+        return AskResult(
+            question=question,
+            status="planned_insufficient_evidence",
             warnings=warnings or ["No matching claims found."],
             contexts=contexts,
             relationships=relationships,
+            planning=planning_dict,
         )
 
     config = load_llm_config(root)
@@ -96,14 +118,14 @@ def answer_question(root: Path, question: str, options: AskOptions | None = None
             response = provider.complete(repair_messages, schema=answer_schema())
             payload = parse_llm_answer(str(response.get("content") or ""))
         except Exception as exc:
-            return failed_result(question, "llm_failed", exc, warnings, contexts, relationships)
+            return failed_result(question, "llm_failed", exc, warnings, contexts, relationships, planning_dict)
     except (LLMProviderError, ValueError) as exc:
-        return failed_result(question, "llm_failed", exc, warnings, contexts, relationships)
+        return failed_result(question, "llm_failed", exc, warnings, contexts, relationships, planning_dict)
 
     try:
         citations = validate_answer_citations(payload, contexts)
     except ValueError as exc:
-        return failed_result(question, "invalid_citations", exc, warnings, contexts, relationships)
+        return failed_result(question, "invalid_citations", exc, warnings, contexts, relationships, planning_dict)
 
     if not citations:
         return failed_result(
@@ -113,6 +135,7 @@ def answer_question(root: Path, question: str, options: AskOptions | None = None
             warnings,
             contexts,
             relationships,
+            planning_dict,
         )
 
     return AskResult(
@@ -127,7 +150,20 @@ def answer_question(root: Path, question: str, options: AskOptions | None = None
         suggested_title=str(payload.get("suggested_title") or ""),
         contexts=contexts,
         relationships=relationships,
+        planning=planning_dict,
     )
+
+
+def planning_output(
+    planning: PlanningResult,
+    planned_retrieval: PlannedRetrievalResult | None = None,
+) -> dict[str, Any]:
+    data = dict(planning.to_dict())
+    if planned_retrieval is not None:
+        data["retrieved_context_count"] = len(planned_retrieval.contexts)
+        data["warnings"] = [*list(data.get("warnings", [])), *planned_retrieval.warnings]
+        data["planned_retrieval"] = planned_retrieval.diagnostics
+    return data
 
 
 def build_answer_prompt(question: str, retrieval: dict[str, Any]) -> list[dict[str, str]]:
@@ -222,6 +258,7 @@ def failed_result(
     warnings: list[str],
     contexts: list[dict[str, Any]],
     relationships: list[dict[str, Any]],
+    planning: dict[str, Any] | None = None,
 ) -> AskResult:
     return AskResult(
         question=question,
@@ -229,6 +266,7 @@ def failed_result(
         warnings=[*warnings, sanitize_error(exc)],
         contexts=contexts,
         relationships=relationships,
+        planning=planning,
         error=sanitize_error(exc),
     )
 

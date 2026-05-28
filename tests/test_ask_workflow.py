@@ -50,6 +50,28 @@ def answer_payload(context: dict[str, object], title: str = "Citation Anchors") 
     }
 
 
+def planner_payload(*queries: str) -> dict[str, object]:
+    return {
+        "schema_version": "query_plan.v2.5",
+        "intent": "compare" if len(queries) > 1 else "lookup",
+        "question_summary": "Plan local retrieval subqueries.",
+        "entities": [],
+        "concepts": [],
+        "subqueries": [
+            {
+                "query": query,
+                "purpose": f"retrieve evidence for {query}",
+                "filters": {"source_id": None, "page_type": None, "confidence": "cited"},
+                "required": True,
+            }
+            for query in queries
+        ],
+        "required_evidence": [{"description": "source-backed local evidence", "coverage": "best_effort"}],
+        "uncertainties": [],
+        "warnings": [],
+    }
+
+
 def patch_answer_provider(monkeypatch, payload: dict[str, object]) -> list[list[dict[str, str]]]:
     calls: list[list[dict[str, str]]] = []
 
@@ -57,6 +79,16 @@ def patch_answer_provider(monkeypatch, payload: dict[str, object]) -> list[list[
         return FakeProvider(payload, calls)
 
     monkeypatch.setattr("llmwiki.answer.create_provider", fake_create_provider)
+    return calls
+
+
+def patch_planner_provider(monkeypatch, payload: dict[str, object]) -> list[list[dict[str, str]]]:
+    calls: list[list[dict[str, str]]] = []
+
+    def fake_create_provider(config, root=None):
+        return FakeProvider(payload, calls)
+
+    monkeypatch.setattr("llmwiki.planner.create_provider", fake_create_provider)
     return calls
 
 
@@ -72,25 +104,28 @@ def synthesis_pages(root: Path) -> list[Path]:
     return sorted((root / "wiki" / "syntheses").glob("*.md"))
 
 
-def test_ask_without_evidence_returns_insufficient_evidence_without_llm(monkeypatch, capsys):
+def test_ask_without_evidence_returns_planned_insufficient_evidence_without_answer_llm(monkeypatch, capsys):
     root = make_workspace()
     assert main(["init", "--root", str(root)]) == 0
-    calls = patch_answer_provider(monkeypatch, {})
+    planner_calls = patch_planner_provider(monkeypatch, planner_payload("no matching claim should exist"))
+    answer_calls = patch_answer_provider(monkeypatch, {})
     capsys.readouterr()
 
     assert main(["ask", "no matching claim should exist", "--root", str(root)]) == 0
     out = capsys.readouterr().out
 
     assert "Question: no matching claim should exist" in out
-    assert "insufficient_evidence" in out
+    assert "planned_insufficient_evidence" in out
     assert "No matching claims found" in out
-    assert calls == []
+    assert planner_calls
+    assert answer_calls == []
     assert synthesis_pages(root) == []
 
 
 def test_ask_answers_from_retrieved_evidence_and_does_not_write_by_default(monkeypatch, capsys):
     root = make_workspace()
     context = setup_retrieval_workspace(root)
+    patch_planner_provider(monkeypatch, planner_payload("RAG citation anchors"))
     calls = patch_answer_provider(monkeypatch, answer_payload(context))
     capsys.readouterr()
 
@@ -113,7 +148,8 @@ def test_ask_answers_from_retrieved_evidence_and_does_not_write_by_default(monke
 
 def test_ask_answers_natural_chinese_question_from_hybrid_retrieval(monkeypatch, capsys):
     root = setup_seeded_workspace()
-    context = retrieve_context(root, "草莓应该怎么保存？", limit=1)["contexts"][0]
+    context = retrieve_context(root, "草莓 保存", limit=1)["contexts"][0]
+    patch_planner_provider(monkeypatch, planner_payload("草莓 保存"))
     calls = patch_answer_provider(monkeypatch, answer_payload(context, title="草莓保存方法"))
     capsys.readouterr()
 
@@ -132,6 +168,27 @@ def test_ask_answers_natural_chinese_question_from_hybrid_retrieval(monkeypatch,
     ]
     assert context["claim_id"] == "clm_strawberry_storage"
     assert data["writeback"] == {"status": "skipped", "run_id": None, "pages": []}
+    assert data["planning"]["schema_version"] == "query_plan.v2.5"
+    assert data["planning"]["subquery_count"] == 1
+    assert synthesis_pages(root) == []
+
+
+def test_ask_plans_comparison_question_into_multiple_subqueries(monkeypatch, capsys):
+    root = setup_seeded_workspace()
+    context = retrieve_context(root, "橙子 维生素 C", limit=1)["contexts"][0]
+    patch_planner_provider(monkeypatch, planner_payload("草莓 维生素 C", "橙子 维生素 C", "苹果 维生素 C"))
+    calls = patch_answer_provider(monkeypatch, answer_payload(context, title="水果维生素 C 比较"))
+    capsys.readouterr()
+
+    assert main(["ask", "这五种水果里哪种更适合补充维生素 C？", "--root", str(root), "--no-writeback", "--json"]) == 0
+    data = json.loads(capsys.readouterr().out)
+
+    assert calls
+    assert data["status"] == "answered"
+    assert data["planning"]["subquery_count"] == 3
+    assert data["planning"]["retrieved_context_count"] >= 3
+    cited_ids = {item["claim_id"] for item in data["citations"]}
+    assert context["claim_id"] in cited_ids
     assert synthesis_pages(root) == []
 
 
@@ -139,13 +196,15 @@ def test_ask_json_output_is_stable_and_does_not_leak_secrets(monkeypatch, capsys
     root = make_workspace()
     context = setup_retrieval_workspace(root)
     monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-test-secret-should-not-print")
+    patch_planner_provider(monkeypatch, planner_payload("RAG citation anchors"))
     patch_answer_provider(monkeypatch, answer_payload(context))
     capsys.readouterr()
 
     assert main(["ask", "RAG citation anchors", "--root", str(root), "--json"]) == 0
     data = json.loads(capsys.readouterr().out)
 
-    assert set(data) == {"question", "answer", "status", "citations", "warnings", "writeback"}
+    assert {"question", "answer", "status", "citations", "warnings", "writeback"}.issubset(data)
+    assert "planning" in data
     assert data["question"] == "RAG citation anchors"
     assert data["status"] == "answered"
     assert data["answer"].startswith("RAG needs citation anchors")
@@ -167,6 +226,7 @@ def test_ask_json_output_is_stable_and_does_not_leak_secrets(monkeypatch, capsys
 def test_ask_rejects_llm_citations_outside_retrieved_evidence(monkeypatch, capsys):
     root = make_workspace()
     setup_retrieval_workspace(root)
+    patch_planner_provider(monkeypatch, planner_payload("RAG citation anchors"))
     patch_answer_provider(
         monkeypatch,
         {
@@ -194,9 +254,42 @@ def test_ask_rejects_llm_citations_outside_retrieved_evidence(monkeypatch, capsy
     assert synthesis_pages(root) == []
 
 
+def test_ask_rejects_invalid_planner_without_answer_llm(monkeypatch, capsys):
+    root = setup_seeded_workspace()
+    payload = planner_payload("草莓 维生素 C")
+    payload["subqueries"][0]["filters"]["source_id"] = "src_missing"  # type: ignore[index]
+    patch_planner_provider(monkeypatch, payload)
+    answer_calls = patch_answer_provider(monkeypatch, {})
+    capsys.readouterr()
+
+    assert main(["ask", "这五种水果里哪种更适合补充维生素 C？", "--root", str(root), "--json"]) == 1
+    data = json.loads(capsys.readouterr().out)
+
+    assert data["status"] == "planning_invalid"
+    assert answer_calls == []
+    assert data["planning"]["status"] == "planning_invalid"
+    assert synthesis_pages(root) == []
+
+
+def test_ask_planned_retrieval_without_evidence_does_not_call_answer_llm(monkeypatch, capsys):
+    root = setup_seeded_workspace()
+    patch_planner_provider(monkeypatch, planner_payload("zzzz_unique_no_match_12345"))
+    answer_calls = patch_answer_provider(monkeypatch, {})
+    capsys.readouterr()
+
+    assert main(["ask", "zzzz_unique_no_match_12345", "--root", str(root), "--no-writeback", "--json"]) == 0
+    data = json.loads(capsys.readouterr().out)
+
+    assert data["status"] == "planned_insufficient_evidence"
+    assert answer_calls == []
+    assert data["planning"]["status"] == "planned_insufficient_evidence"
+    assert synthesis_pages(root) == []
+
+
 def test_ask_writeback_applies_synthesis_page_and_catalog(monkeypatch, capsys):
     root = make_workspace()
     context = setup_retrieval_workspace(root)
+    patch_planner_provider(monkeypatch, planner_payload("RAG citation anchors"))
     patch_answer_provider(monkeypatch, answer_payload(context, title="Citation Anchors"))
     capsys.readouterr()
 
@@ -252,6 +345,7 @@ def test_ask_writeback_preserves_contradictions_in_synthesis(monkeypatch, capsys
     payload["short_answer"] = "The local evidence disagrees about whether every workflow needs citation anchors."
     payload["uncertainties"] = ["Sources disagree about whether every workflow requires citation anchors."]
     payload["conflicts"] = ["A conflict is recorded between retrieved claims."]
+    patch_planner_provider(monkeypatch, planner_payload("citation anchors every workflow"))
     patch_answer_provider(monkeypatch, payload)
     capsys.readouterr()
 
@@ -268,6 +362,7 @@ def test_ask_writeback_marks_run_failed_when_apply_rejects_patch(monkeypatch, ca
 
     root = make_workspace()
     context = setup_retrieval_workspace(root)
+    patch_planner_provider(monkeypatch, planner_payload("RAG citation anchors"))
     patch_answer_provider(monkeypatch, answer_payload(context, title="Rejected Synthesis"))
     before_index = (root / "wiki" / "index.md").read_text(encoding="utf-8")
     before_log = (root / "wiki" / "log.md").read_text(encoding="utf-8")
