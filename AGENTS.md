@@ -35,14 +35,17 @@ This repository is a local, source-backed research wiki. Treat it as a knowledge
 - weak/uncited claims must not be treated as strong evidence by callers or agents.
 - `contradicts` relationships must be exposed to callers; do not hide conflicts or silently choose a winner.
 - Retrieval must not call external LLM APIs by default.
-- LLM query planning starts in V2.5; do not introduce LLM planning, rewriting, or evidence generation into default V2.4 retrieval/query/eval behavior.
+- LLM query planning is allowed for `llmwiki ask` in V2.5, but default `retrieve`, `query`, and `eval retrieval` must not call external LLM APIs.
+- Planner output must be schema-validated before any retrieval execution.
+- Planner output is not source-backed evidence; do not treat planner intent, entities, subqueries, filters, or required evidence descriptions as claims or citations.
+- Do not add domain-specific query rules, keyword intent classifiers, or term boosts for V2.5.
 - `llmwiki eval retrieval` is the standard development quality check for retrieval changes.
 - Retrieval eval must not call external LLM APIs by default.
 - Retrieval eval must not write `wiki/`, `staging/`, `sources/`, or catalog mutations; it reads the local catalog and committed eval datasets.
 - Run retrieval eval before and after retrieval quality changes, and compare metrics instead of relying on ad hoc questions.
 - Eval output must not include API keys, secret config contents, or sensitive local files.
 - The committed eval dataset is the golden local suite; large public benchmark downloads should remain gitignored raw material unless explicitly curated into committed eval cases.
-- `ask` may call the configured LLM only after retrieving local evidence from wiki/catalog.
+- `ask` may call the configured LLM for query planning before retrieval, then must run local retrieve against wiki/catalog before answer generation.
 - `ask` answers must be grounded in retrieved local evidence and must cite retrieved claim ids, source ids, and citation locators.
 - If `ask` writes a useful answer back, synthesis writeback must go through staging/apply and must not directly mutate formal wiki pages.
 - weak/uncited and contradicting evidence must remain visible in ask answers and synthesis pages.
