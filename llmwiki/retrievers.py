@@ -85,14 +85,15 @@ class BM25ClaimRetriever:
             except Exception:
                 rows = []
             for row in rows:
+                claim_terms = matched_terms(row_search_text(row), terms)
                 candidate = candidate_from_claim_row(
                     conn,
                     row,
                     page_info=source_page_info(conn, str(row["source_id"])),
-                    raw_score=1.0,
+                    raw_score=relevance_score(1.0, claim_terms, query),
                     retriever=self.name,
                     reasons=["bm25_fts"],
-                    matched_terms=matched_terms(str(row["claim_text"]), terms),
+                    matched_terms=claim_terms,
                 )
                 remember_candidate(candidates, candidate)
 
@@ -111,14 +112,15 @@ class BM25ClaimRetriever:
                 (*params, fetch_limit),
             ).fetchall()
             for row in rows:
+                claim_terms = matched_terms(row_search_text(row), like_terms)
                 candidate = candidate_from_claim_row(
                     conn,
                     row,
                     page_info=source_page_info(conn, str(row["source_id"])),
-                    raw_score=0.5,
+                    raw_score=relevance_score(0.5, claim_terms, query),
                     retriever=self.name,
                     reasons=["like_match"],
-                    matched_terms=matched_terms(str(row["claim_text"]), like_terms),
+                    matched_terms=claim_terms,
                 )
                 remember_candidate(candidates, candidate)
 
@@ -141,14 +143,16 @@ class CatalogTitleAliasRetriever:
         for page, reason in page_matches:
             for source_id in source_ids_for_page(conn, page):
                 for row in claim_rows_for_source(conn, source_id):
+                    claim_terms = matched_terms(row_search_text(row), query.all_terms())
+                    base_score = 1.0 if reason.startswith("alias_exact") else 0.8
                     candidate = candidate_from_claim_row(
                         conn,
                         row,
                         page_info=page,
-                        raw_score=1.0 if reason.startswith("alias_exact") else 0.8,
+                        raw_score=relevance_score(base_score, claim_terms, query),
                         retriever=self.name,
                         reasons=[reason, "page_source_claims"],
-                        matched_terms=query.catalog_terms or query.text_terms,
+                        matched_terms=claim_terms or query.catalog_terms or query.text_terms,
                     )
                     remember_candidate(candidates, candidate)
         return ranked_result(self.name, candidates.values(), limit, filters)
@@ -184,14 +188,15 @@ class ExactFormulaSymbolRetriever:
                 (*(like_pattern(span) for _ in range(3)), max(limit * 4, 20)),
             ).fetchall()
             for row in rows:
+                claim_terms = matched_terms(row_search_text(row), query.all_terms())
                 candidate = candidate_from_claim_row(
                     conn,
                     row,
                     page_info=source_page_info(conn, str(row["source_id"])),
-                    raw_score=1.0,
+                    raw_score=relevance_score(1.0, claim_terms or [span], query),
                     retriever=self.name,
                     reasons=[f"exact_span:{span}"],
-                    matched_terms=[span],
+                    matched_terms=claim_terms or [span],
                 )
                 remember_candidate(candidates, candidate)
             page_rows = conn.execute(
@@ -211,14 +216,15 @@ class ExactFormulaSymbolRetriever:
                 page = page_dict(page_row)
                 for source_id in source_ids_for_page(conn, page):
                     for row in claim_rows_for_source(conn, source_id):
+                        claim_terms = matched_terms(row_search_text(row), query.all_terms())
                         candidate = candidate_from_claim_row(
                             conn,
                             row,
                             page_info=page,
-                            raw_score=1.0,
+                            raw_score=relevance_score(1.0, claim_terms or [span], query),
                             retriever=self.name,
                             reasons=[f"exact_span:{span}", "page_source_claims"],
-                            matched_terms=[span],
+                            matched_terms=claim_terms or [span],
                         )
                         remember_candidate(candidates, candidate)
         return ranked_result(self.name, candidates.values(), limit, filters)
@@ -535,6 +541,32 @@ def merge_candidates(left: RetrievalCandidate, right: RetrievalCandidate) -> Ret
         reasons=unique([*left.reasons, *right.reasons]),
         matched_terms=unique([*(left.matched_terms or []), *(right.matched_terms or [])]),
     )
+
+
+def row_search_text(row) -> str:
+    return f"{row['claim_text']} {row['citation_locator'] or ''}"
+
+
+def relevance_score(base_score: float, claim_terms: list[str], query: RetrievalQuery) -> float:
+    if not claim_terms:
+        return base_score
+    catalog_terms = set(query.catalog_terms)
+    text_terms = set(query.text_terms)
+    expanded_terms = set(query.expanded_terms)
+    exact_terms = set([*query.formula_spans, *query.symbol_spans])
+    score = base_score
+    for term in unique(claim_terms):
+        if term in expanded_terms:
+            score += 0.25
+        elif term in text_terms and term not in catalog_terms:
+            score += 0.2
+        elif term in exact_terms:
+            score += 0.2
+        elif term in catalog_terms:
+            score += 0.05
+        elif len(term) >= 2:
+            score += 0.03
+    return round(min(score, base_score + 1.0), 6)
 
 
 def matched_terms(text: str, terms: list[str]) -> list[str]:

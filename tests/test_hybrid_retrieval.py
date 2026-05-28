@@ -16,6 +16,7 @@ from llmwiki.retrievers import (
     RetrieverResult,
     reciprocal_rank_fusion,
 )
+from llmwiki.retrieval import retrieve_context
 from tests.helpers import make_workspace
 
 
@@ -37,6 +38,12 @@ def setup_seeded_workspace() -> Path:
             concept_title="草莓",
             concept_path="wiki/concepts/草莓.md",
             claims=[
+                (
+                    "clm_strawberry_overview",
+                    "草莓是一种常见的浆果类水果，颜色鲜红，味道酸甜。",
+                    "line:5;section:1. 概述;paragraph:1",
+                    "cited",
+                ),
                 (
                     "clm_strawberry_storage",
                     "草莓适合冷藏保存，购买后应尽快食用，并尽量保持干燥。",
@@ -300,3 +307,11 @@ def test_hybrid_retriever_respects_source_page_type_and_confidence_filters():
     assert all(candidate.source_id == "src_99ab0495789d" for candidate in result.candidates)
     assert all(candidate.page_type == "concept" for candidate in result.candidates)
     assert all(candidate.confidence_status == "cited" for candidate in result.candidates)
+
+
+def test_retrieve_ranks_specific_natural_chinese_evidence_before_generic_page_claims():
+    root = setup_seeded_workspace()
+
+    result = retrieve_context(root, "草莓应该怎么保存？", limit=1)
+
+    assert result["contexts"][0]["claim_id"] == "clm_strawberry_storage"
