@@ -25,19 +25,27 @@ This repository is a local, source-backed research wiki. Treat it as a knowledge
 ## Retrieval Interface
 
 - `llmwiki retrieve` is the standard evidence interface for external RAG systems, agents, and LLM prompts.
+- `llmwiki retrieve` uses deterministic hybrid local retrieval: BM25/FTS, catalog title/alias/source title matching, one-hop graph relationships, and exact formula/symbol spans fused with RRF.
+- `llmwiki query` is the human-readable view of `retrieve`; it must reuse the same local evidence path instead of maintaining a separate weak search implementation.
 - `llmwiki ask` is the standard local evidence question-answering interface for users.
 - Retrieval output must only expose claims, citations, page paths, and relationships that exist in the local catalog/wiki.
 - Do not forge claim ids, source ids, citation locators, page paths, scores, or relationships.
+- Retrieval normalization must be Unicode-aware and must not discard multilingual text, formulas, symbols, or emoji query features.
+- Formula/symbol evidence such as `H2O`, `E=mc2`, Greek letters, ratios, and math notation must remain searchable and citation-backed.
 - weak/uncited claims must not be treated as strong evidence by callers or agents.
 - `contradicts` relationships must be exposed to callers; do not hide conflicts or silently choose a winner.
 - Retrieval must not call external LLM APIs by default.
+- LLM query planning is allowed for `llmwiki ask` in V2.5, but default `retrieve`, `query`, and `eval retrieval` must not call external LLM APIs.
+- Planner output must be schema-validated before any retrieval execution.
+- Planner output is not source-backed evidence; do not treat planner intent, entities, subqueries, filters, or required evidence descriptions as claims or citations.
+- Do not add domain-specific query rules, keyword intent classifiers, or term boosts for V2.5.
 - `llmwiki eval retrieval` is the standard development quality check for retrieval changes.
 - Retrieval eval must not call external LLM APIs by default.
 - Retrieval eval must not write `wiki/`, `staging/`, `sources/`, or catalog mutations; it reads the local catalog and committed eval datasets.
 - Run retrieval eval before and after retrieval quality changes, and compare metrics instead of relying on ad hoc questions.
 - Eval output must not include API keys, secret config contents, or sensitive local files.
 - The committed eval dataset is the golden local suite; large public benchmark downloads should remain gitignored raw material unless explicitly curated into committed eval cases.
-- `ask` may call the configured LLM only after retrieving local evidence from wiki/catalog.
+- `ask` may call the configured LLM for query planning before retrieval, then must run local retrieve against wiki/catalog before answer generation.
 - `ask` answers must be grounded in retrieved local evidence and must cite retrieved claim ids, source ids, and citation locators.
 - If `ask` writes a useful answer back, synthesis writeback must go through staging/apply and must not directly mutate formal wiki pages.
 - weak/uncited and contradicting evidence must remain visible in ask answers and synthesis pages.

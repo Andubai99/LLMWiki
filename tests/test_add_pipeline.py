@@ -103,6 +103,11 @@ def test_add_keeps_same_title_concept_and_entity_with_distinct_page_ids(monkeypa
     assert (root / "wiki" / "concepts" / "orange.md").exists()
     assert (root / "wiki" / "entities" / "orange.md").exists()
 
+    assert main(["lint", "--root", str(root)]) == 0
+    lint = capsys.readouterr().out
+    assert "duplicate alias: 0" in lint
+    assert "shared concept/entity alias: 1" in lint
+
 
 def test_add_runs_llm_ingest_apply_and_summarizes_result(monkeypatch, capsys):
     root = make_workspace()
@@ -142,7 +147,14 @@ def test_add_runs_llm_ingest_apply_and_summarizes_result(monkeypatch, capsys):
     assert rows(root, "select claim_id from claims")
     assert rows(root, "select path from pages where page_type = 'source'")
     assert rows(root, "select path from pages where page_type = 'concept'")
-    assert rows(root, "select from_page, to_page from links")
+    link_rows = rows(root, "select from_page, to_page from links order by from_page, to_page")
+    assert link_rows
+    assert {tuple(row) for row in link_rows} == {
+        (source_id, "concept:autonomous-add"),
+        ("concept:autonomous-add", source_id),
+    }
+    assert all(not row["from_page"].startswith("wiki/") for row in link_rows)
+    assert all(not row["to_page"].startswith("wiki/") for row in link_rows)
     assert rows(root, "select relationship_type from relationships")
     assert f"Applied ingest run `{run_id}`" in (root / "wiki" / "log.md").read_text(encoding="utf-8")
 

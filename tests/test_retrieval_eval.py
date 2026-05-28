@@ -7,10 +7,12 @@ import pytest
 
 from llmwiki.cli import main
 from tests.helpers import make_workspace
+from tests.test_hybrid_retrieval import setup_seeded_workspace
 from tests.test_query_lint_doctor import add_ingest_apply, fixture
 
 
 DATASET = Path(__file__).resolve().parent / "evals" / "retrieval_v2_3.jsonl"
+FRUIT_DATASET = Path(__file__).resolve().parent / "evals" / "retrieval_v2_4_fruits.jsonl"
 EVAL_FIXTURES = (
     "minimal_source.md",
     "regression_alias.md",
@@ -58,6 +60,22 @@ def test_load_eval_cases_from_committed_jsonl():
     assert any(case.expected_status == "no_evidence" for case in cases)
 
 
+def test_load_v24_fruit_eval_cases_from_committed_jsonl():
+    from llmwiki.retrieval_eval import load_eval_cases
+
+    cases = load_eval_cases(FRUIT_DATASET)
+
+    assert [case.id for case in cases] == [
+        "fruit_zh_strawberry_storage_natural",
+        "fruit_zh_vitamin_c_comparison",
+        "fruit_zh_apple_orange_vitamin_c",
+        "fruit_zh_banana_blood_sugar",
+        "fruit_zh_mango_energy_sugar",
+    ]
+    assert cases[0].question == "草莓应该怎么保存？"
+    assert "src_99ab0495789d" in cases[0].expected_source_ids
+
+
 def test_load_eval_cases_reports_jsonl_line_errors(tmp_path: Path):
     from llmwiki.retrieval_eval import load_eval_cases
 
@@ -87,6 +105,22 @@ def test_evaluate_retrieval_computes_metrics_and_contract(capsys):
     assert data["evidence_contract"]["citation_locator_presence"] == 1.0
     assert 0 <= data["evidence_contract"]["relationship_validity"] <= 1
     assert not contains_secret_text(data)
+
+
+def test_eval_retrieval_does_not_call_llm_planner_or_provider(monkeypatch, capsys):
+    root = setup_minimal_workspace(capsys)
+
+    def fail_provider(*args, **kwargs):
+        raise AssertionError("retrieval eval must not call an LLM provider or planner")
+
+    monkeypatch.setattr("llmwiki.llm.create_provider", fail_provider)
+    monkeypatch.setattr("llmwiki.planner.create_provider", fail_provider)
+
+    assert main(["eval", "retrieval", "--root", str(root), "--dataset", str(DATASET)]) == 0
+    out = capsys.readouterr().out
+
+    assert "Retrieval eval:" in out
+    assert "Cases:" in out
 
 
 def test_eval_no_evidence_case_passes_when_contexts_are_empty(capsys, tmp_path: Path):
@@ -211,6 +245,38 @@ def test_eval_cli_outputs_human_and_json_reports(capsys):
     assert not contains_secret_text(data)
 
 
+def test_evaluate_v24_natural_chinese_case_includes_hybrid_diagnostics(capsys, tmp_path: Path):
+    from llmwiki.retrieval_eval import evaluate_retrieval
+
+    root = setup_seeded_workspace()
+    capsys.readouterr()
+    dataset = write_jsonl(
+        tmp_path / "fruit-v24.jsonl",
+        [
+            {
+                "id": "fruit_zh_strawberry_storage_natural",
+                "question": "草莓应该怎么保存？",
+                "expected_status": "has_evidence",
+                "expected_source_ids": ["src_99ab0495789d"],
+                "expected_page_ids": ["concept:草莓"],
+                "expected_terms": ["草莓", "保存", "冷藏"],
+                "must_expose_relationship_types": ["supports"],
+            }
+        ],
+    )
+
+    summary = evaluate_retrieval(root, dataset, limit=5)
+    data = summary.to_dict()
+    case = data["cases"][0]
+
+    assert data["operational"]["llm_calls"] == 0
+    assert case["passed"]
+    assert case["failure_stage"] is None
+    assert case["diagnostics"]["retrievers"]["catalog_title_alias"]["candidate_count"] > 0
+    assert case["diagnostics"]["fusion"]["method"] == "rrf"
+    assert not contains_secret_text(data)
+
+
 def test_eval_cli_returns_nonzero_for_missing_catalog(capsys):
     root = make_workspace()
 
@@ -227,9 +293,12 @@ def test_retrieve_result_includes_v23_diagnostics(capsys):
     assert main(["retrieve", "retrieval citation anchors", "--root", str(root), "--json"]) == 0
     data = json.loads(capsys.readouterr().out)
 
-    assert data["schema_version"] == "retrieval.v2.3"
+    assert data["schema_version"] == "retrieval.v2.4"
     assert set(("question", "contexts", "relationships", "warnings")).issubset(data)
     assert data["diagnostics"]["query_terms"]
+    assert "query_features" in data["diagnostics"]
+    assert "retrievers" in data["diagnostics"]
+    assert "fusion" in data["diagnostics"]
     assert data["diagnostics"]["candidate_count"] >= data["diagnostics"]["returned_count"]
     assert data["diagnostics"]["failure_stage"] is None
     context = data["contexts"][0]

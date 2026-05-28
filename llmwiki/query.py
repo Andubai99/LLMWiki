@@ -1,62 +1,30 @@
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
-from .db import catalog_path, connect
+from .retrieval import retrieve_context
 
 
 def query_context(root: Path, question: str, limit: int = 5) -> str:
-    root = root.resolve()
-    rows = search_claims(root, question, limit)
+    result = retrieve_context(root.resolve(), question, limit=limit)
     lines = [f"Retrieval context for: {question}", ""]
-    if not rows:
+    contexts = result.get("contexts", [])
+    if not contexts:
         lines.append("No matching claims found.")
         return "\n".join(lines)
 
-    for index, row in enumerate(rows, start=1):
+    for index, context in enumerate(contexts, start=1):
         lines.append(
-            f"{index}. claim_id={row['claim_id']} source_id={row['source_id']} "
-            f"citation={row['citation_locator']}"
+            f"{index}. claim_id={context['claim_id']} "
+            f"source_id={context['source_id']} "
+            f"citation={context['citation_locator']} "
+            f"page={context['page_path']} "
+            f"relationship={context['relationship_type']} "
+            f"score={context['score']}"
         )
-        lines.append(f"   {row['claim_text']}")
+        lines.append(f"   {context['claim_text']}")
+    warnings = result.get("warnings", [])
+    if warnings:
+        lines.extend(["", "Warnings:"])
+        lines.extend(f"- {warning}" for warning in warnings)
     return "\n".join(lines)
-
-
-def search_claims(root: Path, question: str, limit: int) -> list[dict[str, str]]:
-    terms = query_terms(question)
-    if not terms:
-        return []
-    fts_query = " OR ".join(terms)
-    with connect(catalog_path(root)) as conn:
-        try:
-            rows = conn.execute(
-                """
-                select claim_id, claim_text, source_id, citation_locator
-                from claims_fts
-                where claims_fts match ?
-                order by bm25(claims_fts)
-                limit ?
-                """,
-                (fts_query, limit),
-            ).fetchall()
-        except Exception:
-            rows = []
-        if not rows:
-            like = f"%{terms[0]}%"
-            rows = conn.execute(
-                """
-                select claim_id, claim_text, source_id, citation_locator
-                from claims
-                where lower(claim_text) like ?
-                order by created_at
-                limit ?
-                """,
-                (like, limit),
-            ).fetchall()
-    return [dict(row) for row in rows]
-
-
-def query_terms(question: str) -> list[str]:
-    terms = re.findall(r"[A-Za-z0-9_]{3,}", question.casefold())
-    return list(dict.fromkeys(terms))

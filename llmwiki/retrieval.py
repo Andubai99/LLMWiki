@@ -5,6 +5,8 @@ from pathlib import Path
 from typing import Any
 
 from .db import catalog_path, connect
+from .query_analysis import analyze_query
+from .retrievers import HybridRetriever, RetrievalCandidate, RetrievalFilters
 
 
 RELATIONSHIP_PRIORITY = ("contradicts", "supports", "refines", "contains", "similar_to")
@@ -20,16 +22,14 @@ def retrieve_context(
 ) -> dict[str, Any]:
     root = root.resolve()
     limit = max(0, limit)
-    scoring_terms = base_terms(question)
-    terms = expanded_terms(question)
     result: dict[str, Any] = {
-        "schema_version": "retrieval.v2.3",
+        "schema_version": "retrieval.v2.4",
         "question": question,
         "contexts": [],
         "relationships": [],
         "warnings": [],
         "diagnostics": {
-            "query_terms": terms,
+            "query_terms": [],
             "candidate_count": 0,
             "returned_count": 0,
             "failure_stage": None,
@@ -38,44 +38,36 @@ def retrieve_context(
     if limit == 0:
         result["warnings"].append("Limit is 0; no contexts returned.")
         return result
-    if not terms:
-        result["warnings"].append("Question produced no searchable terms.")
-        result["diagnostics"]["failure_stage"] = "no_terms"
-        return result
-
     with connect(catalog_path(root)) as conn:
-        candidate_rows = candidate_claims(
+        query = analyze_query(question, catalog_terms=load_catalog_terms(conn))
+        query_terms = query.all_terms()
+        result["diagnostics"]["query_terms"] = query_terms
+        result["diagnostics"]["query_features"] = query.diagnostics()
+        if not query_terms:
+            result["warnings"].append("Question produced no searchable terms.")
+            result["diagnostics"]["failure_stage"] = "no_terms"
+            return result
+
+        hybrid_result = HybridRetriever().retrieve(
             conn,
-            terms,
-            scoring_terms or terms,
-            source_id,
-            confidence,
-            limit,
+            query,
+            limit=max(limit * 4, limit),
+            filters=RetrievalFilters(source_id=source_id, page_type=page_type, confidence=confidence),
         )
-        result["diagnostics"]["candidate_count"] = len(candidate_rows)
+        result["diagnostics"].update(hybrid_result.diagnostics)
+        candidate_rows = hybrid_result.candidates
+        result["diagnostics"]["candidate_count"] = int(
+            result["diagnostics"].get("fusion", {}).get("candidate_count_after_fusion", len(candidate_rows))
+        )
         relationships_by_key: dict[tuple[str, str, str, str, str], dict[str, str]] = {}
         contexts: list[dict[str, Any]] = []
         for row in candidate_rows:
-            claim_id = str(row["claim_id"])
-            row_source_id = str(row["source_id"])
+            claim_id = row.claim_id
+            row_source_id = row.source_id
             relationships = load_relationships(conn, claim_id, row_source_id)
-            context_page = select_page_info(conn, relationships, row_source_id, page_type)
-            if page_type and context_page is None:
-                continue
 
             relationship_type = best_relationship_type(relationships, claim_id)
-            context = {
-                "rank": len(contexts) + 1,
-                "claim_id": claim_id,
-                "source_id": row_source_id,
-                "citation_locator": str(row["citation_locator"] or ""),
-                "claim_text": str(row["claim_text"]),
-                "page_path": str(context_page["path"]) if context_page else f"wiki/sources/{row_source_id}.md",
-                "page_type": str(context_page["page_type"]) if context_page else "source",
-                "relationship_type": relationship_type,
-                "confidence_status": str(row["confidence_status"]),
-                "score": float(row["score"]),
-            }
+            context = context_from_candidate(row, len(contexts) + 1, relationship_type)
             contexts.append(context)
 
             for relationship in relationships:
@@ -89,7 +81,7 @@ def retrieve_context(
                     )
                     relationships_by_key[key] = dict(relationship)
 
-            if not context["citation_locator"] or row["confidence_status"] in {"weak", "uncited"}:
+            if not context["citation_locator"] or row.confidence_status in {"weak", "uncited"}:
                 add_warning(
                     result,
                     "Retrieved weak/uncited evidence; do not treat it as strong evidence.",
@@ -127,6 +119,38 @@ def retrieve_context(
             "Contradictory evidence is present; expose the conflict instead of resolving it silently.",
         )
     return result
+
+
+def load_catalog_terms(conn) -> list[str]:
+    terms: list[str] = []
+    for row in conn.execute("select title from pages").fetchall():
+        terms.append(str(row["title"]))
+    for row in conn.execute("select alias, normalized_alias from aliases").fetchall():
+        terms.append(str(row["alias"]))
+        terms.append(str(row["normalized_alias"]))
+    for row in conn.execute("select title from sources").fetchall():
+        terms.append(str(row["title"]))
+    return list(dict.fromkeys(term for term in terms if term.strip()))
+
+
+def context_from_candidate(
+    candidate: RetrievalCandidate,
+    rank: int,
+    relationship_type: str,
+) -> dict[str, Any]:
+    return {
+        "rank": rank,
+        "claim_id": candidate.claim_id,
+        "source_id": candidate.source_id,
+        "citation_locator": candidate.citation_locator,
+        "claim_text": candidate.claim_text,
+        "page_path": candidate.page_path,
+        "page_type": candidate.page_type,
+        "relationship_type": relationship_type,
+        "confidence_status": candidate.confidence_status,
+        "score": float(candidate.raw_score),
+        "retrieval_reasons": candidate.reasons,
+    }
 
 
 def candidate_claims(

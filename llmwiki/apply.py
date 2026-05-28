@@ -298,6 +298,7 @@ def sync_catalog(
     now = utc_now()
     source_id = first_source_id(claims, patches)
     with connect(catalog_path(root)) as conn:
+        page_refs = page_reference_map(conn, patches)
         for claim in claims:
             conn.execute(
                 """
@@ -371,12 +372,18 @@ def sync_catalog(
                         normalized,
                     ),
                 )
+            conn.execute(
+                "delete from links where from_page in (?, ?)",
+                (page_id, str(patch["target_path"])),
+            )
             for link in patch.get("links", []):
+                from_page = resolve_page_reference(page_refs, str(link["from_page"]))
+                to_page = resolve_page_reference(page_refs, str(link["to_page"]))
                 conn.execute(
                     "insert into links (from_page, to_page, link_type) values (?, ?, ?)",
                     (
-                        str(link["from_page"]),
-                        str(link["to_page"]),
+                        from_page,
+                        to_page,
                         str(link["link_type"]),
                     ),
                 )
@@ -408,6 +415,25 @@ def sync_catalog(
             """,
             (run_id, source_id, "applied", now, now),
         )
+
+
+def page_reference_map(conn, patches: list[dict[str, object]]) -> dict[str, str]:
+    refs: dict[str, str] = {}
+    for row in conn.execute("select page_id, path from pages").fetchall():
+        refs[str(row["page_id"])] = str(row["page_id"])
+        refs[str(row["path"])] = str(row["page_id"])
+    for patch in patches:
+        page_id = str(patch["page_id"])
+        refs[page_id] = page_id
+        refs[str(patch["target_path"])] = page_id
+    return refs
+
+
+def resolve_page_reference(refs: dict[str, str], value: str) -> str:
+    try:
+        return refs[value]
+    except KeyError as exc:
+        raise UnsafePatchError(f"Unsafe patch references unknown page: {value}") from exc
 
 
 def first_source_id(claims: list[dict[str, str]], patches: list[dict[str, object]]) -> str:

@@ -419,7 +419,7 @@ def build_patches(
                 source_summary=source_summary,
             ),
             "links": [
-                {"from_page": source_path, "to_page": concept_path, "link_type": "mentions"}
+                {"from_page": source_page_id, "to_page": concept_page_id, "link_type": "mentions"}
             ],
             "relationships": [
                 {
@@ -452,7 +452,7 @@ def build_patches(
                 concept_definition=concept_definition,
             ),
             "links": [
-                {"from_page": concept_path, "to_page": source_path, "link_type": "supports"}
+                {"from_page": concept_page_id, "to_page": source_page_id, "link_type": "supports"}
             ],
             "relationships": build_relationships(
                 concept_page_id, source_page_id, claims, source["source_id"], conflict_candidates
@@ -480,8 +480,8 @@ def build_patches(
                 ),
                 "links": [
                     {
-                        "from_page": entity_path,
-                        "to_page": f"wiki/sources/{source['source_id']}.md",
+                        "from_page": entity_page_id,
+                        "to_page": source_page_id,
                         "link_type": "supports",
                     }
                 ],

@@ -19,7 +19,7 @@ def test_retrieve_json_schema_and_python_api(capsys):
 
     assert data["question"] == "retrieval citation anchors"
     assert {"question", "contexts", "relationships", "warnings"}.issubset(data)
-    assert data["schema_version"] == "retrieval.v2.3"
+    assert data["schema_version"] == "retrieval.v2.4"
     assert "diagnostics" in data
     assert data["contexts"]
     context = data["contexts"][0]
@@ -39,12 +39,31 @@ def test_retrieve_json_schema_and_python_api(capsys):
     assert context["citation_locator"].startswith("line:")
     assert context["page_path"].startswith("wiki/")
     assert isinstance(context["score"], float)
+    assert "retrieval_reasons" in context
 
     from llmwiki.retrieval import retrieve_context
 
     api_result = retrieve_context(root, "retrieval citation anchors")
     assert api_result["contexts"]
     assert api_result["contexts"][0]["source_id"] == source_id
+
+
+def test_retrieve_does_not_call_llm_planner_or_provider(monkeypatch, capsys):
+    root = make_workspace()
+    assert main(["init", "--root", str(root)]) == 0
+    add_ingest_apply(root, fixture("minimal_source.md"))
+    capsys.readouterr()
+
+    def fail_provider(*args, **kwargs):
+        raise AssertionError("retrieve must not call an LLM provider or planner")
+
+    monkeypatch.setattr("llmwiki.llm.create_provider", fail_provider)
+    monkeypatch.setattr("llmwiki.planner.create_provider", fail_provider)
+
+    assert main(["retrieve", "retrieval citation anchors", "--root", str(root), "--json"]) == 0
+    data = json.loads(capsys.readouterr().out)
+
+    assert data["contexts"]
 
 
 def test_retrieve_finds_english_claim_and_respects_limit(capsys):
