@@ -26,37 +26,37 @@ def lint_workspace(root: Path) -> LintReport:
 
     with connect(catalog_path(root)) as conn:
         pages = conn.execute("select page_id, path, page_type, title from pages").fetchall()
-        page_paths = {row["path"] for row in pages}
+        page_ids = {row["page_id"] for row in pages}
+        page_paths = {row["path"]: row["page_id"] for row in pages}
+        links = conn.execute("select from_page, to_page, link_type from links").fetchall()
 
         broken_links = [
             row
-            for row in conn.execute("select from_page, to_page, link_type from links").fetchall()
-            if row["to_page"] not in page_paths and not (root / row["to_page"]).exists()
+            for row in links
+            if page_ref_to_id(row["to_page"], page_ids, page_paths) is None
         ]
         lines.append(f"- broken links: {len(broken_links)}")
         issue_count += len(broken_links)
 
         linked_pages = {
-            row["from_page"] for row in conn.execute("select from_page from links").fetchall()
-        } | {row["to_page"] for row in conn.execute("select to_page from links").fetchall()}
+            page_id
+            for row in links
+            for value in (row["from_page"], row["to_page"])
+            for page_id in [page_ref_to_id(value, page_ids, page_paths)]
+            if page_id is not None
+        }
         orphan_pages = [
             row["path"]
             for row in pages
-            if row["path"] not in linked_pages and row["page_type"] != "index"
+            if row["page_id"] not in linked_pages and row["page_type"] != "index"
         ]
         lines.append(f"- orphan pages: {len(orphan_pages)}")
         issue_count += len(orphan_pages)
 
-        duplicate_aliases = conn.execute(
-            """
-            select normalized_alias, count(*) as n
-            from aliases
-            group by normalized_alias
-            having count(*) > 1
-            """
-        ).fetchall()
+        duplicate_aliases, shared_concept_entity_aliases = classify_duplicate_aliases(conn)
         lines.append(f"- duplicate alias: {len(duplicate_aliases)}")
         issue_count += len(duplicate_aliases)
+        lines.append(f"- shared concept/entity alias: {len(shared_concept_entity_aliases)}")
 
         uncited_claims = conn.execute(
             """
@@ -88,6 +88,55 @@ def lint_workspace(root: Path) -> LintReport:
     else:
         lines.append(f"Lint found {issue_count} issue(s)")
     return LintReport(issue_count, lines)
+
+
+def page_ref_to_id(value: str, page_ids: set[str], page_paths: dict[str, str]) -> str | None:
+    if value in page_ids:
+        return value
+    return page_paths.get(value)
+
+
+def classify_duplicate_aliases(conn) -> tuple[list[str], list[str]]:
+    rows = conn.execute(
+        """
+        select normalized_alias, target_type, target_id
+        from aliases
+        order by normalized_alias, target_type, target_id
+        """
+    ).fetchall()
+    groups: dict[str, list[tuple[str, str]]] = {}
+    for row in rows:
+        groups.setdefault(row["normalized_alias"], []).append(
+            (row["target_type"], row["target_id"])
+        )
+
+    duplicate_aliases: list[str] = []
+    shared_concept_entity_aliases: list[str] = []
+    for normalized_alias, targets in groups.items():
+        unique_targets = sorted(set(targets))
+        if len(unique_targets) <= 1:
+            continue
+        if is_shared_concept_entity_alias(unique_targets):
+            shared_concept_entity_aliases.append(normalized_alias)
+            continue
+        duplicate_aliases.append(normalized_alias)
+    return duplicate_aliases, shared_concept_entity_aliases
+
+
+def is_shared_concept_entity_alias(targets: list[tuple[str, str]]) -> bool:
+    target_types = {target_type for target_type, _ in targets}
+    if not target_types <= {"concept", "entity"}:
+        return False
+    if not {"concept", "entity"} <= target_types:
+        return False
+    identity_keys = {typed_page_identity(target_id) for _, target_id in targets}
+    return len(identity_keys) == 1
+
+
+def typed_page_identity(target_id: str) -> str:
+    if ":" not in target_id:
+        return target_id
+    return target_id.split(":", 1)[1]
 
 
 def source_hash_drift(root: Path, conn) -> int:

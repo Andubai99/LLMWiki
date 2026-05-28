@@ -210,6 +210,12 @@ def test_ask_writeback_applies_synthesis_page_and_catalog(monkeypatch, capsys):
     assert run_rows[0]["source_id"].startswith("synthesis:")
     assert run_rows[0]["status"] == "applied"
 
+    link_rows = rows(root, "select from_page, to_page from links where from_page like 'synthesis-%'")
+    assert [tuple(row) for row in link_rows] == [("synthesis-citation-anchors", context["source_id"])]
+    assert main(["lint", "--root", str(root)]) == 0
+    lint = capsys.readouterr().out
+    assert "orphan pages: 0" in lint
+
 
 def test_ask_writeback_preserves_contradictions_in_synthesis(monkeypatch, capsys):
     root = make_workspace()
