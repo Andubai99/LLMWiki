@@ -161,7 +161,14 @@ def plan_question(root: Path, question: str, options: PlanningOptions | None = N
         except Exception as exc:
             return PlanningResult(status="planning_invalid", error=sanitize_planner_error(exc))
     except PlannerValidationError as exc:
-        return PlanningResult(status="planning_invalid", error=sanitize_planner_error(exc))
+        if not is_repairable_validation_error(exc):
+            return PlanningResult(status="planning_invalid", error=sanitize_planner_error(exc))
+        try:
+            repair_messages = build_planner_repair_prompt(question, options, catalog, error=sanitize_planner_error(exc))
+            response = provider.complete(repair_messages, schema=planner_schema())  # type: ignore[name-defined]
+            plan = parse_and_validate_query_plan(str(response.get("content") or ""), catalog, options)
+        except Exception as repair_exc:
+            return PlanningResult(status="planning_invalid", error=sanitize_planner_error(repair_exc))
     except (LLMProviderError, ValueError) as exc:
         return PlanningResult(status="planning_failed", error=sanitize_planner_error(exc))
 
@@ -185,7 +192,10 @@ def build_planner_prompt(
             "content": (
                 "You are LLMWiki's query planner. Produce retrieval subqueries only. "
                 "Do not answer the question. Do not provide evidence, claim ids, citation locators, "
-                "page paths, scores, or fabricated catalog identifiers. Return JSON only."
+                "page paths, scores, or fabricated catalog identifiers. "
+                "The subqueries field must be an array of objects, never strings. "
+                "Each subquery object must contain query, purpose, filters, and required. "
+                "Return JSON only."
             ),
         },
         {
@@ -199,12 +209,18 @@ def build_planner_repair_prompt(
     question: str,
     options: PlanningOptions,
     catalog: CatalogOverview,
+    error: str = "",
 ) -> list[dict[str, str]]:
     messages = build_planner_prompt(question, options, catalog)
+    failure = f" Previous output failed validation: {error}." if error else ""
     messages.append(
         {
             "role": "user",
-            "content": "Return valid JSON only. Do not include Markdown fences or prose outside JSON.",
+            "content": (
+                "Return valid JSON only. Do not include Markdown fences or prose outside JSON."
+                f"{failure} The subqueries field must be an array of objects with "
+                "query, purpose, filters, and required."
+            ),
         }
     )
     return messages
@@ -380,12 +396,31 @@ def planner_schema() -> dict[str, Any]:
             "schema_version": {"const": PLANNER_SCHEMA_VERSION},
             "intent": {"enum": sorted(ALLOWED_INTENTS)},
             "question_summary": {"type": "string"},
-            "entities": {"type": "array"},
-            "concepts": {"type": "array"},
-            "subqueries": {"type": "array"},
-            "required_evidence": {"type": "array"},
-            "uncertainties": {"type": "array"},
-            "warnings": {"type": "array"},
+            "entities": {"type": "array", "items": {"type": "object"}},
+            "concepts": {"type": "array", "items": {"type": "object"}},
+            "subqueries": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "required": ["query", "purpose", "filters", "required"],
+                    "properties": {
+                        "query": {"type": "string", "maxLength": 240},
+                        "purpose": {"type": "string"},
+                        "filters": {
+                            "type": "object",
+                            "properties": {
+                                "source_id": {"type": ["string", "null"]},
+                                "page_type": {"type": ["string", "null"]},
+                                "confidence": {"type": ["string", "null"]},
+                            },
+                        },
+                        "required": {"type": "boolean"},
+                    },
+                },
+            },
+            "required_evidence": {"type": "array", "items": {"type": "object"}},
+            "uncertainties": {"type": "array", "items": {"type": "string"}},
+            "warnings": {"type": "array", "items": {"type": "string"}},
         },
     }
 
@@ -440,3 +475,12 @@ def sanitize_planner_error(exc: BaseException) -> str:
     text = re.sub(r"sk-[A-Za-z0-9_-]+", "[redacted]", text)
     text = text.replace("config/api-keys.toml", "[api-key-file]")
     return text or exc.__class__.__name__
+
+
+def is_repairable_validation_error(exc: PlannerValidationError) -> bool:
+    text = str(exc).casefold()
+    return (
+        "subquery must be an object" in text
+        or "subqueries must be a non-empty list" in text
+        or "planner json must be an object" in text
+    )

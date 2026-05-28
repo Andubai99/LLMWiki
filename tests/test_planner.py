@@ -108,6 +108,20 @@ def test_plan_question_repairs_malformed_json_once(monkeypatch):
     assert "Return valid JSON only" in calls[1][-1]["content"]
 
 
+def test_plan_question_repairs_invalid_schema_once(monkeypatch):
+    root = setup_seeded_workspace()
+    invalid_payload = valid_plan_payload()
+    invalid_payload["subqueries"] = ["草莓 维生素 C"]
+    calls = patch_planner_provider(monkeypatch, invalid_payload, valid_plan_payload())
+
+    result = plan_question(root, "这五种水果里哪种更适合补充维生素 C？", PlanningOptions())
+
+    assert result.status == "planned"
+    assert result.plan is not None
+    assert len(calls) == 2
+    assert "failed validation" in calls[1][-1]["content"]
+
+
 def test_plan_question_returns_invalid_when_repair_fails(monkeypatch):
     root = setup_seeded_workspace()
     calls = patch_planner_provider(monkeypatch, "{bad", "{still bad")
