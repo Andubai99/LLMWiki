@@ -25,12 +25,17 @@ This repository is a local, source-backed research wiki. Treat it as a knowledge
 ## Retrieval Interface
 
 - `llmwiki retrieve` is the standard evidence interface for external RAG systems, agents, and LLM prompts.
+- `llmwiki retrieve` uses deterministic hybrid local retrieval: BM25/FTS, catalog title/alias/source title matching, one-hop graph relationships, and exact formula/symbol spans fused with RRF.
+- `llmwiki query` is the human-readable view of `retrieve`; it must reuse the same local evidence path instead of maintaining a separate weak search implementation.
 - `llmwiki ask` is the standard local evidence question-answering interface for users.
 - Retrieval output must only expose claims, citations, page paths, and relationships that exist in the local catalog/wiki.
 - Do not forge claim ids, source ids, citation locators, page paths, scores, or relationships.
+- Retrieval normalization must be Unicode-aware and must not discard multilingual text, formulas, symbols, or emoji query features.
+- Formula/symbol evidence such as `H2O`, `E=mc2`, Greek letters, ratios, and math notation must remain searchable and citation-backed.
 - weak/uncited claims must not be treated as strong evidence by callers or agents.
 - `contradicts` relationships must be exposed to callers; do not hide conflicts or silently choose a winner.
 - Retrieval must not call external LLM APIs by default.
+- LLM query planning starts in V2.5; do not introduce LLM planning, rewriting, or evidence generation into default V2.4 retrieval/query/eval behavior.
 - `llmwiki eval retrieval` is the standard development quality check for retrieval changes.
 - Retrieval eval must not call external LLM APIs by default.
 - Retrieval eval must not write `wiki/`, `staging/`, `sources/`, or catalog mutations; it reads the local catalog and committed eval datasets.

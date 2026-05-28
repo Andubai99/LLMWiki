@@ -1,8 +1,10 @@
 # LLM Wiki
 
-## Retrieval Layer v1（检索层）
+## Retrieval Layer v2.4（混合本地检索）
 
-`llmwiki retrieve` 是外部 RAG 系统、Agent 和 LLM prompt 调用 LLMWiki 的稳定证据接口。它从本地 SQLite catalog 检索 source-backed claims，并返回 citation、page path、relationship type、score 和 warning。这个命令不会调用外部 LLM API。
+`llmwiki retrieve` 是外部 RAG 系统、Agent 和 LLM prompt 调用 LLMWiki 的稳定证据接口。它从本地 SQLite catalog 检索 source-backed claims，并返回 citation、page path、relationship type、score、retrieval reasons 和 warning。这个命令使用确定性的混合本地检索，不会调用外部 LLM API。
+
+V2.4 的本地检索信号包括 SQLite FTS/BM25、catalog title/alias/source title、one-hop graph relationship、exact formula/symbol span，并用 RRF 做融合排序。它会做 Unicode-aware normalization，尽量保留中文、多语种、公式、符号和 emoji 查询特征。
 
 面向工具的 JSON 输出：
 
@@ -39,7 +41,7 @@ JSON schema 会保持稳定，便于外部程序直接解析：
 ```json
 {
   "question": "...",
-  "schema_version": "retrieval.v2.3",
+  "schema_version": "retrieval.v2.4",
   "contexts": [
     {
       "rank": 1,
@@ -51,7 +53,8 @@ JSON schema 会保持稳定，便于外部程序直接解析：
       "page_type": "source",
       "relationship_type": "supports",
       "confidence_status": "cited",
-      "score": 0.0
+      "score": 0.0,
+      "retrieval_reasons": ["bm25:term=rag"]
     }
   ],
   "relationships": [],
@@ -60,27 +63,31 @@ JSON schema 会保持稳定，便于外部程序直接解析：
     "query_terms": [],
     "candidate_count": 0,
     "returned_count": 0,
-    "failure_stage": null
+    "failure_stage": null,
+    "query_features": {},
+    "retrievers": {},
+    "fusion": {}
   }
 }
 ```
 
 作为 RAG/Agent evidence layer，LLMWiki 应该在生成前被调用。调用方把返回的 evidence 交给模型，并要求回答中的关键结论引用 `source_id + citation_locator`。如果 `warnings` 提示证据不足、weak/uncited claim 或 `contradicts` relationship，模型应暴露这种不确定性，而不是编造答案。
 
-当前检索限制：SQLite FTS/BM25 仍是词法检索，中文分词能力基础；alias expansion 是规则化实现；`retrieve` 本身没有 vector store、reranker 或真实 LLM 调用。
+当前检索限制：V2.4 仍是本地确定性检索，没有 vector store、LLM query planning、reranker 或真实 LLM 调用；语义改写、embedding 和 reranking 会放到后续阶段。`query` 是 `retrieve` 的人类可读输出，不另起一套弱检索。
 
-## Retrieval Evaluation v2.3（检索评测）
+## Retrieval Evaluation v2.3+（检索评测）
 
 `llmwiki eval retrieval` 是开发和质量检查命令，用 committed JSONL 数据集评测当前检索层的召回、排序、证据契约和失败阶段。它默认不调用 LLM，不写 `wiki/`、`staging/`、`sources/` 或 catalog，只读取本地 workspace。
 
 ```bash
 llmwiki eval retrieval --root . --dataset tests/evals/retrieval_v2_3.jsonl
 llmwiki eval retrieval --root . --dataset tests/evals/retrieval_v2_3.jsonl --json
+llmwiki eval retrieval --root . --dataset tests/evals/retrieval_v2_4_fruits.jsonl
 ```
 
 评测输出包含 `hit@5`、`recall@5`、`precision@5`、`MRR`，以及 LLMWiki 特有的 `claim_id_validity`、`source_id_validity`、`citation_locator_presence`、`page_path_validity`、`relationship_validity` 和 `contradiction_exposure_rate`。
 
-V2.3 是测量层，不宣称已经修复检索质量。后续修改检索、query planning、vector search 或 reranker 前后，都应该运行该 eval 命令并比较结果。
+V2.3 建立了测量层；V2.4 在此基础上替换为混合本地检索。后续修改检索、query planning、vector search 或 reranker 前后，都应该运行该 eval 命令并比较结果。
 
 ## LLM Provider v1
 
@@ -170,7 +177,7 @@ llmwiki ask "RAG 为什么需要引用锚点？" --root . --writeback
 llmwiki ask "RAG 为什么需要引用锚点？" --root . --json
 ```
 
-`retrieve` 仍然是外部系统使用的稳定 evidence API；`query` 仍然是确定性的本地 context 命令，不调用 LLM。
+`retrieve` 仍然是外部系统使用的稳定 evidence API；`query` 是同一 evidence API 的人类可读输出，不调用 LLM。
 
 LLM Wiki 是一个本地优先的个人研究库：用 Python CLI 管理资料导入、claim 抽取、staging 审阅、Markdown wiki 落盘和 SQLite 索引。它的定位是 source-backed knowledge compiler，而不是自由笔记文件夹。
 
@@ -283,7 +290,7 @@ apply 安全校验包括：
 llmwiki query "retrieval citation anchors" --root .
 ```
 
-优先使用 SQLite FTS/BM25 检索 claim store，必要时回退到简单文本检索，输出带 `source_id` 和 citation locator 的 retrieval context。该命令是确定性的本地上下文命令，不调用外部 LLM API。
+复用 `retrieve` 的混合本地检索结果，输出带 `claim_id`、`source_id`、citation locator、page path、relationship type 和 score 的 retrieval context。该命令是确定性的本地上下文命令，不调用外部 LLM API。
 
 ```bash
 llmwiki lint --root .
@@ -313,6 +320,7 @@ llmwiki doctor --root .
 - `llmwiki ask` 基于本地 evidence 调用 LLM 生成带 citation 的回答。
 - `llmwiki ask --writeback` 通过 staging/apply 生成 synthesis 页面。
 - `llmwiki eval retrieval` 用本地 committed eval 数据集检查 retrieval 质量和 evidence contract。
+- `llmwiki retrieve` / `llmwiki query` 使用混合本地检索，覆盖 BM25、catalog title/alias、graph relationship 和 formula/symbol exact match。
 - claim-first staging，并为重要 claim 保留引用。
 - weak/uncited claim 可以进入 triage，但不能直接成为正式结论。
 - 生成 source summary、concept 和 entity Markdown 页面。
