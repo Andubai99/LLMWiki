@@ -6,6 +6,7 @@ import sys
 from llmwiki.cli import main, virtualenv_status
 from llmwiki.sources import import_source
 from tests.helpers import disable_llm, make_workspace
+from tests.test_hybrid_retrieval import setup_seeded_workspace
 
 
 def fixture(name: str) -> Path:
@@ -38,7 +39,23 @@ def test_query_returns_retrieval_context_with_citations(capsys):
     assert "Retrieval context" in out
     assert f"source_id={source_id}" in out
     assert "citation=line:" in out
+    assert "page=" in out
+    assert "relationship=" in out
     assert "Retrieval augmented generation" in out
+
+
+def test_query_reuses_retrieve_for_natural_chinese_question(capsys):
+    root = setup_seeded_workspace()
+    capsys.readouterr()
+
+    assert main(["query", "草莓应该怎么保存？", "--root", str(root)]) == 0
+    out = capsys.readouterr().out
+
+    assert "Retrieval context for: 草莓应该怎么保存？" in out
+    assert "clm_strawberry_storage" in out
+    assert "source_id=src_99ab0495789d" in out
+    assert "wiki/concepts/草莓.md" in out
+    assert "草莓适合冷藏保存" in out
 
 
 def test_lint_and_doctor_report_workspace_health(capsys):
