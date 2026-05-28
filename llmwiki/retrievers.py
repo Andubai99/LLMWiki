@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 import re
 from typing import Protocol
 
@@ -35,6 +35,7 @@ class RetrievalCandidate:
 class RetrieverResult:
     name: str
     candidates: list[RetrievalCandidate]
+    diagnostics: dict[str, object] = field(default_factory=dict)
 
 
 class Retriever(Protocol):
@@ -284,7 +285,12 @@ class HybridRetriever:
         graph_result = GraphRelationshipRetriever(seeds).retrieve(conn, query, limit=limit, filters=filters)
         all_results = [*base_results, graph_result]
         fused = reciprocal_rank_fusion(all_results, rrf_k=60)
-        return RetrieverResult(self.name, apply_filters(fused, filters)[:limit])
+        returned = apply_filters(fused, filters)[:limit]
+        return RetrieverResult(
+            self.name,
+            returned,
+            diagnostics=retrieval_diagnostics(all_results, fused),
+        )
 
     def diagnostics(self, results: list[RetrieverResult], fused: list[RetrievalCandidate]) -> dict[str, object]:
         return retrieval_diagnostics(results, fused)

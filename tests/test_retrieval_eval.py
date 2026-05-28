@@ -227,9 +227,12 @@ def test_retrieve_result_includes_v23_diagnostics(capsys):
     assert main(["retrieve", "retrieval citation anchors", "--root", str(root), "--json"]) == 0
     data = json.loads(capsys.readouterr().out)
 
-    assert data["schema_version"] == "retrieval.v2.3"
+    assert data["schema_version"] == "retrieval.v2.4"
     assert set(("question", "contexts", "relationships", "warnings")).issubset(data)
     assert data["diagnostics"]["query_terms"]
+    assert "query_features" in data["diagnostics"]
+    assert "retrievers" in data["diagnostics"]
+    assert "fusion" in data["diagnostics"]
     assert data["diagnostics"]["candidate_count"] >= data["diagnostics"]["returned_count"]
     assert data["diagnostics"]["failure_stage"] is None
     context = data["contexts"][0]
