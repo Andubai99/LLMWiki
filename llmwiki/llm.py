@@ -12,7 +12,7 @@ from .providers.base import BaseLLMProvider
 class LLMConfig:
     enabled: bool = True
     provider: str = "openai"
-    model: str = "deepseek-v4-pro"
+    model: str = "deepseek-v4-flash"
     base_url: str = "https://api.deepseek.com"
     api_key_file: str = "config/api-keys.toml"
     timeout_seconds: int = 60
@@ -27,7 +27,7 @@ def load_llm_config(root: Path) -> LLMConfig:
     return LLMConfig(
         enabled=bool(llm.get("enabled", True)),
         provider=str(llm.get("provider", "openai")),
-        model=str(llm.get("model", "deepseek-v4-pro")),
+        model=str(llm.get("model", "deepseek-v4-flash")),
         base_url=str(llm.get("base_url", "https://api.deepseek.com")),
         api_key_file=str(llm.get("api_key_file", "config/api-keys.toml")),
         timeout_seconds=int(llm.get("timeout_seconds", 60)),
