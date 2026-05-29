@@ -45,14 +45,26 @@ path = "state/catalog.sqlite"
 [llm]
 enabled = true
 provider = "openai"
-model = "deepseek-v4-pro"
+model = "deepseek-v4-flash"
 base_url = "https://api.deepseek.com"
 api_key_file = "config/api-keys.toml"
+timeout_seconds = 60
+
+[embedding]
+enabled = true
+provider = "dashscope_multimodal"
+model = "tongyi-embedding-vision-flash-2026-03-06"
+endpoint_url = "https://dashscope.aliyuncs.com/api/v1/services/embeddings/multimodal-embedding/multimodal-embedding"
+api_key_file = "config/api-keys.toml"
+dimension = 768
 timeout_seconds = 60
 """
 
 DEFAULT_API_KEYS = """\
 [llm]
+api_key = ""
+
+[embedding]
 api_key = ""
 """
 
@@ -60,6 +72,10 @@ DEFAULT_API_KEYS_EXAMPLE = """\
 [llm]
 # Copy this file to config/api-keys.toml and replace the placeholder value.
 api_key = "paste-your-deepseek-api-key-here"
+
+[embedding]
+# Optional for V2.6 embedding experiments.
+api_key = "paste-your-dashscope-api-key-here"
 """
 
 DEFAULT_AGENTS = """\
