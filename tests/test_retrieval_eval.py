@@ -14,6 +14,7 @@ from tests.test_query_lint_doctor import add_ingest_apply, fixture
 DATASET = Path(__file__).resolve().parent / "evals" / "retrieval_v2_3.jsonl"
 FRUIT_DATASET = Path(__file__).resolve().parent / "evals" / "retrieval_v2_4_fruits.jsonl"
 SEMANTIC_FRUIT_DATASET = Path(__file__).resolve().parent / "evals" / "retrieval_v2_6_semantic_fruits.jsonl"
+SELECTION_FRUIT_DATASET = Path(__file__).resolve().parent / "evals" / "retrieval_v2_7_evidence_selection_fruits.jsonl"
 EVAL_FIXTURES = (
     "minimal_source.md",
     "regression_alias.md",
@@ -102,6 +103,22 @@ def test_load_v26_semantic_fruit_eval_cases_from_committed_jsonl():
     assert "src_99ab0495789d" in cases[0].expected_source_ids
 
 
+def test_load_v27_evidence_selection_eval_cases_from_committed_jsonl():
+    from llmwiki.retrieval_eval import load_eval_cases
+
+    cases = load_eval_cases(SELECTION_FRUIT_DATASET)
+
+    assert [case.id for case in cases] == [
+        "fruit_selection_vitamin_c_multi_source",
+        "fruit_selection_storage_and_freshness",
+        "fruit_selection_conflict_visibility",
+        "fruit_selection_weak_evidence_visibility",
+    ]
+    assert cases[0].query_type == "comparison"
+    assert "src_99ab0495789d" in cases[0].expected_source_ids
+    assert "src_880c9f8a447c" in cases[0].expected_source_ids
+
+
 def test_load_eval_cases_reports_jsonl_line_errors(tmp_path: Path):
     from llmwiki.retrieval_eval import load_eval_cases
 
@@ -126,6 +143,15 @@ def test_evaluate_retrieval_computes_metrics_and_contract(capsys):
     assert data["summary"]["recall_at_5"] >= 0
     assert data["summary"]["precision_at_5"] >= 0
     assert data["summary"]["mrr"] >= 0
+    assert data["summary"]["ndcg_at_5"] >= 0
+    assert data["summary"]["map_at_5"] >= 0
+    assert data["summary"]["context_precision_at_5"] >= 0
+    assert data["summary"]["context_recall_at_5"] >= 0
+    assert data["summary"]["coverage_at_5"] >= 0
+    assert data["summary"]["source_diversity_at_5"] >= 0
+    assert data["summary"]["redundancy_rate_at_5"] >= 0
+    assert data["summary"]["selected_conflict_exposure_rate"] >= 0
+    assert data["summary"]["weak_evidence_visibility_rate"] >= 0
     assert data["evidence_contract"]["claim_id_validity"] == 1.0
     assert data["evidence_contract"]["source_id_validity"] == 1.0
     assert data["evidence_contract"]["citation_locator_presence"] == 1.0
@@ -306,6 +332,37 @@ def test_evaluate_v24_natural_chinese_case_includes_hybrid_diagnostics(capsys, t
     assert not contains_secret_text(data)
 
 
+def test_evaluate_v27_selection_metrics_include_rerank_and_selection_diagnostics(capsys, tmp_path: Path):
+    from llmwiki.retrieval_eval import evaluate_retrieval
+
+    root = setup_seeded_workspace()
+    capsys.readouterr()
+    dataset = write_jsonl(
+        tmp_path / "fruit-v27.jsonl",
+        [
+            {
+                "id": "formula_selection_rerank_diagnostics",
+                "question": "chemical formula water",
+                "expected_status": "has_evidence",
+                "expected_source_ids": ["src_formula"],
+                "expected_terms": ["formula"],
+            }
+        ],
+    )
+
+    summary = evaluate_retrieval(root, dataset, limit=5)
+    data = summary.to_dict()
+    case = data["cases"][0]
+
+    assert "ndcg_at_5" in data["summary"]
+    assert "map_at_5" in data["summary"]
+    assert data["summary"]["source_diversity_at_5"] > 0
+    assert data["summary"]["coverage_at_5"] > 0
+    assert "reranking" in case["diagnostics"]
+    assert "selection" in case["diagnostics"]
+    assert case["diagnostics"]["selection"]["selected_count"] == case["returned_count"]
+
+
 def test_eval_cli_returns_nonzero_for_missing_catalog(capsys):
     root = make_workspace()
 
@@ -316,19 +373,21 @@ def test_eval_cli_returns_nonzero_for_missing_catalog(capsys):
     assert not contains_secret_text(out)
 
 
-def test_retrieve_result_includes_v26_diagnostics(capsys):
+def test_retrieve_result_includes_v27_diagnostics(capsys):
     root = setup_eval_workspace(capsys)
 
     assert main(["retrieve", "retrieval citation anchors", "--root", str(root), "--json"]) == 0
     data = json.loads(capsys.readouterr().out)
 
-    assert data["schema_version"] == "retrieval.v2.6"
+    assert data["schema_version"] == "retrieval.v2.7"
     assert set(("question", "contexts", "relationships", "warnings")).issubset(data)
     assert data["diagnostics"]["query_terms"]
     assert "query_features" in data["diagnostics"]
     assert "retrievers" in data["diagnostics"]
     assert "vector" in data["diagnostics"]["retrievers"]
     assert "fusion" in data["diagnostics"]
+    assert "reranking" in data["diagnostics"]
+    assert "selection" in data["diagnostics"]
     assert data["diagnostics"]["candidate_count"] >= data["diagnostics"]["returned_count"]
     assert data["diagnostics"]["failure_stage"] is None
     context = data["contexts"][0]

@@ -19,9 +19,12 @@ def test_retrieve_json_schema_and_python_api(capsys):
 
     assert data["question"] == "retrieval citation anchors"
     assert {"question", "contexts", "relationships", "warnings"}.issubset(data)
-    assert data["schema_version"] == "retrieval.v2.6"
+    assert data["schema_version"] == "retrieval.v2.7"
     assert "diagnostics" in data
     assert "vector" in data["diagnostics"]["retrievers"]
+    assert "candidate_pool" in data["diagnostics"]
+    assert "reranking" in data["diagnostics"]
+    assert "selection" in data["diagnostics"]
     assert data["contexts"]
     context = data["contexts"][0]
     assert {
@@ -32,6 +35,11 @@ def test_retrieve_json_schema_and_python_api(capsys):
         "page_path",
         "relationship_type",
         "score",
+        "candidate_rank",
+        "rerank_score",
+        "selection_reason",
+        "coverage_group",
+        "redundancy_group",
     }.issubset(context)
     assert context["rank"] == 1
     assert context["confidence_status"] == "cited"
@@ -41,6 +49,7 @@ def test_retrieve_json_schema_and_python_api(capsys):
     assert context["page_path"].startswith("wiki/")
     assert isinstance(context["score"], float)
     assert "retrieval_reasons" in context
+    assert context["rerank_score"] == context["score"]
 
     from llmwiki.retrieval import retrieve_context
 

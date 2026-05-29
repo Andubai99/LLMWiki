@@ -26,7 +26,7 @@ This repository is a local, source-backed research wiki. Treat it as a knowledge
 ## Retrieval Interface
 
 - `llmwiki retrieve` is the standard evidence interface for external RAG systems, agents, and LLM prompts.
-- `llmwiki retrieve` uses hybrid retrieval: BM25/FTS, catalog title/alias/source title matching, one-hop graph relationships, exact formula/symbol spans, and optional V2.6 local vector recall fused with RRF.
+- `llmwiki retrieve` uses hybrid retrieval: BM25/FTS, catalog title/alias/source title matching, one-hop graph relationships, exact formula/symbol spans, optional V2.6 local vector recall fused with RRF, and V2.7 reranking/evidence selection.
 - `llmwiki query` is the human-readable view of `retrieve`; it must reuse the same local evidence path instead of maintaining a separate weak search implementation.
 - `llmwiki ask` is the standard local evidence question-answering interface for users.
 - Retrieval output must only expose claims, citations, page paths, and relationships that exist in the local catalog/wiki.
@@ -40,11 +40,14 @@ This repository is a local, source-backed research wiki. Treat it as a knowledge
 - V2.6 local vector index under `state/embeddings/` is allowed as a rebuildable cache, but it is not durable knowledge and must not be committed.
 - Vector candidates are recall signals only. They must map back to real catalog claims before they can be returned as evidence.
 - When `[embedding].enabled = true` and a local vector index exists, `retrieve`, `query`, `ask`, and `eval retrieval` may call the configured embedding provider for query embedding. If query embedding fails, retrieval must fall back and expose a warning.
+- Reranker and evidence selector output are not evidence. They may reorder, diversify, deduplicate, or select catalog-backed candidates, but they must not create claim ids, source ids, page paths, locators, scores, or relationships that were not already grounded in local retrieval/catalog data.
+- V2.7 default reranking may use the local embedding provider and vector index. Chat LLM reranking is opt-in only and must remain disabled by default.
+- Evidence selection must preserve weak/uncited and contradicting evidence visibility; it must not hide conflicts or upgrade weak evidence into strong conclusions.
 - External hosted vector databases are not default infrastructure for this repository.
 - LLM query planning is allowed for `llmwiki ask` in V2.5, but default `retrieve`, `query`, and `eval retrieval` must not call external chat LLM APIs.
 - Planner output must be schema-validated before any retrieval execution.
 - Planner output is not source-backed evidence; do not treat planner intent, entities, subqueries, filters, or required evidence descriptions as claims or citations.
-- Do not add domain-specific query rules, keyword intent classifiers, or term boosts for V2.5.
+- Do not add domain-specific query rules, keyword intent classifiers, or term boosts for V2.5 or V2.7 reranking/evidence selection.
 - `llmwiki eval retrieval` is the standard development quality check for retrieval changes.
 - Retrieval eval must not call external LLM APIs by default.
 - Retrieval eval must not write `wiki/`, `staging/`, `sources/`, or catalog mutations; it reads the local catalog and committed eval datasets.

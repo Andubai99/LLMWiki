@@ -36,6 +36,9 @@ def test_execute_query_plan_runs_each_subquery_through_local_retrieve():
     assert [item["query"] for item in result.diagnostics["subqueries"]] == ["草莓 保存", "橙子 维生素 C"]
     assert any(context["source_id"] == "src_99ab0495789d" for context in result.contexts)
     assert any(context["source_id"] == "src_880c9f8a447c" for context in result.contexts)
+    assert all("subquery_index" in context for context in result.contexts)
+    assert all("subquery_query" in context for context in result.contexts)
+    assert all("subquery_purpose" in context for context in result.contexts)
     assert "planner warning" in result.warnings
 
 
@@ -75,6 +78,46 @@ def test_execute_query_plan_deduplicates_contexts_by_claim_id(monkeypatch):
     assert len(result.contexts) == 1
     assert result.contexts[0]["claim_id"] == "clm_same"
     assert result.contexts[0]["retrieval_reasons"] == ["from:one", "from:two"]
+    assert result.contexts[0]["subquery_index"] == 1
+    assert result.contexts[0]["subquery_queries"] == ["one", "two"]
+
+
+def test_merge_planned_contexts_preserves_subquery_source_coverage(monkeypatch):
+    def fake_context(claim_id: str, source_id: str, score: float) -> dict[str, object]:
+        return {
+            "rank": 1,
+            "claim_id": claim_id,
+            "source_id": source_id,
+            "citation_locator": "line:1",
+            "claim_text": f"{claim_id} evidence",
+            "page_path": f"wiki/sources/{source_id}.md",
+            "page_type": "source",
+            "relationship_type": "supports",
+            "confidence_status": "cited",
+            "score": score,
+            "rerank_score": score,
+            "retrieval_reasons": ["fake"],
+        }
+
+    def fake_retrieve_context(root: Path, question: str, **kwargs):
+        contexts_by_question = {
+            "one": [fake_context("clm_a1", "src_a", 0.99), fake_context("clm_a2", "src_a", 0.98)],
+            "two": [fake_context("clm_b1", "src_b", 0.5)],
+        }
+        return {
+            "contexts": contexts_by_question[question],
+            "relationships": [],
+            "warnings": [],
+            "diagnostics": {"returned_count": len(contexts_by_question[question])},
+        }
+
+    monkeypatch.setattr("llmwiki.planned_retrieval.retrieve_context", fake_retrieve_context)
+    root = setup_seeded_workspace()
+    plan = make_plan(QuerySubquery(query="one", purpose="first"), QuerySubquery(query="two", purpose="second"))
+
+    result = execute_query_plan(root, plan, AskOptions(limit=1))
+
+    assert [context["claim_id"] for context in result.contexts] == ["clm_a1", "clm_b1"]
 
 
 def test_execute_query_plan_passes_subquery_filters(monkeypatch):

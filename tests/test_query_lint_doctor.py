@@ -41,6 +41,8 @@ def test_query_returns_retrieval_context_with_citations(capsys):
     assert "citation=line:" in out
     assert "page=" in out
     assert "relationship=" in out
+    assert "rerank=" in out
+    assert "selection=" in out
     assert "Retrieval augmented generation" in out
 
 
