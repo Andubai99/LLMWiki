@@ -46,7 +46,7 @@ def test_regression_samples_preserve_alias_entity_and_conflict(capsys):
         root,
         "select count(*) from relationships where relationship_type = 'contradicts'",
     )
-    assert contradictions >= 1
+    assert contradictions == 0
 
     assert main(["lint", "--root", str(root)]) == 0
     lint = capsys.readouterr().out
@@ -119,10 +119,11 @@ def test_lint_distinguishes_recorded_and_unresolved_contradictions(capsys):
             ),
         )
 
-    assert main(["lint", "--root", str(root)]) == 1
+    assert main(["lint", "--root", str(root)]) == 0
     lint = capsys.readouterr().out
     assert "recorded contradicts relationships: 0" in lint
-    assert "unresolved potential contradictions: 1" in lint
+    assert "unresolved potential contradictions: 0" in lint
+    assert "Lint OK" in lint
 
     with sqlite3.connect(root / "state" / "catalog.sqlite") as conn:
         conn.execute(
@@ -173,7 +174,7 @@ def test_chinese_regression_sources_cover_alias_entity_conflict_and_support(caps
         root,
         "select count(*) from relationships where relationship_type = 'supports'",
     )
-    assert contradictions >= 1
+    assert contradictions == 0
     assert supports >= 1
 
     with sqlite3.connect(root / "state" / "catalog.sqlite") as conn:

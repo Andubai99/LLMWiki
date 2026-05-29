@@ -14,7 +14,8 @@ This repository is a local, source-backed research wiki. Treat it as a knowledge
 - Every substantive claim proposed for the wiki must cite a source id and a page, line, paragraph, or section anchor when available.
 - Claims must be traceable to a source locator; do not invent citations or source anchors.
 - Important judgments without citation must be marked weak/uncited and must not become a formal conclusion.
-- Preserve uncertainty. If sources disagree, create a conflict note in triage and keep a contradicts relationship instead of choosing a winner.
+- Preserve uncertainty. If sources disagree, create a conflict note in triage and keep a `contradicts` relationship instead of choosing a winner.
+- Negative, cautionary, or limiting claims are not contradictions by themselves. Do not create `contradicts` relationships from negation keywords such as `not`, `不`, `不需要`, or `不建议`.
 - Prefer updating existing concept/entity pages over creating near-duplicate pages.
 - Before creating a concept/entity page, check existing page titles, aliases, and similar names; uncertain matches go to duplicate candidates in triage.
 - Agents must not overwrite user-authored wiki content without a recoverable backup or an explicit merge strategy.
@@ -34,6 +35,7 @@ This repository is a local, source-backed research wiki. Treat it as a knowledge
 - Formula/symbol evidence such as `H2O`, `E=mc2`, Greek letters, ratios, and math notation must remain searchable and citation-backed.
 - weak/uncited claims must not be treated as strong evidence by callers or agents.
 - `contradicts` relationships must be exposed to callers; do not hide conflicts or silently choose a winner.
+- `contradicts` means source-backed disagreement between claims. Retrieval exposes catalog relationships; it must not classify retrieved text as contradictory just because it contains negative wording.
 - Retrieval must not call external LLM APIs by default.
 - LLM query planning is allowed for `llmwiki ask` in V2.5, but default `retrieve`, `query`, and `eval retrieval` must not call external LLM APIs.
 - Planner output must be schema-validated before any retrieval execution.

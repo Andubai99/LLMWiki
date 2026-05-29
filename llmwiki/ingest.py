@@ -343,35 +343,11 @@ def find_duplicate_candidates(root: Path, concept_title: str, aliases: list[str]
 
 
 def find_conflict_candidates(root: Path, claims: list[Claim]) -> list[str]:
-    candidates: list[str] = []
-    conflict_terms = ("contradict", "conflict", "disagree", "not ", "不", "无需", "不需要", "冲突", "矛盾")
-    for claim in claims:
-        text_lower = claim.claim_text.lower()
-        if any(term in text_lower for term in conflict_terms):
-            candidates.append(f"{claim.claim_id}: {claim.claim_text}")
-
-    with connect(catalog_path(root)) as conn:
-        existing_claims = conn.execute(
-            "select claim_id, claim_text from claims order by created_at"
-        ).fetchall()
-    for claim in claims:
-        for existing in existing_claims:
-            if possible_conflict(existing["claim_text"], claim.claim_text):
-                candidates.append(
-                    f"{claim.claim_id} may contradict {existing['claim_id']}: {claim.claim_text}"
-                )
-    return candidates
+    return []
 
 
 def possible_conflict(left: str, right: str) -> bool:
-    left_lower = left.lower()
-    right_lower = right.lower()
-    shared = set(re.findall(r"[a-z0-9]{4,}", left_lower)) & set(
-        re.findall(r"[a-z0-9]{4,}", right_lower)
-    )
-    if len(shared) < 2:
-        return False
-    return (" not " in left_lower) != (" not " in right_lower)
+    return False
 
 
 def citation_coverage(claims: list[Claim]) -> int:
@@ -524,17 +500,6 @@ def build_relationships(
         }
         for claim in claims
     ]
-    for conflict in conflict_candidates:
-        claim_id = conflict.split(":", 1)[0]
-        relationships.append(
-            {
-                "subject_id": concept_page_id,
-                "object_id": source_page_id,
-                "relationship_type": "contradicts",
-                "evidence_claim_id": claim_id,
-                "source_id": source_id,
-            }
-        )
     return relationships
 
 

@@ -73,6 +73,8 @@ JSON schema 会保持稳定，便于外部程序直接解析：
 
 作为 RAG/Agent evidence layer，LLMWiki 应该在生成前被调用。调用方把返回的 evidence 交给模型，并要求回答中的关键结论引用 `source_id + citation_locator`。如果 `warnings` 提示证据不足、weak/uncited claim 或 `contradicts` relationship，模型应暴露这种不确定性，而不是编造答案。
 
+`contradicts` 表示 source-backed claims 之间存在真实 disagreement。否定句、提醒句、限制句本身不是矛盾，例如“不建议多吃”“不需要提前清洗”这类 claim 会作为普通 evidence 保留，不会因为包含否定词自动变成 `contradicts` relationship。`retrieve` 只暴露 catalog 中已有的 relationships，不负责从文本关键词判断矛盾。
+
 当前检索限制：V2.4 仍是本地确定性检索，没有 vector store、reranker 或真实 LLM 调用；`retrieve`、`query`、`eval retrieval` 不调用 LLM。LLM query planning 从 V2.5 开始只接入 `ask`，语义 embedding 和 reranking 会放到后续阶段。`query` 是 `retrieve` 的人类可读输出，不另起一套弱检索。
 
 ## Retrieval Evaluation v2.3+（检索评测）
@@ -149,6 +151,8 @@ staging/<run-id>/
 `run.json` 会记录 `proposal_engine=llm`、provider、model 和 `trigger=add`；`triage.md` 会包含 `## LLM Proposal` 调试信息。`add` 不会让 LLM 直接写正式 `wiki/`，也不会在 ingest 阶段修改 `sources/raw/` 或 `sources/normalized/`。只有内部 `apply` 安全校验通过后，候选 patch 才能落入正式 wiki 和 SQLite catalog。
 
 LLM claims 必须带有效 source locator。没有合法 `line:N` 的 claim 会被标记为 weak/uncited，不能进入正式 patch 结论。内部/调试场景仍可直接运行 `llmwiki ingest <source-id> --root .`。需要运行旧的规则化 ingest 时，可以在工作区 `config/config.toml` 中设置：
+
+V2.5.1 禁用自动关键词/否定词矛盾检测。LLM 或人工提出的 conflict candidate 会保留在 triage/open questions 中，只有能够被验证为真实 source-backed claim disagreement 的内容才应成为正式 `contradicts` relationship。
 
 ```toml
 [llm]
@@ -298,9 +302,9 @@ llmwiki query "retrieval citation anchors" --root .
 llmwiki lint --root .
 ```
 
-检查断链、孤页、重复 alias、无引用 claim、source hash drift、缺 citation 状态和潜在矛盾。
+检查断链、孤页、重复 alias、无引用 claim、source hash drift 和缺 citation 状态。
 
-lint 是独立维护动作，不属于 `add` 的默认流程。用户可以显式要求 LLM 运行 `llmwiki lint --root .`，或手动运行。lint 会区分已经记录的 `contradicts` relationships 和未处理的潜在矛盾。已记录冲突是审计信息，不会自动让 lint 失败；未处理的潜在矛盾仍然需要进入 triage 或 relationship。
+lint 是独立维护动作，不属于 `add` 的默认流程。用户可以显式要求 LLM 运行 `llmwiki lint --root .`，或手动运行。lint 会报告已经记录的 `contradicts` relationships；这些记录是审计信息，不会自动让 lint 失败。V2.5.1 不再用 `not`、`不`、`不需要`、`不建议` 这类词面规则推断未处理矛盾。
 
 ```bash
 llmwiki doctor --root .

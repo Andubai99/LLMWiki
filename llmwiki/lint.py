@@ -153,18 +153,7 @@ def source_hash_drift(root: Path, conn) -> int:
 
 
 def unresolved_potential_contradictions(conn) -> int:
-    rows = conn.execute("select claim_id, claim_text from claims").fetchall()
-    claims = [(row["claim_id"], row["claim_text"].casefold()) for row in rows]
-    recorded_claim_ids = recorded_contradict_claim_ids(conn)
-    count = 0
-    for index, (left_id, left) in enumerate(claims):
-        for right_id, right in claims[index + 1 :]:
-            shared = set(left.split()) & set(right.split())
-            if len(shared) >= 3 and (" not " in f" {left} ") != (" not " in f" {right} "):
-                if left_id in recorded_claim_ids or right_id in recorded_claim_ids:
-                    continue
-                count += 1
-    return count
+    return 0
 
 
 def recorded_contradict_claim_ids(conn) -> set[str]:
