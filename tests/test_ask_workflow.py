@@ -9,6 +9,7 @@ from llmwiki.retrieval import retrieve_context
 from tests.helpers import make_workspace
 from tests.test_hybrid_retrieval import setup_seeded_workspace
 from tests.test_query_lint_doctor import add_ingest_apply, fixture
+from tests.test_vector_retrieval import FakeEmbeddingProvider, seed_vector_workspace, write_fake_index
 
 
 def rows(root: Path, sql: str) -> list[sqlite3.Row]:
@@ -189,6 +190,41 @@ def test_ask_plans_comparison_question_into_multiple_subqueries(monkeypatch, cap
     assert data["planning"]["retrieved_context_count"] >= 3
     cited_ids = {item["claim_id"] for item in data["citations"]}
     assert context["claim_id"] in cited_ids
+    assert synthesis_pages(root) == []
+
+
+def test_ask_citations_can_use_vector_retrieved_evidence(monkeypatch, capsys):
+    root = seed_vector_workspace()
+    write_fake_index(root)
+    monkeypatch.setattr(
+        "llmwiki.embeddings.create_embedding_provider",
+        lambda config, root=None: FakeEmbeddingProvider([1.0, 0.0]),
+    )
+    context = retrieve_context(root, "spoil prevention after shopping", limit=1)["contexts"][0]
+    patch_planner_provider(monkeypatch, planner_payload("spoil prevention after shopping"))
+    calls = patch_answer_provider(monkeypatch, answer_payload(context, title="Strawberry Storage"))
+    capsys.readouterr()
+
+    assert (
+        main(
+            [
+                "ask",
+                "How do I keep strawberries from going bad after shopping?",
+                "--root",
+                str(root),
+                "--no-writeback",
+                "--json",
+            ]
+        )
+        == 0
+    )
+    data = json.loads(capsys.readouterr().out)
+
+    assert calls
+    assert data["status"] == "answered"
+    assert data["citations"][0]["claim_id"] == context["claim_id"]
+    assert context["claim_id"] == "claim_strawberry_storage"
+    assert "vector_semantic" in context["retrieval_reasons"]
     assert synthesis_pages(root) == []
 
 
