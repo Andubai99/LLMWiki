@@ -27,6 +27,7 @@ state/*.sqlite
 state/*.sqlite-*
 state/*.db
 state/*.db-*
+state/embeddings/
 
 # Staging runs are review workspaces; keep the directory but do not commit runs by default.
 staging/*
