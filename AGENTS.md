@@ -26,7 +26,7 @@ This repository is a local, source-backed research wiki. Treat it as a knowledge
 ## Retrieval Interface
 
 - `llmwiki retrieve` is the standard evidence interface for external RAG systems, agents, and LLM prompts.
-- `llmwiki retrieve` uses deterministic hybrid local retrieval: BM25/FTS, catalog title/alias/source title matching, one-hop graph relationships, and exact formula/symbol spans fused with RRF.
+- `llmwiki retrieve` uses hybrid retrieval: BM25/FTS, catalog title/alias/source title matching, one-hop graph relationships, exact formula/symbol spans, and optional V2.6 local vector recall fused with RRF.
 - `llmwiki query` is the human-readable view of `retrieve`; it must reuse the same local evidence path instead of maintaining a separate weak search implementation.
 - `llmwiki ask` is the standard local evidence question-answering interface for users.
 - Retrieval output must only expose claims, citations, page paths, and relationships that exist in the local catalog/wiki.
@@ -36,8 +36,12 @@ This repository is a local, source-backed research wiki. Treat it as a knowledge
 - weak/uncited claims must not be treated as strong evidence by callers or agents.
 - `contradicts` relationships must be exposed to callers; do not hide conflicts or silently choose a winner.
 - `contradicts` means source-backed disagreement between claims. Retrieval exposes catalog relationships; it must not classify retrieved text as contradictory just because it contains negative wording.
-- Retrieval must not call external LLM APIs by default.
-- LLM query planning is allowed for `llmwiki ask` in V2.5, but default `retrieve`, `query`, and `eval retrieval` must not call external LLM APIs.
+- Retrieval must not call external chat LLM APIs by default.
+- V2.6 local vector index under `state/embeddings/` is allowed as a rebuildable cache, but it is not durable knowledge and must not be committed.
+- Vector candidates are recall signals only. They must map back to real catalog claims before they can be returned as evidence.
+- When `[embedding].enabled = true` and a local vector index exists, `retrieve`, `query`, `ask`, and `eval retrieval` may call the configured embedding provider for query embedding. If query embedding fails, retrieval must fall back and expose a warning.
+- External hosted vector databases are not default infrastructure for this repository.
+- LLM query planning is allowed for `llmwiki ask` in V2.5, but default `retrieve`, `query`, and `eval retrieval` must not call external chat LLM APIs.
 - Planner output must be schema-validated before any retrieval execution.
 - Planner output is not source-backed evidence; do not treat planner intent, entities, subqueries, filters, or required evidence descriptions as claims or citations.
 - Do not add domain-specific query rules, keyword intent classifiers, or term boosts for V2.5.
@@ -58,6 +62,7 @@ This repository is a local, source-backed research wiki. Treat it as a knowledge
 - API Key values, tokens, `.env` files, `config/api-keys.toml`, and sensitive logs must never be committed.
 - The DeepSeek API Key must be read from the local ignored `config/api-keys.toml` file.
 - Do not write API keys into `config/config.toml`, README, tests, source files, logs, staging artifacts, or committed examples.
+- Embedding API keys must also stay in the local ignored `config/api-keys.toml` file under `[embedding].api_key`.
 - LLM output must not bypass staging validation and apply.
 - This stage must not let an LLM directly modify formal wiki pages.
 - Do not add a mock provider or no-network LLM test path for this stage.
@@ -68,7 +73,7 @@ This repository is a local, source-backed research wiki. Treat it as a knowledge
 
 ## First-Version Boundaries
 
-- Do not default to vector databases.
+- Do not default to external hosted vector databases. The V2.6 local rebuildable vector index under `state/embeddings/` is allowed.
 - Do not default to MCP integrations.
 - Do not add a Web UI or Obsidian plugin by default.
 - Do not add cloud sync or team permission systems by default.
