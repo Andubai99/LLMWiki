@@ -100,7 +100,7 @@ def test_real_llm_ingest_writes_staging_only_and_applies_safely(capsys):
     manifest = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
     assert manifest["proposal_engine"] == "llm"
     assert manifest["llm_provider"] == "openai"
-    assert manifest["llm_model"] == "deepseek-v4-pro"
+    assert manifest["llm_model"] == "deepseek-v4-flash"
     assert (run_dir / "llm-proposal.json").exists()
 
     claims = [

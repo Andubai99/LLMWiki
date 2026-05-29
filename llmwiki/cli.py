@@ -34,6 +34,7 @@ COMMANDS = (
     "retrieve",
     "ask",
     "eval",
+    "embeddings",
     "llm-test",
     "doctor",
 )
@@ -214,6 +215,91 @@ def cmd_eval_retrieval(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_embeddings_status(args: argparse.Namespace) -> int:
+    from .embeddings import load_embedding_config
+    from .vector_index import vector_index_status
+
+    root = Path(args.root).resolve()
+    config = load_embedding_config(root)
+    status = vector_index_status(root)
+    print(f"enabled={bool_text(config.enabled)}")
+    print(f"provider={config.provider}")
+    print(f"model={config.model}")
+    print(f"configured_dimension={config.dimension}")
+    print(f"index_present={bool_text(status.index_present)}")
+    print(f"stale={bool_text(status.stale)}")
+    print(f"chunk_count={status.chunk_count}")
+    if status.dimension is not None:
+        print(f"index_dimension={status.dimension}")
+    if status.failure_stage:
+        print(f"failure_stage={status.failure_stage}")
+    return 0
+
+
+def cmd_embeddings_test(args: argparse.Namespace) -> int:
+    from . import embeddings
+
+    root = Path(args.root).resolve()
+    config = embeddings.load_embedding_config(root)
+    if not config.enabled:
+        print("Embedding test failed: [embedding].enabled is false in config/config.toml")
+        return 1
+    try:
+        provider = embeddings.create_embedding_provider(config, root=root)
+        vectors = provider.embed_texts([args.text])
+    except (embeddings.EmbeddingProviderError, ValueError) as exc:
+        print(f"Embedding test failed: {embeddings.sanitize_embedding_error(str(exc))}")
+        return 1
+    dimension = len(vectors[0]) if vectors else 0
+    print("status=ok")
+    print(f"provider={config.provider}")
+    print(f"model={config.model}")
+    print(f"dimension={dimension}")
+    print(f"vectors={len(vectors)}")
+    return 0
+
+
+def cmd_embeddings_rebuild(args: argparse.Namespace) -> int:
+    from . import embeddings
+    from .vector_index import (
+        build_embedding_chunks,
+        catalog_fingerprint,
+        new_manifest,
+        write_vector_index,
+    )
+
+    root = Path(args.root).resolve()
+    config = embeddings.load_embedding_config(root)
+    if not config.enabled:
+        print("Embeddings rebuild failed: [embedding].enabled is false in config/config.toml")
+        return 1
+    try:
+        chunks = build_embedding_chunks(root)
+        provider = embeddings.create_embedding_provider(config, root=root)
+        vectors: list[list[float]] = []
+        for batch in batched([chunk.text for chunk in chunks], args.batch_size):
+            vectors.extend(provider.embed_texts(batch))
+        dimension = len(vectors[0]) if vectors else config.dimension
+        manifest = new_manifest(
+            provider=config.provider,
+            model=config.model,
+            dimension=dimension,
+            chunk_count=len(chunks),
+            catalog_fingerprint_value=catalog_fingerprint(root),
+        )
+        write_vector_index(root, chunks, vectors, manifest)
+    except (embeddings.EmbeddingProviderError, ValueError, OSError) as exc:
+        print(f"Embeddings rebuild failed: {embeddings.sanitize_embedding_error(str(exc))}")
+        return 1
+
+    print("status=rebuilt")
+    print(f"provider={config.provider}")
+    print(f"model={config.model}")
+    print(f"dimension={dimension}")
+    print(f"chunks={len(chunks)}")
+    return 0
+
+
 def cmd_llm_test(args: argparse.Namespace) -> int:
     root = Path(args.root).resolve()
     config = override_llm_config(
@@ -312,6 +398,15 @@ def declared_dependencies() -> list[str]:
     return list(data.get("project", {}).get("dependencies", []))
 
 
+def bool_text(value: bool) -> str:
+    return "true" if value else "false"
+
+
+def batched(items: list[str], batch_size: int) -> list[list[str]]:
+    size = max(1, batch_size)
+    return [items[index : index + size] for index in range(0, len(items), size)]
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="llmwiki",
@@ -408,6 +503,34 @@ def build_parser() -> argparse.ArgumentParser:
     retrieval_eval_parser.add_argument("--limit", type=int, default=5)
     retrieval_eval_parser.add_argument("--json", action="store_true", help="Output stable machine-readable JSON.")
     retrieval_eval_parser.set_defaults(func=cmd_eval_retrieval)
+
+    embeddings_parser = subparsers.add_parser(
+        "embeddings",
+        help="Manage the local rebuildable embedding vector index.",
+    )
+    embeddings_subparsers = embeddings_parser.add_subparsers(dest="embeddings_command", required=True)
+    embeddings_status_parser = embeddings_subparsers.add_parser(
+        "status",
+        help="Show local embedding index status without calling the provider.",
+    )
+    embeddings_status_parser.add_argument("--root", default=".")
+    embeddings_status_parser.set_defaults(func=cmd_embeddings_status)
+
+    embeddings_test_parser = embeddings_subparsers.add_parser(
+        "test",
+        help="Call the configured embedding provider once.",
+    )
+    embeddings_test_parser.add_argument("--root", default=".")
+    embeddings_test_parser.add_argument("--text", default="LLMWiki embedding test")
+    embeddings_test_parser.set_defaults(func=cmd_embeddings_test)
+
+    embeddings_rebuild_parser = embeddings_subparsers.add_parser(
+        "rebuild",
+        help="Rebuild state/embeddings from the local catalog.",
+    )
+    embeddings_rebuild_parser.add_argument("--root", default=".")
+    embeddings_rebuild_parser.add_argument("--batch-size", type=int, default=16)
+    embeddings_rebuild_parser.set_defaults(func=cmd_embeddings_rebuild)
 
     llm_test_parser = subparsers.add_parser(
         "llm-test",

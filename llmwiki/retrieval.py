@@ -23,7 +23,7 @@ def retrieve_context(
     root = root.resolve()
     limit = max(0, limit)
     result: dict[str, Any] = {
-        "schema_version": "retrieval.v2.4",
+        "schema_version": "retrieval.v2.6",
         "question": question,
         "contexts": [],
         "relationships": [],
@@ -48,13 +48,15 @@ def retrieve_context(
             result["diagnostics"]["failure_stage"] = "no_terms"
             return result
 
-        hybrid_result = HybridRetriever().retrieve(
+        hybrid_result = HybridRetriever(root=root).retrieve(
             conn,
             query,
             limit=max(limit * 4, limit),
             filters=RetrievalFilters(source_id=source_id, page_type=page_type, confidence=confidence),
         )
         result["diagnostics"].update(hybrid_result.diagnostics)
+        for warning in hybrid_result.diagnostics.get("warnings", []):
+            add_warning(result, str(warning))
         candidate_rows = hybrid_result.candidates
         result["diagnostics"]["candidate_count"] = int(
             result["diagnostics"].get("fusion", {}).get("candidate_count_after_fusion", len(candidate_rows))

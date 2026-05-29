@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
+from pathlib import Path
 import re
 from typing import Protocol
 
 from .query_analysis import RetrievalQuery
+from .vector_index import cosine_similarity, load_vector_index, vector_index_status
 
 
 @dataclass(frozen=True)
@@ -292,8 +294,113 @@ class GraphRelationshipRetriever:
         return ranked_result(self.name, candidates.values(), limit, filters)
 
 
+class VectorRetriever:
+    name = "vector"
+
+    def __init__(self, root: Path | None = None) -> None:
+        self.root = root
+
+    def retrieve(
+        self,
+        conn,
+        query: RetrievalQuery,
+        *,
+        limit: int,
+        filters: RetrievalFilters,
+    ) -> RetrieverResult:
+        diagnostics: dict[str, object] = {
+            "enabled": False,
+            "index_present": False,
+            "stale": True,
+            "query_embedded": False,
+            "candidate_count": 0,
+            "provider": None,
+            "model": None,
+            "dimension": None,
+            "failure_stage": None,
+        }
+        if self.root is None:
+            diagnostics["failure_stage"] = "no_root"
+            return RetrieverResult(self.name, [], diagnostics=diagnostics)
+
+        from . import embeddings
+
+        config = embeddings.load_embedding_config(self.root)
+        diagnostics.update(
+            {
+                "enabled": config.enabled,
+                "provider": config.provider,
+                "model": config.model,
+                "dimension": config.dimension,
+            }
+        )
+        if not config.enabled:
+            diagnostics["failure_stage"] = "disabled"
+            return RetrieverResult(self.name, [], diagnostics=diagnostics)
+
+        status = vector_index_status(self.root)
+        diagnostics.update(
+            {
+                "index_present": status.index_present,
+                "stale": status.stale,
+                "provider": status.provider or config.provider,
+                "model": status.model or config.model,
+                "dimension": status.dimension or config.dimension,
+            }
+        )
+        if not status.index_present:
+            diagnostics["failure_stage"] = "missing_index"
+            return RetrieverResult(self.name, [], diagnostics=diagnostics)
+
+        try:
+            index = load_vector_index(self.root)
+        except (OSError, ValueError) as exc:
+            diagnostics["failure_stage"] = "index_load_failed"
+            diagnostics["warnings"] = [f"Vector retrieval failed: {embeddings.sanitize_embedding_error(str(exc))}"]
+            return RetrieverResult(self.name, [], diagnostics=diagnostics)
+
+        try:
+            provider = embeddings.create_embedding_provider(config, root=self.root)
+            query_vectors = provider.embed_texts([query.original])
+        except Exception as exc:
+            diagnostics["failure_stage"] = "query_embedding_failed"
+            diagnostics["warnings"] = [f"Vector retrieval failed: {embeddings.sanitize_embedding_error(str(exc))}"]
+            return RetrieverResult(self.name, [], diagnostics=diagnostics)
+        diagnostics["query_embedded"] = True
+        if not query_vectors:
+            diagnostics["failure_stage"] = "empty_query_vector"
+            return RetrieverResult(self.name, [], diagnostics=diagnostics)
+        query_vector = query_vectors[0]
+        if len(query_vector) != index.manifest.dimension:
+            diagnostics["failure_stage"] = "query_dimension_mismatch"
+            diagnostics["warnings"] = [
+                "Vector retrieval failed: query embedding dimension does not match the local index."
+            ]
+            return RetrieverResult(self.name, [], diagnostics=diagnostics)
+
+        candidates: dict[str, RetrievalCandidate] = {}
+        scored_chunks = []
+        for chunk, vector in zip(index.chunks, index.vectors):
+            score = cosine_similarity(query_vector, vector)
+            if score <= 0:
+                continue
+            scored_chunks.append((score, chunk))
+        scored_chunks.sort(key=lambda item: (-item[0], item[1].chunk_id))
+
+        for score, chunk in scored_chunks[: max(limit * 8, 20)]:
+            for candidate in candidates_for_vector_chunk(conn, chunk, score):
+                remember_candidate(candidates, candidate)
+
+        result = ranked_result(self.name, candidates.values(), limit, filters)
+        diagnostics["candidate_count"] = len(result.candidates)
+        return RetrieverResult(self.name, result.candidates, diagnostics=diagnostics)
+
+
 class HybridRetriever:
     name = "hybrid"
+
+    def __init__(self, root: Path | None = None) -> None:
+        self.root = root
 
     def retrieve(
         self,
@@ -308,15 +415,24 @@ class HybridRetriever:
             CatalogTitleAliasRetriever().retrieve(conn, query, limit=limit, filters=filters),
             ExactFormulaSymbolRetriever().retrieve(conn, query, limit=limit, filters=filters),
         ]
-        seeds = reciprocal_rank_fusion(base_results, rrf_k=60)
+        vector_result = VectorRetriever(self.root).retrieve(conn, query, limit=limit, filters=filters)
+        seeds = reciprocal_rank_fusion([*base_results, vector_result], rrf_k=60)
         graph_result = GraphRelationshipRetriever(seeds).retrieve(conn, query, limit=limit, filters=filters)
-        all_results = [*base_results, graph_result]
+        all_results = [*base_results, vector_result, graph_result]
         fused = reciprocal_rank_fusion(all_results, rrf_k=60)
         returned = apply_filters(fused, filters)[:limit]
+        diagnostics = retrieval_diagnostics(all_results, fused)
+        warnings = unique(
+            warning
+            for result in all_results
+            for warning in result.diagnostics.get("warnings", [])
+        )
+        if warnings:
+            diagnostics["warnings"] = warnings
         return RetrieverResult(
             self.name,
             returned,
-            diagnostics=retrieval_diagnostics(all_results, fused),
+            diagnostics=diagnostics,
         )
 
     def diagnostics(self, results: list[RetrieverResult], fused: list[RetrievalCandidate]) -> dict[str, object]:
@@ -352,6 +468,7 @@ def retrieval_diagnostics(results: list[RetrieverResult], fused: list[RetrievalC
                 "candidate_count": len(result.candidates),
                 "returned_count": len(result.candidates),
             }
+            | result.diagnostics
             for result in results
         },
         "fusion": {
@@ -361,6 +478,62 @@ def retrieval_diagnostics(results: list[RetrieverResult], fused: list[RetrievalC
             "candidate_count_after_fusion": len(fused),
         },
     }
+
+
+def candidates_for_vector_chunk(conn, chunk, score: float) -> list[RetrievalCandidate]:
+    candidates: list[RetrievalCandidate] = []
+    if chunk.chunk_type == "claim":
+        claim_id = str(chunk.metadata.get("claim_id", ""))
+        row = conn.execute(
+            """
+            select claim_id, source_id, claim_text, citation_locator, confidence_status
+            from claims
+            where claim_id = ?
+            """,
+            (claim_id,),
+        ).fetchone()
+        if row is not None:
+            candidates.append(
+                candidate_from_claim_row(
+                    conn,
+                    row,
+                    page_info=source_page_info(conn, str(row["source_id"])),
+                    raw_score=round(score, 6),
+                    retriever="vector",
+                    reasons=["vector_semantic"],
+                    matched_terms=[],
+                )
+            )
+        return candidates
+
+    source_ids: list[str] = []
+    if chunk.chunk_type == "source_title":
+        source_id = str(chunk.metadata.get("source_id", ""))
+        if source_id:
+            source_ids.append(source_id)
+    elif chunk.chunk_type == "page_title":
+        page = {
+            "page_id": str(chunk.metadata.get("page_id", "")),
+            "path": str(chunk.metadata.get("page_path", "")),
+            "page_type": str(chunk.metadata.get("page_type", "")),
+            "title": str(chunk.metadata.get("title", "")),
+        }
+        source_ids.extend(source_ids_for_page(conn, page))
+
+    for source_id in unique(source_ids):
+        for row in claim_rows_for_source(conn, source_id):
+            candidates.append(
+                candidate_from_claim_row(
+                    conn,
+                    row,
+                    page_info=source_page_info(conn, str(row["source_id"])),
+                    raw_score=round(score * 0.8, 6),
+                    retriever="vector",
+                    reasons=["vector_semantic", f"vector_chunk:{chunk.chunk_type}"],
+                    matched_terms=[],
+                )
+            )
+    return candidates
 
 
 def searchable_terms(query: RetrievalQuery) -> list[str]:

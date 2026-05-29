@@ -16,12 +16,18 @@ def test_init_writes_default_llm_config():
     assert "[llm]" in config
     assert "enabled = true" in config
     assert 'provider = "openai"' in config
-    assert 'model = "deepseek-v4-pro"' in config
+    assert 'model = "deepseek-v4-flash"' in config
     assert 'base_url = "https://api.deepseek.com"' in config
     assert 'api_key_file = "config/api-keys.toml"' in config
     assert "timeout_seconds = 60" in config
+    assert "[embedding]" in config
+    assert 'provider = "dashscope_multimodal"' in config
+    assert 'model = "tongyi-embedding-vision-flash-2026-03-06"' in config
+    assert "dimension = 768" in config
     assert (root / "config" / "api-keys.toml").exists()
     assert (root / "config" / "api-keys.example.toml").exists()
+    api_keys = (root / "config" / "api-keys.toml").read_text(encoding="utf-8")
+    assert "[embedding]" in api_keys
 
 
 def test_repository_config_has_default_llm_settings():
@@ -32,12 +38,18 @@ def test_repository_config_has_default_llm_settings():
     assert "[llm]" in config
     assert "enabled = true" in config
     assert 'provider = "openai"' in config
-    assert 'model = "deepseek-v4-pro"' in config
+    assert 'model = "deepseek-v4-flash"' in config
     assert 'base_url = "https://api.deepseek.com"' in config
     assert 'api_key_file = "config/api-keys.toml"' in config
     assert "timeout_seconds = 60" in config
+    assert "[embedding]" in config
+    assert 'provider = "dashscope_multimodal"' in config
+    assert 'model = "tongyi-embedding-vision-flash-2026-03-06"' in config
+    assert "dimension = 768" in config
     assert "[llm]" in api_keys_example
     assert "api_key" in api_keys_example
+    assert "[embedding]" in api_keys_example
+    assert "paste-your-dashscope-api-key-here" in api_keys_example
 
 
 def test_openai_provider_reads_api_key_from_local_file(monkeypatch):

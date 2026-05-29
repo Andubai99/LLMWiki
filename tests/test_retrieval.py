@@ -19,8 +19,9 @@ def test_retrieve_json_schema_and_python_api(capsys):
 
     assert data["question"] == "retrieval citation anchors"
     assert {"question", "contexts", "relationships", "warnings"}.issubset(data)
-    assert data["schema_version"] == "retrieval.v2.4"
+    assert data["schema_version"] == "retrieval.v2.6"
     assert "diagnostics" in data
+    assert "vector" in data["diagnostics"]["retrievers"]
     assert data["contexts"]
     context = data["contexts"][0]
     assert {

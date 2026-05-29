@@ -13,6 +13,7 @@ from tests.test_query_lint_doctor import add_ingest_apply, fixture
 
 DATASET = Path(__file__).resolve().parent / "evals" / "retrieval_v2_3.jsonl"
 FRUIT_DATASET = Path(__file__).resolve().parent / "evals" / "retrieval_v2_4_fruits.jsonl"
+SEMANTIC_FRUIT_DATASET = Path(__file__).resolve().parent / "evals" / "retrieval_v2_6_semantic_fruits.jsonl"
 EVAL_FIXTURES = (
     "minimal_source.md",
     "regression_alias.md",
@@ -87,6 +88,20 @@ def test_load_v24_fruit_eval_cases_from_committed_jsonl():
     assert "src_99ab0495789d" in cases[0].expected_source_ids
 
 
+def test_load_v26_semantic_fruit_eval_cases_from_committed_jsonl():
+    from llmwiki.retrieval_eval import load_eval_cases
+
+    cases = load_eval_cases(SEMANTIC_FRUIT_DATASET)
+
+    assert [case.id for case in cases] == [
+        "fruit_semantic_strawberry_storage",
+        "fruit_semantic_post_exercise_energy",
+        "fruit_semantic_blood_sugar_attention",
+    ]
+    assert cases[0].question == "草莓买回来怎样放才不容易坏？"
+    assert "src_99ab0495789d" in cases[0].expected_source_ids
+
+
 def test_load_eval_cases_reports_jsonl_line_errors(tmp_path: Path):
     from llmwiki.retrieval_eval import load_eval_cases
 
@@ -126,6 +141,7 @@ def test_eval_retrieval_does_not_call_llm_planner_or_provider(monkeypatch, capsy
 
     monkeypatch.setattr("llmwiki.llm.create_provider", fail_provider)
     monkeypatch.setattr("llmwiki.planner.create_provider", fail_provider)
+    monkeypatch.setattr("llmwiki.embeddings.create_embedding_provider", fail_provider)
 
     assert main(["eval", "retrieval", "--root", str(root), "--dataset", str(DATASET)]) == 0
     out = capsys.readouterr().out
@@ -284,6 +300,8 @@ def test_evaluate_v24_natural_chinese_case_includes_hybrid_diagnostics(capsys, t
     assert case["passed"]
     assert case["failure_stage"] is None
     assert case["diagnostics"]["retrievers"]["catalog_title_alias"]["candidate_count"] > 0
+    assert "vector" in case["diagnostics"]["retrievers"]
+    assert case["diagnostics"]["retrievers"]["vector"]["index_present"] is False
     assert case["diagnostics"]["fusion"]["method"] == "rrf"
     assert not contains_secret_text(data)
 
@@ -298,17 +316,18 @@ def test_eval_cli_returns_nonzero_for_missing_catalog(capsys):
     assert not contains_secret_text(out)
 
 
-def test_retrieve_result_includes_v23_diagnostics(capsys):
+def test_retrieve_result_includes_v26_diagnostics(capsys):
     root = setup_eval_workspace(capsys)
 
     assert main(["retrieve", "retrieval citation anchors", "--root", str(root), "--json"]) == 0
     data = json.loads(capsys.readouterr().out)
 
-    assert data["schema_version"] == "retrieval.v2.4"
+    assert data["schema_version"] == "retrieval.v2.6"
     assert set(("question", "contexts", "relationships", "warnings")).issubset(data)
     assert data["diagnostics"]["query_terms"]
     assert "query_features" in data["diagnostics"]
     assert "retrievers" in data["diagnostics"]
+    assert "vector" in data["diagnostics"]["retrievers"]
     assert "fusion" in data["diagnostics"]
     assert data["diagnostics"]["candidate_count"] >= data["diagnostics"]["returned_count"]
     assert data["diagnostics"]["failure_stage"] is None
