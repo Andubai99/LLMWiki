@@ -20,7 +20,7 @@ class PlannedRetrievalResult:
 
     def to_retrieval_dict(self, question: str) -> dict[str, Any]:
         return {
-            "schema_version": "retrieval.v2.4",
+            "schema_version": "retrieval.v2.7",
             "question": question,
             "contexts": self.contexts,
             "relationships": self.relationships,
@@ -43,6 +43,12 @@ def execute_query_plan(root: Path, plan: QueryPlan, ask_options: Any) -> Planned
             confidence=filters["confidence"],
         )
         retrievals.append(retrieval)
+        retrieval["contexts"] = tag_subquery_contexts(
+            list(retrieval.get("contexts", [])),
+            index=index,
+            query=subquery.query,
+            purpose=subquery.purpose,
+        )
         per_subquery.append(
             {
                 "index": index,
@@ -85,28 +91,75 @@ def merge_planned_contexts(
 ) -> list[dict[str, Any]]:
     by_claim: dict[str, dict[str, Any]] = {}
     order: list[str] = []
-    for group in context_groups:
-        for context in group:
-            claim_id = str(context.get("claim_id") or "")
-            if not claim_id:
-                continue
-            if claim_id not in by_claim:
-                by_claim[claim_id] = dict(context)
-                order.append(claim_id)
-                continue
-            existing = by_claim[claim_id]
-            existing["retrieval_reasons"] = unique(
-                [
-                    *list(existing.get("retrieval_reasons", [])),
-                    *list(context.get("retrieval_reasons", [])),
-                ]
-            )
-            if float(context.get("score") or 0.0) > float(existing.get("score") or 0.0):
-                existing["score"] = context.get("score")
+    for context in round_robin_contexts(context_groups):
+        claim_id = str(context.get("claim_id") or "")
+        if not claim_id:
+            continue
+        if claim_id not in by_claim:
+            by_claim[claim_id] = dict(context)
+            order.append(claim_id)
+            continue
+        existing = by_claim[claim_id]
+        existing["retrieval_reasons"] = unique(
+            [
+                *list(existing.get("retrieval_reasons", [])),
+                *list(context.get("retrieval_reasons", [])),
+            ]
+        )
+        existing["subquery_queries"] = unique(
+            [
+                *list(existing.get("subquery_queries", [])),
+                str(context.get("subquery_query") or ""),
+            ]
+        )
+        existing["subquery_indexes"] = unique(
+            [
+                *[str(value) for value in existing.get("subquery_indexes", [])],
+                str(context.get("subquery_index") or ""),
+            ]
+        )
+        existing["subquery_purposes"] = unique(
+            [
+                *list(existing.get("subquery_purposes", [])),
+                str(context.get("subquery_purpose") or ""),
+            ]
+        )
+        if float(context.get("score") or 0.0) > float(existing.get("score") or 0.0):
+            existing["score"] = context.get("score")
     merged = [by_claim[claim_id] for claim_id in order[:max_contexts]]
     for rank, context in enumerate(merged, start=1):
         context["rank"] = rank
     return merged
+
+
+def tag_subquery_contexts(
+    contexts: list[dict[str, Any]],
+    *,
+    index: int,
+    query: str,
+    purpose: str,
+) -> list[dict[str, Any]]:
+    tagged: list[dict[str, Any]] = []
+    for context in contexts:
+        item = dict(context)
+        item["subquery_index"] = index
+        item["subquery_query"] = query
+        item["subquery_purpose"] = purpose
+        item["subquery_queries"] = [query]
+        item["subquery_indexes"] = [index]
+        item["subquery_purposes"] = [purpose] if purpose else []
+        tagged.append(item)
+    return tagged
+
+
+def round_robin_contexts(context_groups: list[list[dict[str, Any]]]) -> list[dict[str, Any]]:
+    result: list[dict[str, Any]] = []
+    max_len = max((len(group) for group in context_groups), default=0)
+    for offset in range(max_len):
+        for group in context_groups:
+            if offset < len(group):
+                result.append(group[offset])
+    return result
 
 
 def merge_relationships(relationship_groups: list[list[dict[str, Any]]]) -> list[dict[str, Any]]:

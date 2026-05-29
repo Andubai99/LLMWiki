@@ -58,6 +58,14 @@ endpoint_url = "https://dashscope.aliyuncs.com/api/v1/services/embeddings/multim
 api_key_file = "config/api-keys.toml"
 dimension = 768
 timeout_seconds = 60
+
+[reranking]
+enabled = true
+default_method = "embedding"
+fallback_method = "deterministic"
+candidate_pool_limit = 80
+max_contexts_per_source = 3
+llm_reranker_enabled = false
 """
 
 DEFAULT_API_KEYS = """\

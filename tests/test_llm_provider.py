@@ -24,6 +24,10 @@ def test_init_writes_default_llm_config():
     assert 'provider = "dashscope_multimodal"' in config
     assert 'model = "tongyi-embedding-vision-flash-2026-03-06"' in config
     assert "dimension = 768" in config
+    assert "[reranking]" in config
+    assert 'default_method = "embedding"' in config
+    assert 'fallback_method = "deterministic"' in config
+    assert "candidate_pool_limit = 80" in config
     assert (root / "config" / "api-keys.toml").exists()
     assert (root / "config" / "api-keys.example.toml").exists()
     api_keys = (root / "config" / "api-keys.toml").read_text(encoding="utf-8")
@@ -46,6 +50,10 @@ def test_repository_config_has_default_llm_settings():
     assert 'provider = "dashscope_multimodal"' in config
     assert 'model = "tongyi-embedding-vision-flash-2026-03-06"' in config
     assert "dimension = 768" in config
+    assert "[reranking]" in config
+    assert 'default_method = "embedding"' in config
+    assert 'fallback_method = "deterministic"' in config
+    assert "candidate_pool_limit = 80" in config
     assert "[llm]" in api_keys_example
     assert "api_key" in api_keys_example
     assert "[embedding]" in api_keys_example

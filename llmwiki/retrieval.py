@@ -5,7 +5,9 @@ from pathlib import Path
 from typing import Any
 
 from .db import catalog_path, connect
+from .evidence_selection import EvidenceSelectionOptions, SelectedEvidence, select_evidence
 from .query_analysis import analyze_query
+from .rerankers import load_reranking_options, rerank_candidates
 from .retrievers import HybridRetriever, RetrievalCandidate, RetrievalFilters
 
 
@@ -23,7 +25,7 @@ def retrieve_context(
     root = root.resolve()
     limit = max(0, limit)
     result: dict[str, Any] = {
-        "schema_version": "retrieval.v2.6",
+        "schema_version": "retrieval.v2.7",
         "question": question,
         "contexts": [],
         "relationships": [],
@@ -48,28 +50,55 @@ def retrieve_context(
             result["diagnostics"]["failure_stage"] = "no_terms"
             return result
 
+        reranking_options = load_reranking_options(root)
+        candidate_pool_limit = max(limit * 10, reranking_options.candidate_pool_limit)
         hybrid_result = HybridRetriever(root=root).retrieve(
             conn,
             query,
-            limit=max(limit * 4, limit),
+            limit=candidate_pool_limit,
             filters=RetrievalFilters(source_id=source_id, page_type=page_type, confidence=confidence),
         )
         result["diagnostics"].update(hybrid_result.diagnostics)
         for warning in hybrid_result.diagnostics.get("warnings", []):
             add_warning(result, str(warning))
         candidate_rows = hybrid_result.candidates
+        candidate_relationships = relationships_for_candidates(conn, candidate_rows)
+        rerank_result = rerank_candidates(root, question, candidate_rows, reranking_options)
+        for warning in rerank_result.warnings:
+            add_warning(result, str(warning))
+        selection_result = select_evidence(
+            rerank_result.candidates,
+            relationships=candidate_relationships,
+            limit=limit,
+            options=EvidenceSelectionOptions(max_contexts_per_source=reranking_options.max_contexts_per_source),
+        )
+        for warning in selection_result.warnings:
+            add_warning(result, str(warning))
+        selected_rows = selection_result.selected
         result["diagnostics"]["candidate_count"] = int(
             result["diagnostics"].get("fusion", {}).get("candidate_count_after_fusion", len(candidate_rows))
         )
+        result["diagnostics"]["candidate_pool"] = {
+            "requested_limit": candidate_pool_limit,
+            "candidate_count": len(candidate_rows),
+        }
+        result["diagnostics"]["reranking"] = {
+            **rerank_result.diagnostics,
+            "method": rerank_result.method,
+            "fallback_used": rerank_result.fallback_used,
+            "candidate_count": len(rerank_result.candidates),
+        }
+        result["diagnostics"]["selection"] = selection_result.diagnostics
         relationships_by_key: dict[tuple[str, str, str, str, str], dict[str, str]] = {}
         contexts: list[dict[str, Any]] = []
-        for row in candidate_rows:
+        for selected in selected_rows:
+            row = selected.candidate
             claim_id = row.claim_id
             row_source_id = row.source_id
             relationships = load_relationships(conn, claim_id, row_source_id)
 
             relationship_type = best_relationship_type(relationships, claim_id)
-            context = context_from_candidate(row, len(contexts) + 1, relationship_type)
+            context = context_from_selected(selected, len(contexts) + 1, relationship_type)
             contexts.append(context)
 
             for relationship in relationships:
@@ -94,9 +123,6 @@ def retrieve_context(
                     result,
                     "Contradictory evidence is present; expose the conflict instead of resolving it silently.",
                 )
-
-            if len(contexts) >= limit:
-                break
 
     result["contexts"] = contexts
     result["diagnostics"]["returned_count"] = len(contexts)
@@ -153,6 +179,44 @@ def context_from_candidate(
         "score": float(candidate.raw_score),
         "retrieval_reasons": candidate.reasons,
     }
+
+
+def context_from_selected(
+    selected: SelectedEvidence,
+    rank: int,
+    relationship_type: str,
+) -> dict[str, Any]:
+    context = context_from_candidate(selected.candidate, rank, relationship_type)
+    context.update(
+        {
+            "candidate_rank": selected.candidate_rank,
+            "rerank_score": selected.rerank_score,
+            "selection_reason": selected.selection_reason,
+            "coverage_group": selected.coverage_group,
+            "redundancy_group": selected.redundancy_group,
+            "rerank_reasons": selected.rerank_reasons,
+            "score": selected.rerank_score,
+        }
+    )
+    return context
+
+
+def relationships_for_candidates(
+    conn,
+    candidates: list[RetrievalCandidate],
+) -> list[dict[str, str]]:
+    relationships_by_key: dict[tuple[str, str, str, str, str], dict[str, str]] = {}
+    for candidate in candidates:
+        for relationship in load_relationships(conn, candidate.claim_id, candidate.source_id):
+            key = (
+                str(relationship["subject_id"]),
+                str(relationship["object_id"]),
+                str(relationship["relationship_type"]),
+                str(relationship["evidence_claim_id"]),
+                str(relationship["source_id"]),
+            )
+            relationships_by_key[key] = dict(relationship)
+    return list(relationships_by_key.values())
 
 
 def candidate_claims(

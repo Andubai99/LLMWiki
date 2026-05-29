@@ -158,7 +158,7 @@ def test_vector_retriever_adds_semantic_candidate_to_retrieve(monkeypatch):
 
     result = retrieve_context(root, "spoil prevention after shopping", limit=3)
 
-    assert result["schema_version"] == "retrieval.v2.6"
+    assert result["schema_version"] == "retrieval.v2.7"
     assert result["contexts"][0]["claim_id"] == "claim_strawberry_storage"
     assert result["contexts"][0]["source_id"] == "src_strawberry"
     assert result["contexts"][0]["citation_locator"] == "section:storage"
@@ -167,7 +167,7 @@ def test_vector_retriever_adds_semantic_candidate_to_retrieve(monkeypatch):
     assert result["diagnostics"]["retrievers"]["vector"]["index_present"] is True
     assert result["diagnostics"]["retrievers"]["vector"]["query_embedded"] is True
     assert result["diagnostics"]["retrievers"]["vector"]["candidate_count"] >= 1
-    assert provider.calls == [["spoil prevention after shopping"]]
+    assert provider.calls == [["spoil prevention after shopping"], ["spoil prevention after shopping"]]
 
 
 def test_vector_retrieval_falls_back_without_index(monkeypatch):
@@ -230,6 +230,6 @@ def test_retrieve_cli_includes_vector_diagnostics(monkeypatch, capsys):
     assert main(["retrieve", "spoil prevention after shopping", "--root", str(root), "--json"]) == 0
 
     out = capsys.readouterr().out
-    assert '"schema_version": "retrieval.v2.6"' in out
+    assert '"schema_version": "retrieval.v2.7"' in out
     assert '"vector"' in out
     assert "claim_strawberry_storage" in out

@@ -67,8 +67,17 @@ class RetrievalEvalResult:
     recall_at_k: float
     precision_at_k: float
     mrr: float
-    warnings: list[str]
-    diagnostics: dict[str, Any]
+    ndcg_at_k: float = 0.0
+    map_at_k: float = 0.0
+    context_precision_at_k: float = 0.0
+    context_recall_at_k: float = 0.0
+    coverage_at_k: float = 0.0
+    source_diversity_at_k: float = 0.0
+    redundancy_rate_at_k: float = 0.0
+    selected_conflict_exposure: float = 1.0
+    weak_evidence_visibility: float = 1.0
+    warnings: list[str] = field(default_factory=list)
+    diagnostics: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -84,6 +93,15 @@ class RetrievalEvalResult:
             "recall_at_k": self.recall_at_k,
             "precision_at_k": self.precision_at_k,
             "mrr": self.mrr,
+            "ndcg_at_k": self.ndcg_at_k,
+            "map_at_k": self.map_at_k,
+            "context_precision_at_k": self.context_precision_at_k,
+            "context_recall_at_k": self.context_recall_at_k,
+            "coverage_at_k": self.coverage_at_k,
+            "source_diversity_at_k": self.source_diversity_at_k,
+            "redundancy_rate_at_k": self.redundancy_rate_at_k,
+            "selected_conflict_exposure": self.selected_conflict_exposure,
+            "weak_evidence_visibility": self.weak_evidence_visibility,
             "warnings": self.warnings,
             "diagnostics": self.diagnostics,
         }
@@ -114,6 +132,17 @@ class RetrievalEvalSummary:
                 "recall_at_5": average(case.recall_at_k for case in self.cases),
                 "precision_at_5": average(case.precision_at_k for case in self.cases),
                 "mrr": average(case.mrr for case in self.cases),
+                "ndcg_at_5": average(case.ndcg_at_k for case in self.cases),
+                "map_at_5": average(case.map_at_k for case in self.cases),
+                "context_precision_at_5": average(case.context_precision_at_k for case in self.cases),
+                "context_recall_at_5": average(case.context_recall_at_k for case in self.cases),
+                "coverage_at_5": average(case.coverage_at_k for case in self.cases),
+                "source_diversity_at_5": average(case.source_diversity_at_k for case in self.cases),
+                "redundancy_rate_at_5": average(case.redundancy_rate_at_k for case in self.cases),
+                "selected_conflict_exposure_rate": average(
+                    case.selected_conflict_exposure for case in self.cases
+                ),
+                "weak_evidence_visibility_rate": average(case.weak_evidence_visibility for case in self.cases),
             },
             "evidence_contract": self.evidence_contract,
             "operational": {
@@ -182,6 +211,15 @@ def evaluate_retrieval(root: Path, dataset: Path, *, limit: int = 5) -> Retrieva
                     recall_at_k=0.0,
                     precision_at_k=0.0,
                     mrr=0.0,
+                    ndcg_at_k=0.0,
+                    map_at_k=0.0,
+                    context_precision_at_k=0.0,
+                    context_recall_at_k=0.0,
+                    coverage_at_k=0.0,
+                    source_diversity_at_k=0.0,
+                    redundancy_rate_at_k=0.0,
+                    selected_conflict_exposure=0.0,
+                    weak_evidence_visibility=1.0,
                     warnings=[sanitize_error(exc)],
                     diagnostics={},
                 )
@@ -224,6 +262,9 @@ def evaluate_case(
             total_expectations=max(total_expectations, 1),
             warnings=warnings,
             diagnostics=diagnostics,
+            contexts=contexts,
+            relationships=relationships,
+            catalog=catalog,
         )
 
     relationship_missing = missing_required_relationship(case, relationships, warnings)
@@ -250,6 +291,9 @@ def evaluate_case(
         total_expectations=max(total_expectations, 1),
         warnings=warnings,
         diagnostics=diagnostics,
+        contexts=contexts,
+        relationships=relationships,
+        catalog=catalog,
     )
 
 
@@ -264,8 +308,16 @@ def result_from_metrics(
     total_expectations: int,
     warnings: list[str],
     diagnostics: dict[str, Any],
+    contexts: list[dict[str, Any]] | None = None,
+    relationships: list[dict[str, Any]] | None = None,
+    catalog: dict[str, set[str]] | None = None,
 ) -> RetrievalEvalResult:
+    contexts = contexts or []
+    relationships = relationships or []
+    catalog = catalog or {"page_id_by_path": {}}
     divisor = min(5, returned_count) if returned_count else 0
+    precision = round(len(relevant_indices) / divisor, 4) if divisor else 0.0
+    recall = round(min(1.0, matched_expectations / total_expectations), 4)
     return RetrievalEvalResult(
         id=case.id,
         question=case.question,
@@ -276,12 +328,115 @@ def result_from_metrics(
         relevant_count=len(relevant_indices),
         expected_count=total_expectations,
         hit_at_k=1.0 if relevant_indices else 0.0,
-        recall_at_k=round(min(1.0, matched_expectations / total_expectations), 4),
-        precision_at_k=round(len(relevant_indices) / divisor, 4) if divisor else 0.0,
+        recall_at_k=recall,
+        precision_at_k=precision,
         mrr=round(1 / relevant_indices[0], 4) if relevant_indices else 0.0,
+        ndcg_at_k=ndcg_at_k(relevant_indices, total_expectations, k=5),
+        map_at_k=map_at_k(relevant_indices, total_expectations, k=5),
+        context_precision_at_k=precision,
+        context_recall_at_k=recall,
+        coverage_at_k=coverage_at_k(case, contexts, catalog),
+        source_diversity_at_k=source_diversity_at_k(contexts),
+        redundancy_rate_at_k=redundancy_rate_at_k(contexts),
+        selected_conflict_exposure=selected_conflict_exposure(case, relationships, warnings),
+        weak_evidence_visibility=weak_evidence_visibility(contexts, warnings),
         warnings=warnings,
         diagnostics=diagnostics,
     )
+
+
+def ndcg_at_k(relevant_indices: list[int], total_expectations: int, *, k: int) -> float:
+    relevant = [rank for rank in relevant_indices if rank <= k]
+    if not relevant:
+        return 0.0
+    dcg = sum(1.0 / log2(rank + 1) for rank in relevant)
+    ideal_relevant = min(total_expectations, k)
+    idcg = sum(1.0 / log2(rank + 1) for rank in range(1, ideal_relevant + 1))
+    if idcg == 0:
+        return 0.0
+    return round(dcg / idcg, 4)
+
+
+def map_at_k(relevant_indices: list[int], total_expectations: int, *, k: int) -> float:
+    relevant = [rank for rank in relevant_indices if rank <= k]
+    if not relevant:
+        return 0.0
+    precision_sum = 0.0
+    for hit_number, rank in enumerate(relevant, start=1):
+        precision_sum += hit_number / rank
+    denominator = min(total_expectations, k)
+    return round(precision_sum / denominator, 4) if denominator else 0.0
+
+
+def log2(value: int) -> float:
+    import math
+
+    return math.log2(value)
+
+
+def coverage_at_k(
+    case: RetrievalEvalCase,
+    contexts: list[dict[str, Any]],
+    catalog: dict[str, set[str]],
+) -> float:
+    expected_sources = set(case.expected_source_ids)
+    if expected_sources:
+        returned_sources = {str(context.get("source_id") or "") for context in contexts}
+        return round(len(expected_sources & returned_sources) / len(expected_sources), 4)
+
+    expected_pages = set(case.expected_page_ids)
+    if expected_pages:
+        page_by_path = catalog.get("page_id_by_path", {})
+        returned_pages = {
+            page_by_path.get(str(context.get("page_path") or ""))
+            for context in contexts
+        }
+        return round(len(expected_pages & returned_pages) / len(expected_pages), 4)
+
+    expected_claims = set(case.expected_claim_ids)
+    if expected_claims:
+        returned_claims = {str(context.get("claim_id") or "") for context in contexts}
+        return round(len(expected_claims & returned_claims) / len(expected_claims), 4)
+
+    return 1.0 if contexts else 0.0
+
+
+def source_diversity_at_k(contexts: list[dict[str, Any]]) -> float:
+    if not contexts:
+        return 0.0
+    sources = {str(context.get("source_id") or "") for context in contexts}
+    return round(len(sources) / len(contexts), 4)
+
+
+def redundancy_rate_at_k(contexts: list[dict[str, Any]]) -> float:
+    if not contexts:
+        return 0.0
+    groups = {
+        str(context.get("redundancy_group") or normalize_context_text(context))
+        for context in contexts
+    }
+    return round(1.0 - (len(groups) / len(contexts)), 4)
+
+
+def selected_conflict_exposure(
+    case: RetrievalEvalCase,
+    relationships: list[dict[str, Any]],
+    warnings: list[str],
+) -> float:
+    if "contradicts" not in case.must_expose_relationship_types:
+        return 1.0
+    return 1.0 if relationship_type_present("contradicts", relationships, warnings) else 0.0
+
+
+def weak_evidence_visibility(contexts: list[dict[str, Any]], warnings: list[str]) -> float:
+    has_weak = any(str(context.get("confidence_status") or "") in {"weak", "uncited"} for context in contexts)
+    if not has_weak:
+        return 1.0
+    return 1.0 if any("weak/uncited" in warning.casefold() for warning in warnings) else 0.0
+
+
+def normalize_context_text(context: dict[str, Any]) -> str:
+    return str(context.get("claim_text") or "").casefold().strip()
 
 
 class ContractAccumulator:
@@ -476,6 +631,15 @@ def format_eval_report(summary: RetrievalEvalSummary) -> str:
         f"- recall@5: {summary_data['recall_at_5']:.2f}",
         f"- precision@5: {summary_data['precision_at_5']:.2f}",
         f"- mrr: {summary_data['mrr']:.2f}",
+        f"- ndcg@5: {summary_data['ndcg_at_5']:.2f}",
+        f"- map@5: {summary_data['map_at_5']:.2f}",
+        f"- context_precision@5: {summary_data['context_precision_at_5']:.2f}",
+        f"- context_recall@5: {summary_data['context_recall_at_5']:.2f}",
+        f"- coverage@5: {summary_data['coverage_at_5']:.2f}",
+        f"- source_diversity@5: {summary_data['source_diversity_at_5']:.2f}",
+        f"- redundancy_rate@5: {summary_data['redundancy_rate_at_5']:.2f}",
+        f"- selected_conflict_exposure_rate: {summary_data['selected_conflict_exposure_rate']:.2f}",
+        f"- weak_evidence_visibility_rate: {summary_data['weak_evidence_visibility_rate']:.2f}",
         "",
         "Evidence contract:",
         f"- claim_id_validity: {contract['claim_id_validity']:.2f}",

@@ -1,10 +1,11 @@
 # LLM Wiki
 
-## Retrieval Layer v2.6（混合本地检索 + 向量召回）
+## Retrieval Layer v2.7（混合本地检索 + 向量召回 + reranking）
 
 `llmwiki retrieve` 是外部 RAG 系统、Agent 和 LLM prompt 调用 LLMWiki 的稳定证据接口。它从本地 SQLite catalog 检索 source-backed claims，并返回 citation、page path、relationship type、score、retrieval reasons 和 warning。这个命令使用确定性的混合本地检索，不会调用外部 LLM API。
 
 V2.4 的本地检索信号包括 SQLite FTS/BM25、catalog title/alias/source title、one-hop graph relationship、exact formula/symbol span，并用 RRF 做融合排序。V2.6 在此基础上增加本地可重建 vector index：当 `[embedding].enabled = true` 且 `state/embeddings/` 已存在时，`retrieve` 会调用 embedding provider 生成 query vector，把 vector candidates 作为另一个召回信号参与 RRF。vector 只能帮助召回候选，最终返回的 evidence 仍必须映射回 catalog 中真实存在的 `claim_id`、`source_id`、`citation_locator` 和 `page_path`。
+V2.7 在召回候选之后增加 reranking 和 evidence selection。默认 reranker 使用本地 embedding/vector index；如果 index、key 或 provider 不可用，会自动退回 deterministic reranker。selector 会控制多 source 覆盖、去重、weak evidence 和 explicit `contradicts` 暴露。reranker/selector 只处理 catalog-backed candidates，不是新的 evidence 来源，也不能伪造 claim、source、page、locator 或 relationship。
 
 如果 vector index 缺失、过期、维度不匹配或 query embedding 调用失败，`retrieve` 会回退到 BM25/catalog/exact/graph 检索，并在 diagnostics/warnings 中暴露原因。它会做 Unicode-aware normalization，尽量保留中文、多语种、公式、符号和 emoji 查询特征。
 
@@ -43,7 +44,7 @@ JSON schema 会保持稳定，便于外部程序直接解析：
 ```json
 {
   "question": "...",
-  "schema_version": "retrieval.v2.6",
+  "schema_version": "retrieval.v2.7",
   "contexts": [
     {
       "rank": 1,
@@ -56,7 +57,12 @@ JSON schema 会保持稳定，便于外部程序直接解析：
       "relationship_type": "supports",
       "confidence_status": "cited",
       "score": 0.0,
-      "retrieval_reasons": ["bm25:term=rag"]
+      "retrieval_reasons": ["bm25:term=rag"],
+      "candidate_rank": 1,
+      "rerank_score": 0.0,
+      "selection_reason": "best_for_coverage",
+      "coverage_group": "source:src_xxx",
+      "redundancy_group": "..."
     }
   ],
   "relationships": [],
@@ -79,7 +85,9 @@ JSON schema 会保持稳定，便于外部程序直接解析：
         "failure_stage": "missing_index"
       }
     },
-    "fusion": {}
+    "fusion": {},
+    "reranking": {},
+    "selection": {}
   }
 }
 ```
@@ -88,7 +96,7 @@ JSON schema 会保持稳定，便于外部程序直接解析：
 
 `contradicts` 表示 source-backed claims 之间存在真实 disagreement。否定句、提醒句、限制句本身不是矛盾，例如“不建议多吃”“不需要提前清洗”这类 claim 会作为普通 evidence 保留，不会因为包含否定词自动变成 `contradicts` relationship。`retrieve` 只暴露 catalog 中已有的 relationships，不负责从文本关键词判断矛盾。
 
-当前检索限制：V2.6 有本地 JSONL vector index，但没有外部 hosted vector DB、reranker 或 vector-only answer generation。`retrieve`、`query`、`eval retrieval` 不调用 chat LLM；在 embedding 启用且本地 index 存在时，它们可能调用 embedding provider 做 query embedding。LLM query planning 只接入 `ask`。`query` 是 `retrieve` 的人类可读输出，不另起一套弱检索。
+当前检索限制：V2.7 有本地 JSONL vector index 和 reranker/evidence selector，但没有外部 hosted vector DB、默认 chat LLM reranker 或 vector-only answer generation。`retrieve`、`query`、`eval retrieval` 不调用 chat LLM；在 embedding 启用且本地 index 存在时，它们可能调用 embedding provider 做 query embedding。LLM query planning 只接入 `ask`。`query` 是 `retrieve` 的人类可读输出，不另起一套弱检索。
 
 ## Retrieval Evaluation v2.3+（检索评测）
 
@@ -99,11 +107,12 @@ llmwiki eval retrieval --root . --dataset tests/evals/retrieval_v2_3.jsonl
 llmwiki eval retrieval --root . --dataset tests/evals/retrieval_v2_3.jsonl --json
 llmwiki eval retrieval --root . --dataset tests/evals/retrieval_v2_4_fruits.jsonl
 llmwiki eval retrieval --root . --dataset tests/evals/retrieval_v2_6_semantic_fruits.jsonl
+llmwiki eval retrieval --root . --dataset tests/evals/retrieval_v2_7_evidence_selection_fruits.jsonl
 ```
 
-评测输出包含 `hit@5`、`recall@5`、`precision@5`、`MRR`，以及 LLMWiki 特有的 `claim_id_validity`、`source_id_validity`、`citation_locator_presence`、`page_path_validity`、`relationship_validity` 和 `contradiction_exposure_rate`。
+评测输出包含 `hit@5`、`recall@5`、`precision@5`、`MRR`、`nDCG@5`、`MAP@5`、coverage、source diversity、redundancy rate、selected conflict exposure 和 weak evidence visibility，并继续包含 LLMWiki 特有的 `claim_id_validity`、`source_id_validity`、`citation_locator_presence`、`page_path_validity`、`relationship_validity` 和 `contradiction_exposure_rate`。
 
-V2.3 建立了测量层；V2.4 在此基础上替换为混合本地检索；V2.6 增加 vector diagnostics 和语义检索回归数据。后续修改检索、query planning、vector search 或 reranker 前后，都应该运行该 eval 命令并比较结果。
+V2.3 建立了测量层；V2.4 在此基础上替换为混合本地检索；V2.6 增加 vector diagnostics 和语义检索回归数据；V2.7 增加 reranking/evidence selection 质量指标。后续修改检索、query planning、vector search 或 reranker 前后，都应该运行该 eval 命令并比较结果。
 
 ## LLM Provider v1
 
@@ -178,6 +187,22 @@ llmwiki embeddings status --root .
 `embeddings rebuild` 会从 catalog 构建 claim/page/source title chunks，调用 embedding provider，并把可重建缓存写到 `state/embeddings/manifest.json`、`chunks.jsonl`、`vectors.jsonl`。这些文件不是 durable knowledge，已被 `.gitignore` 忽略，可以随时删除后重建。
 
 vector retrieval 是召回信号，不是证据来源。向量相似度命中的 chunk 必须先映射回 catalog 中真实 claim，才能进入 `retrieve/query/ask` 返回结果；answer citation 仍然只能引用 retrieved claim ids、source ids 和 locators。
+
+## Reranking + Evidence Selection v2.7
+
+V2.7 在 hybrid/vector recall 后增加 reranking 和 evidence selection。默认配置如下：
+
+```toml
+[reranking]
+enabled = true
+default_method = "embedding"
+fallback_method = "deterministic"
+candidate_pool_limit = 80
+max_contexts_per_source = 3
+llm_reranker_enabled = false
+```
+
+embedding reranker 使用本地 `state/embeddings/` 中的 claim vectors 和 query embedding 重新排序；如果 index、key、provider 或维度不可用，会退回 deterministic reranker。selector 会在最终 `contexts` 中控制多 source 覆盖、去重、weak/uncited 可见性和 explicit `contradicts` 暴露。reranker/selector 不能创建新 evidence，返回的 citation 仍然只能来自 catalog。
 
 ## LLM Ingest Proposal v1
 
@@ -380,7 +405,7 @@ llmwiki doctor --root .
 - `llmwiki ask --writeback` 通过 staging/apply 生成 synthesis 页面。
 - `llmwiki eval retrieval` 用本地 committed eval 数据集检查 retrieval 质量和 evidence contract。
 - `llmwiki embeddings test/rebuild/status` 管理本地可重建 vector index。
-- `llmwiki retrieve` / `llmwiki query` 使用混合检索，覆盖 BM25、catalog title/alias、graph relationship、formula/symbol exact match 和可选 vector recall。
+- `llmwiki retrieve` / `llmwiki query` 使用混合检索，覆盖 BM25、catalog title/alias、graph relationship、formula/symbol exact match、可选 vector recall，以及 V2.7 reranking/evidence selection。
 - claim-first staging，并为重要 claim 保留引用。
 - weak/uncited claim 可以进入 triage，但不能直接成为正式结论。
 - 生成 source summary、concept 和 entity Markdown 页面。

@@ -20,7 +20,9 @@ def query_context(root: Path, question: str, limit: int = 5) -> str:
             f"citation={context['citation_locator']} "
             f"page={context['page_path']} "
             f"relationship={context['relationship_type']} "
-            f"score={context['score']}"
+            f"score={context['score']} "
+            f"rerank={context.get('rerank_score', context['score'])} "
+            f"selection={context.get('selection_reason', 'n/a')}"
         )
         lines.append(f"   {context['claim_text']}")
     warnings = result.get("warnings", [])
