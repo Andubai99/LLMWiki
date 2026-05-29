@@ -37,7 +37,7 @@ def test_llm_test_calls_real_deepseek_api(capsys):
     out = capsys.readouterr().out
 
     assert "provider=openai" in out
-    assert "model=deepseek-v4-pro" in out
+    assert "model=deepseek-v4-flash" in out
     assert "base_url=https://api.deepseek.com" in out
     assert "real_call=true" in out
     assert "content_summary=" in out
