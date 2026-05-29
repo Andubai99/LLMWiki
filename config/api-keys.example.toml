@@ -1,3 +1,7 @@
 [llm]
 # Copy this file to config/api-keys.toml and replace the placeholder value.
 api_key = "paste-your-deepseek-api-key-here"
+
+[embedding]
+# Optional for V2.6 embedding experiments.
+api_key = "paste-your-dashscope-api-key-here"
