@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 from llmwiki.cli import main
-from tests.helpers import make_workspace
+from tests.helpers import make_workspace, seed_contradicts_relationship
 from tests.test_query_lint_doctor import add_ingest_apply, fixture
 
 
@@ -116,7 +116,12 @@ def test_retrieve_outputs_contradicts_relationships(capsys):
     root = make_workspace()
     assert main(["init", "--root", str(root)]) == 0
     add_ingest_apply(root, fixture("minimal_source.md"))
-    add_ingest_apply(root, fixture("regression_conflict.md"))
+    conflict_source_id = add_ingest_apply(root, fixture("regression_conflict.md"))
+    seed_contradicts_relationship(
+        root,
+        source_id=conflict_source_id,
+        claim_text_like="%does not require citation anchors%",
+    )
     capsys.readouterr()
 
     assert main(["retrieve", "citation anchors every workflow", "--root", str(root), "--json"]) == 0

@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from llmwiki.cli import main
-from tests.helpers import make_workspace
+from tests.helpers import make_workspace, seed_contradicts_relationship
 from tests.test_hybrid_retrieval import setup_seeded_workspace
 from tests.test_query_lint_doctor import add_ingest_apply, fixture
 
@@ -26,8 +26,19 @@ EVAL_FIXTURES = (
 def setup_eval_workspace(capsys: pytest.CaptureFixture[str]) -> Path:
     root = make_workspace()
     assert main(["init", "--root", str(root)]) == 0
+    source_ids: dict[str, str] = {}
     for name in EVAL_FIXTURES:
-        add_ingest_apply(root, fixture(name))
+        source_ids[name] = add_ingest_apply(root, fixture(name))
+    seed_contradicts_relationship(
+        root,
+        source_id=source_ids["regression_conflict.md"],
+        claim_text_like="%does not require citation anchors%",
+    )
+    seed_contradicts_relationship(
+        root,
+        source_id=source_ids["zh_conflict.md"],
+        claim_text_like="%不需要%citation anchors%",
+    )
     capsys.readouterr()
     return root
 
