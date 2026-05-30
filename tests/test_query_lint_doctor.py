@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import sqlite3
 import sys
 
 from llmwiki.cli import main, virtualenv_status
@@ -99,6 +100,55 @@ def test_lint_and_doctor_report_workspace_health(capsys):
     assert "Lint OK" in lint
     assert "source hash drift: 0" in lint
     assert "uncited claims: 0" in lint
+    assert "uncited with locator: 0" in lint
+
+
+def test_lint_fails_for_uncited_claims_without_locator(capsys):
+    root = make_workspace()
+    assert main(["init", "--root", str(root)]) == 0
+    source_id = add_ingest_apply(root, fixture("minimal_source.md"))
+    with sqlite3.connect(root / "state" / "catalog.sqlite") as conn:
+        conn.execute(
+            """
+            insert into claims (claim_id, source_id, claim_text, citation_locator, confidence_status, created_at)
+            values ('clm_missing_locator', ?, 'Missing locator evidence.', '', 'weak', '2026-05-30T00:00:00+00:00')
+            """,
+            (source_id,),
+        )
+        conn.execute(
+            """
+            insert into relationships (subject_id, object_id, relationship_type, evidence_claim_id, source_id)
+            values (?, ?, 'supports', 'clm_missing_locator', ?)
+            """,
+            (source_id, source_id, source_id),
+        )
+    capsys.readouterr()
+
+    assert main(["lint", "--root", str(root)]) == 1
+    lint = capsys.readouterr().out
+    assert "uncited claims: 1" in lint
+    assert "uncited with locator: 0" in lint
+
+
+def test_lint_reports_locator_backed_confidence_inconsistency_without_failing(capsys):
+    root = make_workspace()
+    assert main(["init", "--root", str(root)]) == 0
+    source_id = add_ingest_apply(root, fixture("minimal_source.md"))
+    with sqlite3.connect(root / "state" / "catalog.sqlite") as conn:
+        conn.execute(
+            """
+            insert into claims (claim_id, source_id, claim_text, citation_locator, confidence_status, created_at)
+            values ('clm_locator_uncited', ?, 'Locator backed evidence.', 'line:1', 'uncited', '2026-05-30T00:00:00+00:00')
+            """,
+            (source_id,),
+        )
+    capsys.readouterr()
+
+    assert main(["lint", "--root", str(root)]) == 0
+    lint = capsys.readouterr().out
+    assert "Lint OK" in lint
+    assert "uncited claims: 0" in lint
+    assert "uncited with locator: 1" in lint
 
 
 def test_lint_reports_source_hash_drift(capsys):

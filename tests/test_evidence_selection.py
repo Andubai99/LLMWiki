@@ -61,6 +61,63 @@ def test_selector_preserves_source_coverage_for_comparison_questions():
     assert all(item.coverage_group for item in result.selected)
 
 
+def test_focused_selector_keeps_dominant_group_when_enough_cited_evidence():
+    candidates = [
+        candidate("clm_strawberry_storage", source_id="src_strawberry", score=0.95),
+        candidate("clm_strawberry_refrigerate", source_id="src_strawberry", score=0.92),
+        candidate("clm_strawberry_fragile", source_id="src_strawberry", score=0.9),
+        candidate("clm_orange_storage", source_id="src_orange", score=0.89),
+        candidate("clm_banana_storage", source_id="src_banana", score=0.88),
+    ]
+
+    result = select_evidence(
+        candidates,
+        relationships=[],
+        limit=3,
+        options=EvidenceSelectionOptions(
+            mode="focused",
+            mode_reason="single dominant catalog term",
+            dominant_coverage_group="source:src_strawberry",
+            max_contexts_per_source=5,
+        ),
+    )
+
+    assert claim_ids(result) == [
+        "clm_strawberry_storage",
+        "clm_strawberry_refrigerate",
+        "clm_strawberry_fragile",
+    ]
+    assert result.diagnostics["mode"] == "focused"
+    assert result.diagnostics["mode_reason"] == "single dominant catalog term"
+    assert result.diagnostics["dominant_coverage_group"] == "source:src_strawberry"
+    assert result.diagnostics["outside_group_selected_count"] == 0
+
+
+def test_focused_selector_fills_from_other_groups_when_focused_evidence_is_thin():
+    candidates = [
+        candidate("clm_strawberry_storage", source_id="src_strawberry", score=0.95),
+        candidate("clm_orange_storage", source_id="src_orange", score=0.89),
+        candidate("clm_banana_storage", source_id="src_banana", score=0.88),
+    ]
+
+    result = select_evidence(
+        candidates,
+        relationships=[],
+        limit=3,
+        options=EvidenceSelectionOptions(
+            mode="focused",
+            dominant_coverage_group="source:src_strawberry",
+            min_focused_cited=3,
+            max_contexts_per_source=5,
+        ),
+    )
+
+    assert claim_ids(result) == ["clm_strawberry_storage", "clm_orange_storage", "clm_banana_storage"]
+    assert result.selected[1].selection_reason == "fill_after_focused_evidence_exhausted"
+    assert result.diagnostics["outside_group_selected_count"] == 2
+    assert result.diagnostics["missing_required_coverage"] == ["source:src_strawberry"]
+
+
 def test_selector_removes_near_duplicate_claim_text_and_locator():
     candidates = [
         candidate("clm_a1", source_id="src_a", text="same evidence", score=0.9),
@@ -106,6 +163,7 @@ def test_selector_keeps_explicit_contradiction_visible():
     assert "clm_conflict" in claim_ids(result)
     assert any("Contradictory evidence is present" in warning for warning in result.warnings)
     assert result.diagnostics["conflict_evidence_selected"] is True
+    assert result.diagnostics["mode"] == "conflict"
 
 
 def test_selector_prefers_cited_evidence_over_weak_with_same_coverage():

@@ -310,6 +310,20 @@ def test_apply_rejects_unknown_or_uncited_claims(capsys):
     assert main(["apply", "run_mixed_weak_claim", "--root", str(root)]) == 1
     assert "weak/uncited claim" in capsys.readouterr().out
 
+    locator_backed_uncited_claim = valid_claim() | {
+        "claim_id": "clm_manual_locator_uncited",
+        "citation_locator": "line:1",
+        "confidence_status": "uncited",
+    }
+    locator_backed_patch = valid_source_patch(claim_ids=["clm_manual_locator_uncited"])
+    locator_backed_patch["content"] = locator_backed_patch["content"].replace(
+        "clm_manual_1",
+        "clm_manual_locator_uncited",
+    )
+    write_manual_run(root, "run_locator_backed_uncited", locator_backed_patch, [locator_backed_uncited_claim])
+    assert main(["apply", "run_locator_backed_uncited", "--root", str(root)]) == 1
+    assert "no cited claims" in capsys.readouterr().out
+
 
 def test_apply_backs_up_existing_page_before_update(capsys):
     root = make_workspace()

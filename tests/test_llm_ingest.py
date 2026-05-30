@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from llmwiki.cli import main
+from llmwiki.llm_ingest import normalize_payload
 from llmwiki.sources import import_source
 from tests.helpers import make_workspace
 
@@ -53,6 +54,56 @@ def _write_api_key(root: Path, api_key: str) -> None:
         encoding="utf-8",
         newline="\n",
     )
+
+
+def test_normalize_payload_promotes_valid_locator_claims_to_cited():
+    proposal = normalize_payload(
+        {
+            "claims": [
+                {
+                    "claim_text": "First claim has a real locator.",
+                    "citation_locator": "line:1",
+                    "confidence_status": "uncited",
+                },
+                {
+                    "claim_text": "Second claim has a real locator.",
+                    "citation_locator": "line:2",
+                    "confidence_status": "weak",
+                },
+            ]
+        },
+        "src_test",
+        "[line:1] First claim has a real locator.\n[line:2] Second claim has a real locator.\n",
+    )
+
+    assert [claim["confidence_status"] for claim in proposal.claims] == ["cited", "cited"]
+    assert proposal.claims[0]["citation_locator"] == "line:1"
+
+
+def test_normalize_payload_does_not_promote_missing_or_invalid_locators():
+    proposal = normalize_payload(
+        {
+            "claims": [
+                {
+                    "claim_text": "Missing locator is not cited.",
+                    "citation_locator": "",
+                    "confidence_status": "cited",
+                },
+                {
+                    "claim_text": "Invalid locator is not cited.",
+                    "citation_locator": "line:999",
+                    "confidence_status": "uncited",
+                },
+            ]
+        },
+        "src_test",
+        "[line:1] Only line one exists.\n",
+    )
+
+    assert proposal.claims[0]["citation_locator"] == ""
+    assert proposal.claims[0]["confidence_status"] == "weak"
+    assert proposal.claims[1]["citation_locator"] == ""
+    assert proposal.claims[1]["confidence_status"] == "uncited"
 
 
 def test_ingest_reports_missing_llm_api_key_without_modifying_wiki(monkeypatch, capsys):

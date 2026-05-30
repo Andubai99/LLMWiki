@@ -38,30 +38,30 @@ def valid_plan_payload() -> dict[str, object]:
     return {
         "schema_version": "query_plan.v2.5",
         "intent": "compare",
-        "question_summary": "比较五种水果补充维生素 C 的适合程度。",
+        "question_summary": "Compare fruit vitamin C evidence.",
         "entities": [
             {
-                "text": "草莓",
+                "text": "strawberry",
                 "role": "candidate_subject",
-                "catalog_refs": ["concept:草莓"],
+                "catalog_refs": [],
             }
         ],
         "concepts": [
             {
-                "text": "维生素 C",
+                "text": "vitamin C",
                 "role": "attribute",
                 "catalog_refs": [],
             }
         ],
         "subqueries": [
             {
-                "query": "草莓 维生素 C",
+                "query": "strawberry vitamin C",
                 "purpose": "find strawberry vitamin C evidence",
                 "filters": {"source_id": None, "page_type": None, "confidence": "cited"},
                 "required": True,
             },
             {
-                "query": "橙子 维生素 C",
+                "query": "orange vitamin C",
                 "purpose": "find orange vitamin C evidence",
                 "filters": {"source_id": "src_880c9f8a447c", "page_type": None, "confidence": "cited"},
                 "required": True,
@@ -82,13 +82,16 @@ def test_plan_question_parses_valid_query_plan(monkeypatch):
     root = setup_seeded_workspace()
     calls = patch_planner_provider(monkeypatch, valid_plan_payload())
 
-    result = plan_question(root, "这五种水果里哪种更适合补充维生素 C？", PlanningOptions(limit=5))
+    result = plan_question(root, "Which fruit is best for vitamin C?", PlanningOptions(limit=5))
 
     assert result.status == "planned"
     assert result.plan is not None
     assert result.plan.schema_version == "query_plan.v2.5"
     assert result.plan.intent == "compare"
-    assert [subquery.query for subquery in result.plan.subqueries] == ["草莓 维生素 C", "橙子 维生素 C"]
+    assert [subquery.query for subquery in result.plan.subqueries] == [
+        "strawberry vitamin C",
+        "orange vitamin C",
+    ]
     assert result.plan.subqueries[1].filters["source_id"] == "src_880c9f8a447c"
     assert calls
     serialized = json.dumps(result.to_dict(), ensure_ascii=False)
@@ -100,7 +103,7 @@ def test_plan_question_repairs_malformed_json_once(monkeypatch):
     root = setup_seeded_workspace()
     calls = patch_planner_provider(monkeypatch, "not json", valid_plan_payload())
 
-    result = plan_question(root, "这五种水果里哪种更适合补充维生素 C？", PlanningOptions())
+    result = plan_question(root, "Which fruit is best for vitamin C?", PlanningOptions())
 
     assert result.status == "planned"
     assert result.plan is not None
@@ -111,10 +114,10 @@ def test_plan_question_repairs_malformed_json_once(monkeypatch):
 def test_plan_question_repairs_invalid_schema_once(monkeypatch):
     root = setup_seeded_workspace()
     invalid_payload = valid_plan_payload()
-    invalid_payload["subqueries"] = ["草莓 维生素 C"]
+    invalid_payload["subqueries"] = ["strawberry vitamin C"]
     calls = patch_planner_provider(monkeypatch, invalid_payload, valid_plan_payload())
 
-    result = plan_question(root, "这五种水果里哪种更适合补充维生素 C？", PlanningOptions())
+    result = plan_question(root, "Which fruit is best for vitamin C?", PlanningOptions())
 
     assert result.status == "planned"
     assert result.plan is not None
@@ -122,11 +125,60 @@ def test_plan_question_repairs_invalid_schema_once(monkeypatch):
     assert "failed validation" in calls[1][-1]["content"]
 
 
+def test_plan_question_repairs_invalid_confidence_filter_once(monkeypatch):
+    root = setup_seeded_workspace()
+    invalid_payload = valid_plan_payload()
+    invalid_payload["subqueries"][0]["filters"]["confidence"] = "high"  # type: ignore[index]
+    calls = patch_planner_provider(monkeypatch, invalid_payload, valid_plan_payload())
+
+    result = plan_question(root, "Which fruit is best for vitamin C?", PlanningOptions())
+
+    assert result.status == "planned"
+    assert result.plan is not None
+    assert len(calls) == 2
+    repair_prompt = calls[1][-1]["content"]
+    assert "Invalid confidence in planner filters: high" in repair_prompt
+    assert "null" in repair_prompt
+    assert "cited" in repair_prompt
+    assert "weak" in repair_prompt
+    assert result.plan.subqueries[0].filters["confidence"] == "cited"
+
+
+def test_plan_question_returns_invalid_when_confidence_filter_repair_fails(monkeypatch):
+    root = setup_seeded_workspace()
+    invalid_payload = valid_plan_payload()
+    invalid_payload["subqueries"][0]["filters"]["confidence"] = "high"  # type: ignore[index]
+    still_invalid = valid_plan_payload()
+    still_invalid["subqueries"][0]["filters"]["confidence"] = "high"  # type: ignore[index]
+    calls = patch_planner_provider(monkeypatch, invalid_payload, still_invalid)
+
+    result = plan_question(root, "Which fruit is best for vitamin C?", PlanningOptions())
+
+    assert result.status == "planning_invalid"
+    assert result.plan is None
+    assert len(calls) == 2
+    assert "Invalid confidence" in result.error
+
+
+def test_plan_question_repairs_unknown_source_filter_once(monkeypatch):
+    root = setup_seeded_workspace()
+    invalid_payload = valid_plan_payload()
+    invalid_payload["subqueries"][0]["filters"]["source_id"] = "src_missing"  # type: ignore[index]
+    calls = patch_planner_provider(monkeypatch, invalid_payload, valid_plan_payload())
+
+    result = plan_question(root, "Which fruit is best for vitamin C?", PlanningOptions())
+
+    assert result.status == "planned"
+    assert result.plan is not None
+    assert len(calls) == 2
+    assert "Unknown source_id in planner filters: src_missing" in calls[1][-1]["content"]
+
+
 def test_plan_question_returns_invalid_when_repair_fails(monkeypatch):
     root = setup_seeded_workspace()
     calls = patch_planner_provider(monkeypatch, "{bad", "{still bad")
 
-    result = plan_question(root, "这五种水果里哪种更适合补充维生素 C？", PlanningOptions())
+    result = plan_question(root, "Which fruit is best for vitamin C?", PlanningOptions())
 
     assert result.status == "planning_invalid"
     assert result.plan is None
@@ -137,11 +189,10 @@ def test_plan_question_returns_invalid_when_repair_fails(monkeypatch):
 def test_plan_question_rejects_unknown_catalog_references(monkeypatch):
     root = setup_seeded_workspace()
     payload = valid_plan_payload()
-    payload["subqueries"][0]["filters"]["source_id"] = "src_missing"  # type: ignore[index]
     payload["entities"][0]["catalog_refs"] = ["concept:missing"]  # type: ignore[index]
     patch_planner_provider(monkeypatch, payload)
 
-    result = plan_question(root, "这五种水果里哪种更适合补充维生素 C？", PlanningOptions())
+    result = plan_question(root, "Which fruit is best for vitamin C?", PlanningOptions())
 
     assert result.status == "planning_invalid"
     assert "unknown" in result.error.casefold()
@@ -156,7 +207,7 @@ def test_plan_question_rejects_forged_evidence_fields(monkeypatch):
     payload["subqueries"][0]["score"] = 1.0  # type: ignore[index]
     patch_planner_provider(monkeypatch, payload)
 
-    result = plan_question(root, "这五种水果里哪种更适合补充维生素 C？", PlanningOptions())
+    result = plan_question(root, "Which fruit is best for vitamin C?", PlanningOptions())
 
     assert result.status == "planning_invalid"
     assert "forbidden evidence field" in result.error
@@ -170,7 +221,7 @@ def test_plan_question_sanitizes_secret_like_errors(monkeypatch):
 
     monkeypatch.setattr("llmwiki.planner.create_provider", fake_create_provider)
 
-    result = plan_question(root, "这五种水果里哪种更适合补充维生素 C？", PlanningOptions())
+    result = plan_question(root, "Which fruit is best for vitamin C?", PlanningOptions())
     serialized = json.dumps(result.to_dict(), ensure_ascii=False)
 
     assert result.status == "planning_failed"

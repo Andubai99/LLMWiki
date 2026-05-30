@@ -142,11 +142,13 @@ def test_execute_query_plan_passes_subquery_filters(monkeypatch):
         {
             "question": "橙子 维生素 C",
             "limit": 4,
-            "source_id": "src_880c9f8a447c",
-            "page_type": "concept",
-            "confidence": "cited",
-        }
-    ]
+                "source_id": "src_880c9f8a447c",
+                "page_type": "concept",
+                "confidence": "cited",
+                "selection_mode": "focused",
+                "selection_mode_reason": "planned subquery",
+            }
+        ]
     assert result.contexts == []
     assert result.diagnostics["subqueries"][0]["context_count"] == 0
 

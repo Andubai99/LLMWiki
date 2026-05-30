@@ -1,5 +1,13 @@
 # LLM Wiki
 
+## V2.7.1 Retrieval Fix Notes
+
+V2.7.1 refines evidence selection without adding domain-specific rules. The selector now uses generic modes: `focused`, `comparison`, `conflict`, and `broad`. A focused single-subject question should not force unrelated source diversity when enough cited evidence exists for the dominant subject; comparison and conflict questions still preserve multi-source coverage and explicit `contradicts` visibility.
+
+Planner filter validation remains strict. Invalid values such as `confidence = "high"` are not silently mapped to `cited`; `ask` may request one schema repair from the configured LLM, and the repaired plan must use only allowed filter values.
+
+LLM ingest normalizes locator-backed claims before staging. A claim with a valid `line:N` locator is treated as `cited`; claims without a valid locator remain weak/uncited and cannot become formal conclusions.
+
 ## Retrieval Layer v2.7（混合本地检索 + 向量召回 + reranking）
 
 `llmwiki retrieve` 是外部 RAG 系统、Agent 和 LLM prompt 调用 LLMWiki 的稳定证据接口。它从本地 SQLite catalog 检索 source-backed claims，并返回 citation、page path、relationship type、score、retrieval reasons 和 warning。这个命令使用确定性的混合本地检索，不会调用外部 LLM API。

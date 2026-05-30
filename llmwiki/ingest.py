@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .db import catalog_path, connect
-from .llm_ingest import LLMIngestProposal, create_llm_ingest_proposal
+from .llm_ingest import LLMIngestProposal, create_llm_ingest_proposal, normalize_claim_confidence
 from .workspace import utc_now
 
 
@@ -202,7 +202,10 @@ def claims_from_llm_proposal(proposal: LLMIngestProposal, created_at: str) -> li
             source_id=claim["source_id"],
             claim_text=claim["claim_text"],
             citation_locator=claim.get("citation_locator", ""),
-            confidence_status=claim.get("confidence_status", "weak"),
+            confidence_status=normalize_claim_confidence(
+                claim.get("citation_locator", ""),
+                claim.get("confidence_status", "weak"),
+            ),
             created_at=created_at,
         )
         for claim in proposal.claims

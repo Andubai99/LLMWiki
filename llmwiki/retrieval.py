@@ -21,6 +21,9 @@ def retrieve_context(
     source_id: str | None = None,
     page_type: str | None = None,
     confidence: str | None = None,
+    *,
+    selection_mode: str | None = None,
+    selection_mode_reason: str = "",
 ) -> dict[str, Any]:
     root = root.resolve()
     limit = max(0, limit)
@@ -70,7 +73,14 @@ def retrieve_context(
             rerank_result.candidates,
             relationships=candidate_relationships,
             limit=limit,
-            options=EvidenceSelectionOptions(max_contexts_per_source=reranking_options.max_contexts_per_source),
+            options=selection_options(
+                query=query,
+                relationships=candidate_relationships,
+                source_id=source_id,
+                max_contexts_per_source=reranking_options.max_contexts_per_source,
+                forced_mode=selection_mode,
+                forced_mode_reason=selection_mode_reason,
+            ),
         )
         for warning in selection_result.warnings:
             add_warning(result, str(warning))
@@ -147,6 +157,49 @@ def retrieve_context(
             "Contradictory evidence is present; expose the conflict instead of resolving it silently.",
         )
     return result
+
+
+def selection_options(
+    *,
+    query,
+    relationships: list[dict[str, Any]],
+    source_id: str | None,
+    max_contexts_per_source: int,
+    forced_mode: str | None,
+    forced_mode_reason: str,
+) -> EvidenceSelectionOptions:
+    if forced_mode:
+        return EvidenceSelectionOptions(
+            max_contexts_per_source=max_contexts_per_source,
+            mode=forced_mode,
+            mode_reason=forced_mode_reason,
+        )
+    if any(str(row.get("relationship_type") or "") == "contradicts" for row in relationships):
+        return EvidenceSelectionOptions(
+            max_contexts_per_source=max_contexts_per_source,
+            mode="conflict",
+            mode_reason="explicit contradicts relationship",
+        )
+    if source_id:
+        return EvidenceSelectionOptions(
+            max_contexts_per_source=max_contexts_per_source,
+            mode="focused",
+            mode_reason="source_id filter",
+        )
+    catalog_term_count = len(getattr(query, "catalog_terms", []) or [])
+    if catalog_term_count == 1:
+        return EvidenceSelectionOptions(
+            max_contexts_per_source=max_contexts_per_source,
+            mode="focused",
+            mode_reason="single catalog term",
+        )
+    if catalog_term_count > 1:
+        return EvidenceSelectionOptions(
+            max_contexts_per_source=max_contexts_per_source,
+            mode="comparison",
+            mode_reason="multiple catalog terms",
+        )
+    return EvidenceSelectionOptions(max_contexts_per_source=max_contexts_per_source)
 
 
 def load_catalog_terms(conn) -> list[str]:
