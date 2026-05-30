@@ -111,8 +111,6 @@ def test_load_v27_evidence_selection_eval_cases_from_committed_jsonl():
     assert [case.id for case in cases] == [
         "fruit_selection_vitamin_c_multi_source",
         "fruit_selection_storage_and_freshness",
-        "fruit_selection_conflict_visibility",
-        "fruit_selection_weak_evidence_visibility",
     ]
     assert cases[0].query_type == "comparison"
     assert "src_99ab0495789d" in cases[0].expected_source_ids
@@ -361,6 +359,47 @@ def test_evaluate_v27_selection_metrics_include_rerank_and_selection_diagnostics
     assert "reranking" in case["diagnostics"]
     assert "selection" in case["diagnostics"]
     assert case["diagnostics"]["selection"]["selected_count"] == case["returned_count"]
+
+
+def test_evaluate_v27_seeded_conflict_and_weak_cases_are_separate_from_real_fruits(capsys, tmp_path: Path):
+    import sqlite3
+
+    from llmwiki.retrieval_eval import evaluate_retrieval
+
+    root = setup_seeded_workspace()
+    with sqlite3.connect(root / "state" / "catalog.sqlite") as conn:
+        conn.execute(
+            """
+            insert into relationships (subject_id, object_id, relationship_type, evidence_claim_id, source_id)
+            values ('src_99ab0495789d', 'src_weak', 'contradicts', 'clm_weak_storage', 'src_weak')
+            """
+        )
+    capsys.readouterr()
+    dataset = write_jsonl(
+        tmp_path / "seeded-v27-conflict-weak.jsonl",
+        [
+            {
+                "id": "seeded_conflict_visibility",
+                "question": "Weak Notes",
+                "expected_status": "has_evidence",
+                "expected_source_ids": ["src_weak"],
+                "must_expose_relationship_types": ["contradicts"],
+            },
+            {
+                "id": "seeded_weak_visibility",
+                "question": "Weak Notes",
+                "expected_status": "has_evidence",
+                "expected_source_ids": ["src_weak"],
+            },
+        ],
+    )
+
+    summary = evaluate_retrieval(root, dataset, limit=5)
+    data = summary.to_dict()
+
+    assert all(case["passed"] for case in data["cases"])
+    assert data["summary"]["selected_conflict_exposure_rate"] == 1.0
+    assert data["summary"]["weak_evidence_visibility_rate"] == 1.0
 
 
 def test_eval_cli_returns_nonzero_for_missing_catalog(capsys):

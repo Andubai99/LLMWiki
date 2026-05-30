@@ -43,9 +43,12 @@ This repository is a local, source-backed research wiki. Treat it as a knowledge
 - Reranker and evidence selector output are not evidence. They may reorder, diversify, deduplicate, or select catalog-backed candidates, but they must not create claim ids, source ids, page paths, locators, scores, or relationships that were not already grounded in local retrieval/catalog data.
 - V2.7 default reranking may use the local embedding provider and vector index. Chat LLM reranking is opt-in only and must remain disabled by default.
 - Evidence selection must preserve weak/uncited and contradicting evidence visibility; it must not hide conflicts or upgrade weak evidence into strong conclusions.
+- V2.7.1 evidence selection uses generic focused/comparison/conflict/broad modes. Focused single-subject questions must not add unrelated sources just for diversity when enough cited evidence exists for the dominant subject.
+- V2.7.1 comparison and conflict questions must still preserve required source coverage and explicit `contradicts` evidence.
 - External hosted vector databases are not default infrastructure for this repository.
 - LLM query planning is allowed for `llmwiki ask` in V2.5, but default `retrieve`, `query`, and `eval retrieval` must not call external chat LLM APIs.
 - Planner output must be schema-validated before any retrieval execution.
+- Invalid planner filters such as `confidence = "high"` must be repaired through one schema-validated LLM repair attempt or rejected; do not silently coerce invalid values into valid evidence filters.
 - Planner output is not source-backed evidence; do not treat planner intent, entities, subqueries, filters, or required evidence descriptions as claims or citations.
 - Do not add domain-specific query rules, keyword intent classifiers, or term boosts for V2.5 or V2.7 reranking/evidence selection.
 - `llmwiki eval retrieval` is the standard development quality check for retrieval changes.
@@ -72,7 +75,7 @@ This repository is a local, source-backed research wiki. Treat it as a knowledge
 - LLM ingest proposals may create `claims.jsonl`, `triage.md`, `llm-proposal.json`, and patch files only under `staging/<run-id>/`.
 - `llmwiki add` may automatically apply a validated staging run, but the LLM itself must not write formal wiki pages.
 - `llmwiki ask --writeback` may automatically apply a validated synthesis run, but the LLM itself must not write formal wiki pages.
-- Claims without valid source locators must remain weak/uncited and must not become formal wiki conclusions.
+- LLM ingest claims with valid `line:N` source locators are normalized to `cited` before staging. Claims without valid source locators must remain weak/uncited and must not become formal wiki conclusions.
 
 ## First-Version Boundaries
 
