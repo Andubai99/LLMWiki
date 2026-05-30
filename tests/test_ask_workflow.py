@@ -93,6 +93,64 @@ def patch_planner_provider(monkeypatch, payload: dict[str, object]) -> list[list
     return calls
 
 
+def patch_synthesis_provider(monkeypatch, payload: dict[str, object]) -> list[list[dict[str, str]]]:
+    calls: list[list[dict[str, str]]] = []
+
+    def fake_create_provider(config, root=None):
+        return FakeProvider(payload, calls)
+
+    monkeypatch.setattr("llmwiki.synthesis_planner.create_provider", fake_create_provider)
+    return calls
+
+
+def synthesis_plan_payload(
+    context: dict[str, object],
+    *,
+    title: str = "Citation Anchors",
+    action: str = "create",
+    target_page_id: str = "synthesis-citation-anchors",
+    target_path: str = "wiki/syntheses/citation-anchors.md",
+) -> dict[str, object]:
+    return {
+        "schema_version": "synthesis_plan.v2.8",
+        "status": "planned" if action != "needs_review" else "needs_review",
+        "action": action,
+        "target_page_id": target_page_id,
+        "target_path": target_path,
+        "title": title,
+        "topic_key": target_page_id.removeprefix("synthesis-"),
+        "aliases": [],
+        "evidence": [
+            {
+                "role": "supports",
+                "claim_id": context["claim_id"],
+                "source_id": context["source_id"],
+                "citation_locator": context["citation_locator"],
+                "page_path": context["page_path"],
+            }
+        ],
+        "sections": {
+            "scope": "A synthesis about citation anchors.",
+            "current_answer": "RAG needs citation anchors so answers remain traceable to source passages.",
+            "analysis": "The cited local evidence supports traceable answers.",
+            "conflicts_and_limits": [],
+            "open_questions": [],
+        },
+        "related_pages": [context["page_path"]],
+        "relationships": [
+            {
+                "subject_id": target_page_id,
+                "object_id": context["claim_id"],
+                "relationship_type": "supports",
+                "evidence_claim_id": context["claim_id"],
+                "source_id": context["source_id"],
+            }
+        ],
+        "candidate_pages": [],
+        "warnings": [],
+    }
+
+
 def setup_retrieval_workspace(root: Path) -> dict[str, object]:
     assert main(["init", "--root", str(root)]) == 0
     add_ingest_apply(root, fixture("minimal_source.md"))
@@ -327,24 +385,30 @@ def test_ask_writeback_applies_synthesis_page_and_catalog(monkeypatch, capsys):
     context = setup_retrieval_workspace(root)
     patch_planner_provider(monkeypatch, planner_payload("RAG citation anchors"))
     patch_answer_provider(monkeypatch, answer_payload(context, title="Citation Anchors"))
+    patch_synthesis_provider(monkeypatch, synthesis_plan_payload(context))
     capsys.readouterr()
 
     assert main(["ask", "RAG citation anchors", "--root", str(root), "--writeback"]) == 0
     out = capsys.readouterr().out
 
     page = root / "wiki" / "syntheses" / "citation-anchors.md"
-    assert "Applied synthesis run: run_answer_" in out
+    assert "Synthesis proposal:" in out
+    assert "Applied synthesis run: run_synthesis_" in out
     assert "wiki/syntheses/citation-anchors.md" in out
     assert page.exists()
     content = page.read_text(encoding="utf-8")
     assert "page_type: synthesis" in content
     assert f"claim_ids: ['{context['claim_id']}']" in content
-    assert "## Question/Topic" in content
-    assert "## Short Answer" in content
-    assert "## Evidence" in content
+    assert "synthesis_id: \"synthesis-citation-anchors\"" in content
+    assert "topic_key: \"citation-anchors\"" in content
+    assert "## Scope" in content
+    assert "## Current Answer" in content
+    assert "## Evidence Map" in content
     assert "## Analysis" in content
-    assert "## Uncertainties" in content
+    assert "## Conflicts And Limits" in content
+    assert "## Open Questions" in content
     assert "## Related Pages" in content
+    assert "## Revision History" in content
     assert str(context["claim_id"]) in content
     assert str(context["source_id"]) in content
     assert str(context["citation_locator"]) in content
@@ -353,19 +417,25 @@ def test_ask_writeback_applies_synthesis_page_and_catalog(monkeypatch, capsys):
     assert "wiki/syntheses/citation-anchors.md" in index
     assert "Citation Anchors" in index
     log = (root / "wiki" / "log.md").read_text(encoding="utf-8")
-    assert "Applied ingest run `run_answer_" in log
+    assert "Applied ingest run `run_synthesis_" in log
 
     page_rows = rows(root, "select path, page_type, title from pages where page_type = 'synthesis'")
     assert len(page_rows) == 1
     assert page_rows[0]["path"] == "wiki/syntheses/citation-anchors.md"
     assert page_rows[0]["title"] == "Citation Anchors"
-    run_rows = rows(root, "select run_id, source_id, status from ingest_runs where run_id like 'run_answer_%'")
+    run_rows = rows(root, "select run_id, source_id, status from ingest_runs where run_id like 'run_synthesis_%'")
     assert len(run_rows) == 1
     assert run_rows[0]["source_id"].startswith("synthesis:")
     assert run_rows[0]["status"] == "applied"
 
     link_rows = rows(root, "select from_page, to_page from links where from_page like 'synthesis-%'")
     assert [tuple(row) for row in link_rows] == [("synthesis-citation-anchors", context["source_id"])]
+    relationship_rows = rows(root, "select subject_id, object_id, relationship_type, evidence_claim_id from relationships where subject_id = 'synthesis-citation-anchors'")
+    assert [tuple(row) for row in relationship_rows] == [
+        ("synthesis-citation-anchors", context["claim_id"], "supports", context["claim_id"])
+    ]
+    run_dir = next((root / "staging").glob("run_synthesis_*"))
+    assert (run_dir / "synthesis-plan.json").exists()
     assert main(["lint", "--root", str(root)]) == 0
     lint = capsys.readouterr().out
     assert "orphan pages: 0" in lint
@@ -383,6 +453,10 @@ def test_ask_writeback_preserves_contradictions_in_synthesis(monkeypatch, capsys
     payload["conflicts"] = ["A conflict is recorded between retrieved claims."]
     patch_planner_provider(monkeypatch, planner_payload("citation anchors every workflow"))
     patch_answer_provider(monkeypatch, payload)
+    patch_synthesis_provider(
+        monkeypatch,
+        synthesis_plan_payload(context, title="Citation Anchor Conflict", target_page_id="synthesis-citation-anchor-conflict", target_path="wiki/syntheses/citation-anchor-conflict.md"),
+    )
     capsys.readouterr()
 
     assert main(["ask", "citation anchors every workflow", "--root", str(root), "--writeback"]) == 0
@@ -400,6 +474,10 @@ def test_ask_writeback_marks_run_failed_when_apply_rejects_patch(monkeypatch, ca
     context = setup_retrieval_workspace(root)
     patch_planner_provider(monkeypatch, planner_payload("RAG citation anchors"))
     patch_answer_provider(monkeypatch, answer_payload(context, title="Rejected Synthesis"))
+    patch_synthesis_provider(
+        monkeypatch,
+        synthesis_plan_payload(context, title="Rejected Synthesis", target_page_id="synthesis-rejected-synthesis", target_path="wiki/syntheses/rejected-synthesis.md"),
+    )
     before_index = (root / "wiki" / "index.md").read_text(encoding="utf-8")
     before_log = (root / "wiki" / "log.md").read_text(encoding="utf-8")
 
@@ -413,8 +491,8 @@ def test_ask_writeback_marks_run_failed_when_apply_rejects_patch(monkeypatch, ca
     out = capsys.readouterr().out
 
     assert "Writeback failed at: apply" in out
-    assert "Debug: llmwiki review run_answer_" in out
-    run_dir = next((root / "staging").glob("run_answer_*"))
+    assert "Debug: llmwiki review run_synthesis_" in out
+    run_dir = next((root / "staging").glob("run_synthesis_*"))
     manifest = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
     assert manifest["status"] == "failed"
     assert manifest["trigger"] == "ask"

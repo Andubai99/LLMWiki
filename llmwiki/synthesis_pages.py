@@ -54,6 +54,11 @@ class SynthesisPageModel:
     @classmethod
     def from_plan(cls, plan: SynthesisPlan, ask_result: AskResult, run_id: str) -> SynthesisPageModel:
         now = utc_now()
+        conflicts_and_limits = [
+            *string_items(plan.sections.get("conflicts_and_limits")),
+            *ask_result.uncertainties,
+            *ask_result.conflicts,
+        ]
         return cls(
             page_id=plan.target_page_id,
             title=plan.title,
@@ -64,7 +69,7 @@ class SynthesisPageModel:
             scope=str(plan.sections.get("scope") or ask_result.question),
             current_answer=str(plan.sections.get("current_answer") or ask_result.answer),
             analysis=str(plan.sections.get("analysis") or ask_result.analysis or ask_result.answer),
-            conflicts_and_limits=string_items(plan.sections.get("conflicts_and_limits")),
+            conflicts_and_limits=dedupe(conflicts_and_limits),
             open_questions=string_items(plan.sections.get("open_questions")),
             related_pages=dedupe(plan.related_pages),
             revision_history=[revision_line(now, run_id, plan.action, ask_result.question, plan.evidence_claim_ids)],

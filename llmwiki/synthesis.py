@@ -8,8 +8,20 @@ from typing import Any
 
 from .answer import AskResult
 from .apply import apply_run
-from .ingest import slugify, yaml_quote
 from .pipeline import sanitize_error
+from .synthesis_pages import (
+    SynthesisPageModel,
+    merge_synthesis_page,
+    parse_synthesis_page,
+    render_synthesis_page_v2_8,
+)
+from .synthesis_planner import (
+    SynthesisPlan,
+    SynthesisPlanningOptions,
+    format_synthesis_preview,
+    plan_synthesis_writeback,
+    validate_synthesis_plan,
+)
 from .workspace import utc_now
 
 
@@ -18,12 +30,16 @@ class SynthesisWritebackResult:
     run_id: str
     pages: list[str]
     status: str
+    action: str
+    synthesis_plan: dict[str, object]
 
     def to_dict(self) -> dict[str, object]:
         return {
             "status": self.status,
             "run_id": self.run_id,
             "pages": self.pages,
+            "action": self.action,
+            "synthesis_plan": self.synthesis_plan,
         }
 
 
@@ -35,35 +51,44 @@ class SynthesisWritebackError(Exception):
         self.run_id = run_id
 
 
-def create_synthesis_run(root: Path, ask_result: AskResult) -> SynthesisWritebackResult:
+def create_synthesis_run(
+    root: Path,
+    ask_result: AskResult,
+    plan: SynthesisPlan | None = None,
+    *,
+    planning_options: SynthesisPlanningOptions | None = None,
+) -> SynthesisWritebackResult:
     root = root.resolve()
     if ask_result.status != "answered":
         raise SynthesisWritebackError(stage="prepare", reason=f"Cannot write back answer status: {ask_result.status}")
     if not ask_result.citations:
         raise SynthesisWritebackError(stage="prepare", reason="Cannot write back without cited evidence")
+    if plan is None:
+        plan = plan_synthesis_writeback(root, ask_result, planning_options or SynthesisPlanningOptions())
+    else:
+        validate_synthesis_plan(root, ask_result, plan, planning_options or SynthesisPlanningOptions())
+    if plan.action == "needs_review":
+        raise SynthesisWritebackError(
+            stage="prepare",
+            reason="Synthesis plan needs review before writeback.",
+        )
 
     answer_id = answer_hash(ask_result)
     timestamp = compact_timestamp()
-    run_id = f"run_answer_{timestamp}_{answer_id}"
+    run_id = f"run_synthesis_{timestamp}_{answer_id}"
     source_id = f"synthesis:{answer_id}"
-    title = ask_result.suggested_title.strip() or ask_result.question.strip() or f"Synthesis {answer_id}"
-    slug = slugify(title)
-    if slug == "untitled":
-        slug = f"answer-{answer_id}"
-    target_path = f"wiki/syntheses/{slug}.md"
-    page_id = f"synthesis-{slug}"
     run_dir = root / "staging" / run_id
     patches_dir = run_dir / "patches"
     patches_dir.mkdir(parents=True, exist_ok=False)
 
-    patch = build_synthesis_patch(
+    patch = build_synthesis_patch_v2_8(
+        root=root,
         ask_result=ask_result,
-        page_id=page_id,
-        target_path=target_path,
-        title=title,
+        plan=plan,
+        run_id=run_id,
         source_id=source_id,
     )
-    write_staging_files(run_dir, run_id, ask_result, source_id, patch)
+    write_staging_files(run_dir, run_id, ask_result, source_id, patch, plan)
 
     try:
         apply_run(root, run_id)
@@ -71,98 +96,68 @@ def create_synthesis_run(root: Path, ask_result: AskResult) -> SynthesisWritebac
         mark_synthesis_run_failed(root, run_id, "apply", sanitize_error(exc))
         raise SynthesisWritebackError(stage="apply", reason=sanitize_error(exc), run_id=run_id) from exc
 
-    return SynthesisWritebackResult(run_id=run_id, pages=[target_path], status="applied")
+    return SynthesisWritebackResult(
+        run_id=run_id,
+        pages=[plan.target_path],
+        status="applied",
+        action=plan.action,
+        synthesis_plan=plan.to_dict(),
+    )
 
 
-def build_synthesis_patch(
+def build_synthesis_patch_v2_8(
     *,
+    root: Path,
     ask_result: AskResult,
-    page_id: str,
-    target_path: str,
-    title: str,
+    plan: SynthesisPlan,
+    run_id: str,
     source_id: str,
 ) -> dict[str, Any]:
-    claim_ids = [citation.claim_id for citation in ask_result.citations]
+    if plan.action == "update":
+        existing = parse_synthesis_page(root / plan.target_path)
+        model = merge_synthesis_page(existing, plan, ask_result, run_id=run_id)
+    else:
+        model = SynthesisPageModel.from_plan(plan, ask_result, run_id=run_id)
+    claim_ids = model.claim_ids
     links = []
     seen_pages: set[str] = set()
-    for citation in ask_result.citations:
-        if citation.page_path in seen_pages:
+    for page_path in model.related_pages:
+        if page_path in seen_pages:
             continue
-        seen_pages.add(citation.page_path)
+        seen_pages.add(page_path)
         links.append(
             {
-                "from_page": page_id,
-                "to_page": citation.page_path,
+                "from_page": model.page_id,
+                "to_page": page_path,
                 "link_type": "supports",
             }
         )
+    relationships = [relationship.to_dict() for relationship in plan.relationships]
+    if not relationships:
+        relationships = [
+            {
+                "subject_id": model.page_id,
+                "object_id": item.claim_id,
+                "relationship_type": "supports",
+                "evidence_claim_id": item.claim_id,
+                "source_id": item.source_id,
+            }
+            for item in plan.evidence
+        ]
     return {
-        "patch_id": f"patch_{page_id}",
+        "patch_id": f"patch_{model.page_id}",
         "action": "upsert_page",
-        "page_id": page_id,
+        "page_id": model.page_id,
         "page_type": "synthesis",
-        "title": title,
-        "target_path": target_path,
-        "aliases": [],
+        "title": model.title,
+        "target_path": plan.target_path,
+        "aliases": model.aliases,
         "source_id": source_id,
         "claim_ids": claim_ids,
         "links": links,
-        "relationships": [],
-        "content": render_synthesis_page(ask_result, title, claim_ids),
+        "relationships": relationships,
+        "content": render_synthesis_page_v2_8(model),
     }
-
-
-def render_synthesis_page(ask_result: AskResult, title: str, claim_ids: list[str]) -> str:
-    source_count = len({citation.source_id for citation in ask_result.citations})
-    now = utc_now()
-    lines = [
-        "---",
-        "page_type: synthesis",
-        f"title: {yaml_quote(title)}",
-        "aliases: []",
-        f"source_count: {source_count}",
-        f"claim_ids: {claim_ids!r}",
-        f"updated_at: {yaml_quote(now)}",
-        "---",
-        "",
-        f"# {title}",
-        "",
-        "## Question/Topic",
-        "",
-        ask_result.question,
-        "",
-        "## Short Answer",
-        "",
-        ask_result.answer or "No answer produced.",
-        "",
-        "## Evidence",
-        "",
-    ]
-    for citation in ask_result.citations:
-        lines.append(
-            f"- `{citation.claim_id}` from `{citation.source_id}` at `{citation.citation_locator}` "
-            f"([[{citation.page_path}]])"
-        )
-    lines.extend(
-        [
-            "",
-            "## Analysis",
-            "",
-            ask_result.analysis or ask_result.answer or "No analysis produced.",
-            "",
-            "## Uncertainties",
-            "",
-        ]
-    )
-    uncertainty_lines = [*ask_result.uncertainties, *ask_result.conflicts]
-    if uncertainty_lines:
-        lines.extend(f"- {item}" for item in uncertainty_lines)
-    else:
-        lines.append("- None identified.")
-    lines.extend(["", "## Related Pages", ""])
-    for citation in ask_result.citations:
-        lines.append(f"- [[{citation.page_path}]]")
-    return "\n".join(lines) + "\n"
 
 
 def write_staging_files(
@@ -171,18 +166,23 @@ def write_staging_files(
     ask_result: AskResult,
     source_id: str,
     patch: dict[str, Any],
+    plan: SynthesisPlan,
 ) -> None:
     now = utc_now()
     manifest = {
         "run_id": run_id,
         "run_type": "synthesis_writeback",
+        "schema_version": "synthesis_writeback.v2.8",
         "trigger": "ask",
         "status": "staged",
         "created_at": now,
         "source_id": source_id,
+        "synthesis_action": plan.action,
+        "target_page_id": plan.target_page_id,
+        "target_path": plan.target_path,
         "question": ask_result.question,
         "answer_status": ask_result.status,
-        "evidence_claim_ids": [citation.claim_id for citation in ask_result.citations],
+        "evidence_claim_ids": plan.evidence_claim_ids,
         "proposal_engine": "llm",
     }
     (run_dir / "run.json").write_text(
@@ -191,14 +191,21 @@ def write_staging_files(
         newline="\n",
     )
     (run_dir / "claims.jsonl").write_text("", encoding="utf-8", newline="\n")
+    (run_dir / "synthesis-plan.json").write_text(
+        json.dumps(plan.to_dict(), ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
     (run_dir / "triage.md").write_text(
         "\n".join(
             [
                 "# Synthesis Writeback",
                 "",
+                format_synthesis_preview(plan),
+                "",
                 f"- question: {ask_result.question}",
                 f"- answer_status: {ask_result.status}",
-                f"- evidence_claims: {', '.join(c.claim_id for c in ask_result.citations)}",
+                f"- evidence_claims: {', '.join(plan.evidence_claim_ids)}",
                 "",
             ]
         ),

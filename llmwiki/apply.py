@@ -44,12 +44,14 @@ REQUIRED_SECTIONS = {
         "Open Questions",
     ),
     "synthesis": (
-        "Question/Topic",
-        "Short Answer",
-        "Evidence",
+        "Scope",
+        "Current Answer",
+        "Evidence Map",
         "Analysis",
-        "Uncertainties",
+        "Conflicts And Limits",
+        "Open Questions",
         "Related Pages",
+        "Revision History",
     ),
 }
 

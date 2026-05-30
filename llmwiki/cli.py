@@ -612,6 +612,7 @@ def format_ask_result(
 
     lines.extend(["", "Writeback:"])
     if writeback is not None:
+        lines.extend(["", format_synthesis_plan_dict(writeback.synthesis_plan), ""])
         lines.append(f"Applied synthesis run: {writeback.run_id}")
         lines.append("Page:")
         for page in writeback.pages:
@@ -657,3 +658,22 @@ def ask_output_dict(
             "reason": writeback_error.reason,
         }
     return data
+
+
+def format_synthesis_plan_dict(plan: dict[str, object]) -> str:
+    lines = [
+        "Synthesis proposal:",
+        f"- action: {plan.get('action', '')}",
+        f"- page: {plan.get('target_path', '')}",
+        f"- title: {plan.get('title', '')}",
+        f"- evidence claims: {len(plan.get('evidence_claim_ids', [])) if isinstance(plan.get('evidence_claim_ids'), list) else 0}",
+    ]
+    related_pages = plan.get("related_pages")
+    if isinstance(related_pages, list) and related_pages:
+        lines.append("- related pages:")
+        lines.extend(f"  - {page}" for page in related_pages)
+    warnings = plan.get("warnings")
+    if isinstance(warnings, list) and warnings:
+        lines.append("- warnings:")
+        lines.extend(f"  - {warning}" for warning in warnings)
+    return "\n".join(lines)
