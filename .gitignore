@@ -13,6 +13,8 @@ venv/
 build/
 dist/
 *.egg-info/
+docs/papers
+
 
 # Local secrets. Keep the example file committed, but never commit real keys.
 config/api-keys.toml
