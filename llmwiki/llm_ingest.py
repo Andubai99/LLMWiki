@@ -148,11 +148,7 @@ def normalize_payload(
         if not text:
             continue
         locator = canonical_locator(str(item.get("citation_locator") or ""), locators)
-        confidence = str(item.get("confidence_status") or "cited").casefold()
-        if confidence not in {"cited", "weak", "uncited"}:
-            confidence = "cited"
-        if not locator:
-            confidence = "weak" if confidence == "cited" else confidence
+        confidence = normalize_claim_confidence(locator, str(item.get("confidence_status") or "cited"))
         claims.append(
             {
                 "claim_id": f"clm_{source_id}_llm_{index:03d}",
@@ -213,6 +209,19 @@ def canonical_locator(value: str, locators: dict[str, str]) -> str:
     if not match:
         return ""
     return locators.get(match.group(1), "")
+
+
+def normalize_claim_confidence(locator: str, confidence_status: str) -> str:
+    confidence = str(confidence_status or "cited").casefold()
+    if confidence not in {"cited", "weak", "uncited"}:
+        confidence = "cited"
+    if has_line_locator(locator):
+        return "cited"
+    return "weak" if confidence == "cited" else confidence
+
+
+def has_line_locator(locator: str) -> bool:
+    return re.search(r"(?:^|;)line:[1-9]\d*(?:;|$)", str(locator or "")) is not None
 
 
 def clean_optional_string(value: Any) -> str | None:

@@ -58,17 +58,26 @@ def lint_workspace(root: Path) -> LintReport:
         issue_count += len(duplicate_aliases)
         lines.append(f"- shared concept/entity alias: {len(shared_concept_entity_aliases)}")
 
-        uncited_claims = conn.execute(
+        uncited_without_locator = conn.execute(
             """
             select claim_id
             from claims
             where citation_locator is null
                or citation_locator = ''
-               or confidence_status in ('weak', 'uncited')
             """
         ).fetchall()
-        lines.append(f"- uncited claims: {len(uncited_claims)}")
-        issue_count += len(uncited_claims)
+        uncited_with_locator = conn.execute(
+            """
+            select claim_id
+            from claims
+            where citation_locator is not null
+              and citation_locator != ''
+              and confidence_status in ('weak', 'uncited')
+            """
+        ).fetchall()
+        lines.append(f"- uncited claims: {len(uncited_without_locator)}")
+        issue_count += len(uncited_without_locator)
+        lines.append(f"- uncited with locator: {len(uncited_with_locator)}")
 
         drift_count = source_hash_drift(root, conn)
         lines.append(f"- source hash drift: {drift_count}")
