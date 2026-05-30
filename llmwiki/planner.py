@@ -152,10 +152,16 @@ def plan_question(root: Path, question: str, options: PlanningOptions | None = N
         provider = create_provider(load_llm_config(root), root=root)
         messages = build_planner_prompt(question, options, catalog)
         response = provider.complete(messages, schema=planner_schema())
-        plan = parse_and_validate_query_plan(str(response.get("content") or ""), catalog, options)
+        content = str(response.get("content") or "")
+        plan = parse_and_validate_query_plan(content, catalog, options)
     except json.JSONDecodeError:
         try:
-            repair_messages = build_planner_repair_prompt(question, options, catalog)
+            repair_messages = build_planner_repair_prompt(
+                question,
+                options,
+                catalog,
+                original_output=locals().get("content", ""),
+            )
             response = provider.complete(repair_messages, schema=planner_schema())  # type: ignore[name-defined]
             plan = parse_and_validate_query_plan(str(response.get("content") or ""), catalog, options)
         except Exception as exc:
@@ -164,7 +170,13 @@ def plan_question(root: Path, question: str, options: PlanningOptions | None = N
         if not is_repairable_validation_error(exc):
             return PlanningResult(status="planning_invalid", error=sanitize_planner_error(exc))
         try:
-            repair_messages = build_planner_repair_prompt(question, options, catalog, error=sanitize_planner_error(exc))
+            repair_messages = build_planner_repair_prompt(
+                question,
+                options,
+                catalog,
+                error=sanitize_planner_error(exc),
+                original_output=locals().get("content", ""),
+            )
             response = provider.complete(repair_messages, schema=planner_schema())  # type: ignore[name-defined]
             plan = parse_and_validate_query_plan(str(response.get("content") or ""), catalog, options)
         except Exception as repair_exc:
@@ -210,16 +222,22 @@ def build_planner_repair_prompt(
     options: PlanningOptions,
     catalog: CatalogOverview,
     error: str = "",
+    original_output: str = "",
 ) -> list[dict[str, str]]:
     messages = build_planner_prompt(question, options, catalog)
     failure = f" Previous output failed validation: {error}." if error else ""
+    original = f"\nOriginal invalid output:\n{original_output}" if original_output else ""
     messages.append(
         {
             "role": "user",
             "content": (
                 "Return valid JSON only. Do not include Markdown fences or prose outside JSON."
                 f"{failure} The subqueries field must be an array of objects with "
-                "query, purpose, filters, and required."
+                "query, purpose, filters, and required. "
+                "Allowed filter keys are source_id, page_type, and confidence. "
+                "The confidence filter must be null, cited, or weak. "
+                "Use only source_id and page_type values that appear in the local catalog."
+                f"{original}"
             ),
         }
     )
@@ -483,4 +501,9 @@ def is_repairable_validation_error(exc: PlannerValidationError) -> bool:
         "subquery must be an object" in text
         or "subqueries must be a non-empty list" in text
         or "planner json must be an object" in text
+        or "invalid confidence in planner filters" in text
+        or "unknown source_id in planner filters" in text
+        or "unknown page_type in planner filters" in text
+        or "unknown planner filter keys" in text
+        or "planner subquery filters must be an object" in text
     )
