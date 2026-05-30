@@ -107,6 +107,75 @@ def test_retrieve_finds_chinese_claim(capsys):
     assert any("检索 增强 生成" in context["claim_text"] for context in data["contexts"])
 
 
+def test_retrieve_uses_focused_selection_for_single_catalog_subject(monkeypatch):
+    from llmwiki.rerankers import RerankResult, RerankedCandidate, RerankingOptions
+    from llmwiki.retrieval import retrieve_context
+    from llmwiki.retrievers import RetrievalCandidate, RetrieverResult
+
+    root = make_workspace()
+    assert main(["init", "--root", str(root)]) == 0
+
+    def fake_candidate(claim_id: str, source_id: str, score: float):
+        return RetrievalCandidate(
+            claim_id=claim_id,
+            source_id=source_id,
+            claim_text=f"{claim_id} evidence",
+            citation_locator="line:1",
+            confidence_status="cited",
+            page_id=source_id,
+            page_path=f"wiki/sources/{source_id}.md",
+            page_type="source",
+            raw_score=score,
+            retriever_rank=1,
+            retrievers=["fake"],
+            reasons=["fake"],
+            matched_terms=["strawberry"],
+        )
+
+    candidates = [
+        fake_candidate("clm_strawberry_storage", "src_strawberry", 0.95),
+        fake_candidate("clm_strawberry_refrigerate", "src_strawberry", 0.92),
+        fake_candidate("clm_strawberry_fragile", "src_strawberry", 0.9),
+        fake_candidate("clm_orange_storage", "src_orange", 0.89),
+        fake_candidate("clm_banana_storage", "src_banana", 0.88),
+    ]
+
+    class FakeHybridRetriever:
+        def __init__(self, root):
+            self.root = root
+
+        def retrieve(self, conn, query, *, limit, filters):
+            return RetrieverResult(
+                name="hybrid",
+                candidates=candidates,
+                diagnostics={"retrievers": {}, "fusion": {"candidate_count_after_fusion": len(candidates)}},
+            )
+
+    def fake_rerank_candidates(root, question, candidate_rows, reranking_options):
+        return RerankResult(
+            method="deterministic",
+            candidates=[
+                RerankedCandidate(candidate=item, candidate_rank=index, rerank_score=item.raw_score)
+                for index, item in enumerate(candidate_rows, start=1)
+            ],
+        )
+
+    def fake_load_reranking_options(root):
+        return RerankingOptions(candidate_pool_limit=80, max_contexts_per_source=5)
+
+    monkeypatch.setattr("llmwiki.retrieval.HybridRetriever", FakeHybridRetriever)
+    monkeypatch.setattr("llmwiki.retrieval.rerank_candidates", fake_rerank_candidates)
+    monkeypatch.setattr("llmwiki.retrieval.load_reranking_options", fake_load_reranking_options)
+
+    data = retrieve_context(root, "strawberry storage", limit=3, selection_mode="focused")
+
+    assert data["contexts"]
+    assert data["diagnostics"]["selection"]["mode"] == "focused"
+    assert data["diagnostics"]["selection"]["dominant_coverage_group"] == "source:src_strawberry"
+    assert data["diagnostics"]["selection"]["outside_group_selected_count"] == 0
+    assert {context["source_id"] for context in data["contexts"]} == {"src_strawberry"}
+
+
 def test_retrieve_expands_rag_aliases(capsys):
     root = make_workspace()
     assert main(["init", "--root", str(root)]) == 0

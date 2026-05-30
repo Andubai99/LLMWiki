@@ -14,6 +14,10 @@ CONFLICT_WARNING = "Contradictory evidence is present; expose the conflict inste
 @dataclass(frozen=True)
 class EvidenceSelectionOptions:
     max_contexts_per_source: int = 3
+    mode: str = "broad"
+    mode_reason: str = ""
+    dominant_coverage_group: str | None = None
+    min_focused_cited: int = 3
 
 
 @dataclass(frozen=True)
@@ -47,6 +51,11 @@ def select_evidence(
         return EvidenceSelectionResult(
             selected=[],
             diagnostics={
+                "mode": normalize_mode(options.mode),
+                "mode_reason": options.mode_reason,
+                "dominant_coverage_group": options.dominant_coverage_group,
+                "outside_group_selected_count": 0,
+                "missing_required_coverage": [],
                 "candidate_count": len(candidates),
                 "selected_count": 0,
                 "source_diversity": 0,
@@ -67,9 +76,12 @@ def select_evidence(
     selected_redundancy: set[str] = set()
     per_source: dict[str, int] = {}
     conflict_claim_ids = contradiction_claim_ids(relationships)
+    mode = "conflict" if conflict_claim_ids else normalize_mode(options.mode)
+    dominant_coverage_group = options.dominant_coverage_group or infer_dominant_coverage_group(ranked)
+    missing_required_coverage: list[str] = []
     warnings: list[str] = []
 
-    if conflict_claim_ids:
+    if mode == "conflict":
         warnings.append(CONFLICT_WARNING)
         top = ranked[0]
         add_selected(
@@ -97,6 +109,120 @@ def select_evidence(
             if len(selected) >= limit:
                 break
 
+    if mode == "focused":
+        selected_focused = select_focused_evidence(
+            ranked,
+            selected,
+            selected_claims,
+            selected_redundancy,
+            per_source,
+            dominant_coverage_group,
+            limit,
+            options,
+        )
+        if not selected_focused:
+            missing_required_coverage.append(dominant_coverage_group or "unknown")
+    else:
+        fill_by_coverage_then_score(
+            ranked,
+            selected,
+            selected_claims,
+            selected_redundancy,
+            per_source,
+            limit,
+            options,
+        )
+
+    selected = selected[:limit]
+    for item in selected:
+        if item.candidate.confidence_status in {"weak", "uncited"}:
+            warnings.append("Retrieved weak/uncited evidence; do not treat it as strong evidence.")
+            break
+
+    return EvidenceSelectionResult(
+        selected=selected,
+        warnings=unique(warnings),
+        diagnostics={
+            "candidate_count": len(candidates),
+            "deduped_candidate_count": len(best_by_claim),
+            "selected_count": len(selected),
+            "mode": mode,
+            "mode_reason": options.mode_reason,
+            "dominant_coverage_group": dominant_coverage_group,
+            "outside_group_selected_count": count_outside_group(selected, dominant_coverage_group),
+            "missing_required_coverage": missing_required_coverage,
+            "source_diversity": len({item.candidate.source_id for item in selected}),
+            "coverage_group_count": len({item.coverage_group for item in selected}),
+            "redundancy_removed": redundancy_removed,
+            "conflict_candidate_count": len(conflict_claim_ids),
+            "conflict_evidence_selected": any(
+                item.candidate.claim_id in conflict_claim_ids for item in selected
+            ),
+            "weak_evidence_selected": any(
+                item.candidate.confidence_status in {"weak", "uncited"} for item in selected
+            ),
+        },
+    )
+
+
+def select_focused_evidence(
+    ranked: list[RerankedCandidate],
+    selected: list[SelectedEvidence],
+    selected_claims: set[str],
+    selected_redundancy: set[str],
+    per_source: dict[str, int],
+    dominant_coverage_group: str | None,
+    limit: int,
+    options: EvidenceSelectionOptions,
+) -> bool:
+    if not dominant_coverage_group:
+        return False
+    focused_items = [item for item in ranked if coverage_group_for(item.candidate) == dominant_coverage_group]
+    cited_focused = [item for item in focused_items if item.candidate.confidence_status == "cited"]
+    required_count = min(limit, max(1, int(options.min_focused_cited)))
+    enough_focused_evidence = len(cited_focused) >= required_count
+    pool = cited_focused or focused_items
+    for item in pool:
+        if len(selected) >= limit:
+            break
+        add_selected(
+            selected,
+            selected_claims,
+            selected_redundancy,
+            per_source,
+            item,
+            "focused_dominant_group",
+            options,
+            force=enough_focused_evidence,
+        )
+    if enough_focused_evidence:
+        return True
+    for item in ranked:
+        if len(selected) >= limit:
+            break
+        if coverage_group_for(item.candidate) == dominant_coverage_group:
+            continue
+        add_selected(
+            selected,
+            selected_claims,
+            selected_redundancy,
+            per_source,
+            item,
+            "fill_after_focused_evidence_exhausted",
+            options,
+        )
+    return False
+
+
+def fill_by_coverage_then_score(
+    ranked: list[RerankedCandidate],
+    selected: list[SelectedEvidence],
+    selected_claims: set[str],
+    selected_redundancy: set[str],
+    per_source: dict[str, int],
+    limit: int,
+    options: EvidenceSelectionOptions,
+) -> None:
     for item in best_per_coverage_group(ranked):
         if len(selected) >= limit:
             break
@@ -123,32 +249,6 @@ def select_evidence(
             "fill_by_rerank_score",
             options,
         )
-
-    selected = selected[:limit]
-    for item in selected:
-        if item.candidate.confidence_status in {"weak", "uncited"}:
-            warnings.append("Retrieved weak/uncited evidence; do not treat it as strong evidence.")
-            break
-
-    return EvidenceSelectionResult(
-        selected=selected,
-        warnings=unique(warnings),
-        diagnostics={
-            "candidate_count": len(candidates),
-            "deduped_candidate_count": len(best_by_claim),
-            "selected_count": len(selected),
-            "source_diversity": len({item.candidate.source_id for item in selected}),
-            "coverage_group_count": len({item.coverage_group for item in selected}),
-            "redundancy_removed": redundancy_removed,
-            "conflict_candidate_count": len(conflict_claim_ids),
-            "conflict_evidence_selected": any(
-                item.candidate.claim_id in conflict_claim_ids for item in selected
-            ),
-            "weak_evidence_selected": any(
-                item.candidate.confidence_status in {"weak", "uncited"} for item in selected
-            ),
-        },
-    )
 
 
 def add_selected(
@@ -240,6 +340,25 @@ def contradiction_claim_ids(relationships: list[dict[str, Any]]) -> set[str]:
         if evidence_claim_id:
             claim_ids.add(evidence_claim_id)
     return claim_ids
+
+
+def normalize_mode(mode: str) -> str:
+    value = str(mode or "broad")
+    if value in {"focused", "comparison", "conflict", "broad"}:
+        return value
+    return "broad"
+
+
+def infer_dominant_coverage_group(candidates: list[RerankedCandidate]) -> str | None:
+    if not candidates:
+        return None
+    return coverage_group_for(candidates[0].candidate)
+
+
+def count_outside_group(selected: list[SelectedEvidence], dominant_coverage_group: str | None) -> int:
+    if not dominant_coverage_group:
+        return 0
+    return sum(1 for item in selected if item.coverage_group != dominant_coverage_group)
 
 
 def coverage_group_for(candidate: RetrievalCandidate) -> str:

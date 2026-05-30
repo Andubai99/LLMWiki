@@ -41,6 +41,7 @@ def execute_query_plan(root: Path, plan: QueryPlan, ask_options: Any) -> Planned
             source_id=filters["source_id"],
             page_type=filters["page_type"],
             confidence=filters["confidence"],
+            **selection_mode_kwargs(plan),
         )
         retrievals.append(retrieval)
         retrieval["contexts"] = tag_subquery_contexts(
@@ -187,6 +188,19 @@ def merged_filters(filters: dict[str, str | None], ask_options: Any) -> dict[str
 def max_context_budget(plan: QueryPlan, ask_options: Any) -> int:
     limit = int(getattr(ask_options, "limit", 8))
     return min(max(limit, limit * max(len(plan.subqueries), 1)), 32)
+
+
+def selection_mode_kwargs(plan: QueryPlan) -> dict[str, str]:
+    intent = str(plan.intent or "").casefold()
+    required_coverages = {str(item.coverage or "").casefold() for item in plan.required_evidence}
+    if (
+        len(plan.subqueries) > 1
+        or "compar" in intent
+        or "比较" in intent
+        or required_coverages.intersection({"per_entity", "per_source", "multiple_sources"})
+    ):
+        return {"selection_mode": "focused", "selection_mode_reason": "planned subquery"}
+    return {}
 
 
 def unique(items: list[Any]) -> list[str]:
