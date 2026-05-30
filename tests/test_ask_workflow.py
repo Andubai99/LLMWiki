@@ -502,3 +502,87 @@ def test_ask_writeback_marks_run_failed_when_apply_rejects_patch(monkeypatch, ca
     assert rows(root, "select path from pages where page_type = 'synthesis'") == []
     assert (root / "wiki" / "index.md").read_text(encoding="utf-8") == before_index
     assert (root / "wiki" / "log.md").read_text(encoding="utf-8") == before_log
+
+
+def test_ask_preview_writeback_outputs_plan_without_mutation(monkeypatch, capsys):
+    root = make_workspace()
+    context = setup_retrieval_workspace(root)
+    patch_planner_provider(monkeypatch, planner_payload("RAG citation anchors"))
+    patch_answer_provider(monkeypatch, answer_payload(context, title="Citation Anchors"))
+    patch_synthesis_provider(monkeypatch, synthesis_plan_payload(context))
+    capsys.readouterr()
+
+    assert main(["ask", "RAG citation anchors", "--root", str(root), "--preview-writeback"]) == 0
+    out = capsys.readouterr().out
+
+    assert "Synthesis proposal:" in out
+    assert "- action: create" in out
+    assert "Applied synthesis run:" not in out
+    assert synthesis_pages(root) == []
+    assert list((root / "staging").glob("run_synthesis_*")) == []
+    assert rows(root, "select path from pages where page_type = 'synthesis'") == []
+
+
+def test_ask_json_writeback_includes_top_level_synthesis_plan(monkeypatch, capsys):
+    root = make_workspace()
+    context = setup_retrieval_workspace(root)
+    patch_planner_provider(monkeypatch, planner_payload("RAG citation anchors"))
+    patch_answer_provider(monkeypatch, answer_payload(context, title="Citation Anchors"))
+    patch_synthesis_provider(monkeypatch, synthesis_plan_payload(context))
+    capsys.readouterr()
+
+    assert main(["ask", "RAG citation anchors", "--root", str(root), "--writeback", "--json"]) == 0
+    data = json.loads(capsys.readouterr().out)
+
+    assert data["status"] == "answered"
+    assert data["synthesis_plan"]["schema_version"] == "synthesis_plan.v2.8"
+    assert data["synthesis_plan"]["action"] == "create"
+    assert data["writeback"]["status"] == "applied"
+    assert data["writeback"]["action"] == "create"
+    assert data["writeback"]["pages"] == ["wiki/syntheses/citation-anchors.md"]
+
+
+def test_ask_writeback_mode_create_refuses_existing_target(monkeypatch, capsys):
+    root = make_workspace()
+    context = setup_retrieval_workspace(root)
+    patch_planner_provider(monkeypatch, planner_payload("RAG citation anchors"))
+    patch_answer_provider(monkeypatch, answer_payload(context, title="Citation Anchors"))
+    patch_synthesis_provider(monkeypatch, synthesis_plan_payload(context))
+    capsys.readouterr()
+
+    assert main(["ask", "RAG citation anchors", "--root", str(root), "--writeback"]) == 0
+    capsys.readouterr()
+    patch_planner_provider(monkeypatch, planner_payload("RAG citation anchors"))
+    patch_answer_provider(monkeypatch, answer_payload(context, title="Citation Anchors"))
+    patch_synthesis_provider(monkeypatch, synthesis_plan_payload(context))
+
+    assert main(["ask", "RAG citation anchors", "--root", str(root), "--writeback", "--writeback-mode", "create"]) == 1
+    out = capsys.readouterr().out
+
+    assert "Writeback failed at: prepare" in out
+    assert "create target already exists" in out
+    assert len(synthesis_pages(root)) == 1
+
+
+def test_ask_writeback_mode_update_requires_existing_target(monkeypatch, capsys):
+    root = make_workspace()
+    context = setup_retrieval_workspace(root)
+    patch_planner_provider(monkeypatch, planner_payload("RAG citation anchors"))
+    patch_answer_provider(monkeypatch, answer_payload(context, title="Citation Anchors"))
+    patch_synthesis_provider(
+        monkeypatch,
+        synthesis_plan_payload(
+            context,
+            action="update",
+            target_page_id="synthesis-missing",
+            target_path="wiki/syntheses/missing.md",
+        ),
+    )
+    capsys.readouterr()
+
+    assert main(["ask", "RAG citation anchors", "--root", str(root), "--writeback", "--writeback-mode", "update"]) == 1
+    out = capsys.readouterr().out
+
+    assert "Writeback failed at: prepare" in out
+    assert "update target synthesis page does not exist" in out
+    assert synthesis_pages(root) == []
