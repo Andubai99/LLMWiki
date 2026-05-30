@@ -157,6 +157,32 @@ def test_evaluate_retrieval_computes_metrics_and_contract(capsys):
     assert not contains_secret_text(data)
 
 
+def test_relationship_contract_allows_synthesis_page_to_claim_edges():
+    from llmwiki.retrieval_eval import valid_relationship
+
+    catalog = {
+        "claim_ids": {"clm_rag_anchor"},
+        "source_ids": {"src_doc"},
+        "page_ids": {"synthesis-rag", "src_doc"},
+        "page_paths": {"wiki/syntheses/rag.md", "wiki/sources/src_doc.md"},
+        "page_id_by_path": {
+            "wiki/syntheses/rag.md": "synthesis-rag",
+            "wiki/sources/src_doc.md": "src_doc",
+        },
+    }
+
+    assert valid_relationship(
+        {
+            "subject_id": "synthesis-rag",
+            "object_id": "clm_rag_anchor",
+            "relationship_type": "supports",
+            "evidence_claim_id": "clm_rag_anchor",
+            "source_id": "synthesis:answer",
+        },
+        catalog,
+    )
+
+
 def test_eval_retrieval_does_not_call_llm_planner_or_provider(monkeypatch, capsys):
     root = setup_minimal_workspace(capsys)
 

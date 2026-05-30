@@ -27,6 +27,23 @@ class FakeProvider:
         }
 
 
+class SequenceProvider:
+    def __init__(self, payloads: list[dict[str, object]], calls: list[list[dict[str, str]]]) -> None:
+        self.payloads = payloads
+        self.calls = calls
+
+    def complete(self, messages: list[dict[str, str]], schema=None) -> dict[str, object]:
+        self.calls.append(messages)
+        payload = self.payloads.pop(0)
+        return {
+            "provider": "openai",
+            "model": "deepseek-v4-flash",
+            "content": json.dumps(payload, ensure_ascii=False),
+            "finish_reason": "stop",
+            "usage": {"total_tokens": 12},
+        }
+
+
 def seed_workspace() -> Path:
     root = make_workspace()
     assert main(["init", "--root", str(root)]) == 0
@@ -158,6 +175,18 @@ def patch_provider(monkeypatch, payload: dict[str, object]) -> list[list[dict[st
     return calls
 
 
+def patch_sequence_provider(monkeypatch, payloads: list[dict[str, object]]) -> list[list[dict[str, str]]]:
+    from llmwiki import synthesis_planner
+
+    calls: list[list[dict[str, str]]] = []
+
+    def fake_create_provider(config, root=None):
+        return SequenceProvider(list(payloads), calls)
+
+    monkeypatch.setattr(synthesis_planner, "create_provider", fake_create_provider)
+    return calls
+
+
 def test_create_plan_validates_catalog_backed_evidence(monkeypatch):
     from llmwiki.synthesis_planner import SynthesisPlanningOptions, plan_synthesis_writeback
 
@@ -197,6 +226,15 @@ def test_update_plan_requires_existing_synthesis_target(monkeypatch):
         target_page_id="synthesis-existing",
         target_path="wiki/syntheses/existing.md",
         title="Existing Synthesis",
+        relationships=[
+            {
+                "subject_id": "synthesis-existing",
+                "object_id": "clm_rag_anchor",
+                "relationship_type": "supports",
+                "evidence_claim_id": "clm_rag_anchor",
+                "source_id": "src_doc",
+            }
+        ],
     )
     patch_provider(monkeypatch, payload)
 
@@ -276,3 +314,137 @@ def test_plan_output_does_not_leak_secret_paths_or_api_keys(monkeypatch):
     message = str(excinfo.value)
     assert "config/api-keys.toml" not in message
     assert "sk-test-secret" not in message
+
+
+def test_invalid_schema_plan_gets_one_repair_attempt(monkeypatch):
+    from llmwiki.synthesis_planner import SynthesisPlanningOptions, plan_synthesis_writeback
+
+    root = seed_workspace()
+    invalid = plan_payload(
+        schema_version="1.0",
+        status="success",
+        target_page_id="wiki/syntheses/RAG Citation Anchors",
+        sections=[
+            {
+                "heading": "Answer",
+                "content": "RAG answers need citation anchors.",
+                "evidence_ids": ["clm_rag_anchor"],
+            }
+        ],
+    )
+    valid = plan_payload()
+    calls = patch_sequence_provider(monkeypatch, [invalid, valid])
+
+    plan = plan_synthesis_writeback(root, ask_result(), SynthesisPlanningOptions())
+
+    assert plan.schema_version == "synthesis_plan.v2.8"
+    assert plan.status == "planned"
+    assert plan.action == "create"
+    assert len(calls) == 2
+    repair_prompt = calls[1][-1]["content"]
+    assert "synthesis_plan.v2.8" in repair_prompt
+    assert "planned" in repair_prompt
+    assert "needs_review" in repair_prompt
+    assert "Original invalid output" in repair_prompt
+
+
+def test_synthesis_plan_repair_failure_returns_sanitized_error(monkeypatch):
+    from llmwiki.synthesis_planner import (
+        SynthesisPlanningError,
+        SynthesisPlanningOptions,
+        plan_synthesis_writeback,
+    )
+
+    root = seed_workspace()
+    calls = patch_sequence_provider(
+        monkeypatch,
+        [
+            plan_payload(schema_version="1.0", status="success"),
+            plan_payload(schema_version="1.0", status="success"),
+        ],
+    )
+
+    with pytest.raises(SynthesisPlanningError) as excinfo:
+        plan_synthesis_writeback(root, ask_result(), SynthesisPlanningOptions())
+
+    assert len(calls) == 2
+    assert "Invalid synthesis plan schema_version" in str(excinfo.value)
+
+
+def test_invalid_relationship_type_gets_schema_repair(monkeypatch):
+    from llmwiki.synthesis_planner import SynthesisPlanningOptions, plan_synthesis_writeback
+
+    root = seed_workspace()
+    invalid = plan_payload(
+        relationships=[
+            {
+                "subject_id": "synthesis-rag-citation-anchors",
+                "object_id": "clm_rag_anchor",
+                "relationship_type": "",
+                "evidence_claim_id": "clm_rag_anchor",
+                "source_id": "src_doc",
+            }
+        ]
+    )
+    valid = plan_payload()
+    calls = patch_sequence_provider(monkeypatch, [invalid, valid])
+
+    plan = plan_synthesis_writeback(root, ask_result(), SynthesisPlanningOptions())
+
+    assert plan.relationships[0].relationship_type == "supports"
+    assert len(calls) == 2
+    repair_prompt = calls[1][-1]["content"]
+    assert "relationship_type must be one of" in repair_prompt
+    assert "supports" in repair_prompt
+    assert "refines" in repair_prompt
+
+
+def test_related_page_object_gets_schema_repair(monkeypatch):
+    from llmwiki.synthesis_planner import SynthesisPlanningOptions, plan_synthesis_writeback
+
+    root = seed_workspace()
+    invalid = plan_payload(
+        related_pages=[
+            {
+                "page_id": "src_doc",
+                "path": "wiki/sources/src_doc.md",
+                "relationship_type": "similar_to",
+            }
+        ]
+    )
+    valid = plan_payload()
+    calls = patch_sequence_provider(monkeypatch, [invalid, valid])
+
+    plan = plan_synthesis_writeback(root, ask_result(), SynthesisPlanningOptions())
+
+    assert plan.related_pages == ["wiki/sources/src_doc.md"]
+    assert len(calls) == 2
+    repair_prompt = calls[1][-1]["content"]
+    assert "related_pages must be an array of existing page path strings" in repair_prompt
+
+
+def test_blank_relationship_endpoints_get_schema_repair(monkeypatch):
+    from llmwiki.synthesis_planner import SynthesisPlanningOptions, plan_synthesis_writeback
+
+    root = seed_workspace()
+    invalid = plan_payload(
+        relationships=[
+            {
+                "subject_id": "",
+                "object_id": "",
+                "relationship_type": "similar_to",
+                "evidence_claim_id": "",
+                "source_id": "src_doc",
+            }
+        ]
+    )
+    valid = plan_payload()
+    calls = patch_sequence_provider(monkeypatch, [invalid, valid])
+
+    plan = plan_synthesis_writeback(root, ask_result(), SynthesisPlanningOptions())
+
+    assert plan.relationships[0].subject_id == "synthesis-rag-citation-anchors"
+    assert plan.relationships[0].object_id == "clm_rag_anchor"
+    assert len(calls) == 2
+    repair_prompt = calls[1][-1]["content"]
+    assert "subject_id and object_id must be existing catalog identifiers" in repair_prompt

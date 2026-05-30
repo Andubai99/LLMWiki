@@ -14,6 +14,7 @@ from .pipeline import sanitize_error
 
 SYNTHESIS_PLAN_SCHEMA_VERSION = "synthesis_plan.v2.8"
 SYNTHESIS_ACTIONS = {"create", "update", "needs_review"}
+SYNTHESIS_STATUSES = {"planned", "needs_review"}
 EVIDENCE_ROLES = {"supports", "limits", "contradicts", "background", "open_question"}
 SECRET_PATTERNS = (
     re.compile(r"sk-[A-Za-z0-9_-]+"),
@@ -149,8 +150,24 @@ def plan_synthesis_writeback(
     }
     provider = create_provider(load_llm_config(root), root=root)
     response = provider.complete(build_synthesis_planner_prompt(payload), schema=synthesis_plan_schema())
-    plan = parse_synthesis_plan(str(response.get("content") or ""), candidates)
-    validate_synthesis_plan(root, ask_result, plan, options)
+    content = str(response.get("content") or "")
+    try:
+        plan = parse_synthesis_plan(content, candidates)
+        validate_synthesis_plan(root, ask_result, plan, options)
+    except (json.JSONDecodeError, SynthesisPlanningError) as exc:
+        error = sanitize_synthesis_error(exc)
+        try:
+            response = provider.complete(
+                build_synthesis_planner_repair_prompt(payload, error=error, original_output=content),
+                schema=synthesis_plan_schema(),
+            )
+            repaired_content = str(response.get("content") or "")
+            plan = parse_synthesis_plan(repaired_content, candidates)
+            validate_synthesis_plan(root, ask_result, plan, options)
+        except Exception as repair_exc:
+            if isinstance(repair_exc, SynthesisPlanningError):
+                raise SynthesisPlanningError(sanitize_synthesis_error(repair_exc)) from repair_exc
+            raise SynthesisPlanningError(sanitize_synthesis_error(exc)) from repair_exc
     return plan
 
 
@@ -221,10 +238,17 @@ def validate_synthesis_plan(
         raise SynthesisPlanningError("Synthesis plan contains a redacted secret reference.")
     if plan.schema_version != SYNTHESIS_PLAN_SCHEMA_VERSION:
         raise SynthesisPlanningError("Invalid synthesis plan schema_version.")
+    if plan.status not in SYNTHESIS_STATUSES:
+        raise SynthesisPlanningError("Invalid synthesis plan status.")
     if plan.action not in SYNTHESIS_ACTIONS:
         raise SynthesisPlanningError("Invalid synthesis plan action.")
+    if plan.action == "needs_review" and plan.status != "needs_review":
+        raise SynthesisPlanningError("needs_review action must use needs_review status.")
+    if plan.action in {"create", "update"} and plan.status != "planned":
+        raise SynthesisPlanningError("create/update synthesis actions must use planned status.")
     if options.writeback_mode in {"create", "update"} and plan.action != options.writeback_mode:
         raise SynthesisPlanningError(f"Synthesis plan action must be {options.writeback_mode}.")
+    validate_target_page_id(plan.target_page_id)
     validate_target_path(plan.target_path)
 
     cited_contexts = {citation.claim_id: citation for citation in ask_result.citations}
@@ -252,6 +276,17 @@ def validate_synthesis_plan(
     for relationship in plan.relationships:
         if relationship.relationship_type not in RELATIONSHIP_TYPES:
             raise SynthesisPlanningError(f"unknown relationship_type: {relationship.relationship_type}")
+        valid_subjects = set(catalog["page_ids"]) | set(catalog["source_ids"]) | {plan.target_page_id}
+        valid_objects = (
+            set(catalog["page_ids"])
+            | set(catalog["source_ids"])
+            | set(catalog["claims"].keys())
+            | {plan.target_page_id}
+        )
+        if relationship.subject_id not in valid_subjects:
+            raise SynthesisPlanningError(f"unknown relationship subject: {relationship.subject_id}")
+        if relationship.object_id not in valid_objects:
+            raise SynthesisPlanningError(f"unknown relationship object: {relationship.object_id}")
         if relationship.evidence_claim_id and relationship.evidence_claim_id not in catalog["claims"]:
             raise SynthesisPlanningError(f"unknown relationship evidence claim: {relationship.evidence_claim_id}")
         if relationship.source_id and relationship.source_id not in catalog["source_ids"] and not relationship.source_id.startswith("synthesis:"):
@@ -346,6 +381,41 @@ def build_synthesis_planner_prompt(payload: dict[str, object]) -> list[dict[str,
     ]
 
 
+def build_synthesis_planner_repair_prompt(
+    payload: dict[str, object],
+    *,
+    error: str,
+    original_output: str,
+) -> list[dict[str, str]]:
+    messages = build_synthesis_planner_prompt(payload)
+    messages.append(
+        {
+            "role": "user",
+            "content": (
+                "Return valid JSON only. Do not include Markdown fences or prose outside JSON. "
+                f"The previous synthesis plan failed validation: {error}. "
+                f"schema_version must be exactly {SYNTHESIS_PLAN_SCHEMA_VERSION}. "
+                "status must be planned for create/update, or needs_review for needs_review. "
+                "action must be create, update, or needs_review. "
+                "target_page_id must be a page id, not a filesystem path. "
+                "target_path must be under wiki/syntheses/ and end with .md. "
+                "sections must be an object with scope, current_answer, analysis, "
+                "conflicts_and_limits, and open_questions, not an array. "
+                "relationships may be an empty array. If a relationship is present, "
+                f"relationship_type must be one of: {', '.join(RELATIONSHIP_TYPES)}. "
+                "Do not include relationship objects with blank relationship_type. "
+                "subject_id and object_id must be existing catalog identifiers, "
+                "or the target_page_id for a newly created synthesis page. "
+                "related_pages must be an array of existing page path strings, not objects. "
+                "Use only the provided citations for evidence; do not invent claim ids, "
+                "source ids, citation locators, or page paths.\n"
+                f"Original invalid output:\n{original_output}"
+            ),
+        }
+    )
+    return messages
+
+
 def synthesis_plan_schema() -> dict[str, object]:
     return {
         "type": "object",
@@ -376,8 +446,10 @@ def load_catalog_evidence(root: Path) -> dict[str, Any]:
             for row in conn.execute("select claim_id, source_id, citation_locator from claims").fetchall()
         }
         source_ids = {str(row["source_id"]) for row in conn.execute("select source_id from sources").fetchall()}
-        page_paths = {str(row["path"]) for row in conn.execute("select path from pages").fetchall()}
-    return {"claims": claims, "source_ids": source_ids, "page_paths": page_paths}
+        page_rows = conn.execute("select page_id, path from pages").fetchall()
+        page_ids = {str(row["page_id"]) for row in page_rows}
+        page_paths = {str(row["path"]) for row in page_rows}
+    return {"claims": claims, "source_ids": source_ids, "page_ids": page_ids, "page_paths": page_paths}
 
 
 def validate_target_path(target_path: str) -> None:
@@ -388,6 +460,13 @@ def validate_target_path(target_path: str) -> None:
         raise SynthesisPlanningError("target_path must be under wiki/syntheses")
     if pure.suffix.lower() != ".md":
         raise SynthesisPlanningError("target_path must be Markdown")
+
+
+def validate_target_page_id(target_page_id: str) -> None:
+    if not target_page_id.strip():
+        raise SynthesisPlanningError("target_page_id must not be empty")
+    if "/" in target_page_id or "\\" in target_page_id:
+        raise SynthesisPlanningError("target_page_id must be a page id, not a path")
 
 
 def read_claim_ids_from_page(path: Path) -> list[str]:
