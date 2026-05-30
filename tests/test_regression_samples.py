@@ -203,6 +203,10 @@ def test_docs_describe_v1_commands_and_constraints():
     assert "--format prompt" in readme
     assert "retrieve_context" in readme
     assert "llmwiki ask" in readme
+    assert "--preview-writeback" in readme
+    assert "--writeback-mode update" in readme
+    assert "Synthesis pages are living wiki pages" in readme
+    assert "Synthesis planning output is not evidence" in readme
     assert "RAG/Agent evidence layer" in readme
     assert "LLM Provider" in readme
     assert "LLM Ingest Proposal" in readme
@@ -236,6 +240,10 @@ def test_docs_describe_v1_commands_and_constraints():
     assert "source locator" in agents
     assert "`llmwiki retrieve` is the standard evidence interface" in agents
     assert "`llmwiki ask` is the standard local evidence question-answering interface" in agents
+    assert "`llmwiki ask --preview-writeback` is read-only" in agents
+    assert "synthesis plan output is not evidence" in agents
+    assert "Do not create duplicate synthesis pages" in agents
+    assert "preserve user-authored custom sections" in agents
     assert "Do not forge claim ids" in agents
     assert "`contradicts` relationships must be exposed" in agents
     assert "API Key" in agents

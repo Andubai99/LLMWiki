@@ -61,6 +61,12 @@ This repository is a local, source-backed research wiki. Treat it as a knowledge
 - `ask` answers must be grounded in retrieved local evidence and must cite retrieved claim ids, source ids, and citation locators.
 - If `ask` writes a useful answer back, synthesis writeback must go through staging/apply and must not directly mutate formal wiki pages.
 - weak/uncited and contradicting evidence must remain visible in ask answers and synthesis pages.
+- V2.8 synthesis planning may call the configured LLM, but synthesis plan output is not evidence.
+- Do not create duplicate synthesis pages when an existing synthesis page should be updated.
+- `llmwiki ask --preview-writeback` is read-only and must not create staging runs, wiki pages, or catalog rows.
+- Synthesis pages are living wiki pages, not saved chat transcripts; preserve user-authored custom sections when updating them.
+- Synthesis evidence maps may only cite existing catalog claims with real claim ids, source ids, citation locators, and page paths.
+- Synthesis writeback must not create derived formal claims; synthesis `claims.jsonl` stays empty unless a future spec explicitly changes that.
 
 ## LLM Provider Rules
 

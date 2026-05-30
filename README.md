@@ -8,6 +8,22 @@ Planner filter validation remains strict. Invalid values such as `confidence = "
 
 LLM ingest normalizes locator-backed claims before staging. A claim with a valid `line:N` locator is treated as `cited`; claims without a valid locator remain weak/uncited and cannot become formal conclusions.
 
+## V2.8 Synthesis Quality Notes
+
+`llmwiki ask --writeback` now plans synthesis writeback before applying it. The plan decides whether to create a new synthesis page, update an existing synthesis page, or stop with `needs_review` when multiple targets are plausible. The plan is inspectable in CLI output, JSON output, and `staging/<run-id>/synthesis-plan.json`.
+
+```bash
+llmwiki ask "RAG 为什么需要引用锚点？" --root . --preview-writeback
+llmwiki ask "RAG 为什么需要引用锚点？" --root . --writeback
+llmwiki ask "RAG 为什么需要引用锚点？" --root . --writeback --writeback-mode update
+```
+
+`--preview-writeback` is read-only: it answers the question and shows the proposed synthesis structure without creating staging runs, wiki pages, or catalog rows. `--writeback` is explicit approval to apply the validated synthesis plan through staging/apply.
+
+Synthesis pages are living wiki pages, not saved chat transcripts. V2.8 pages use `Scope`, `Current Answer`, `Evidence Map`, `Analysis`, `Conflicts And Limits`, `Open Questions`, `Related Pages`, and `Revision History`. Repeated questions about the same topic should update the same synthesis page instead of creating near-duplicates.
+
+Synthesis planning output is not evidence. Evidence maps may only cite existing catalog claims with real `claim_id`, `source_id`, `citation_locator`, and `page_path`. Synthesis writeback does not create derived formal claims; `claims.jsonl` remains empty for synthesis runs.
+
 ## Retrieval Layer v2.7（混合本地检索 + 向量召回 + reranking）
 
 `llmwiki retrieve` 是外部 RAG 系统、Agent 和 LLM prompt 调用 LLMWiki 的稳定证据接口。它从本地 SQLite catalog 检索 source-backed claims，并返回 citation、page path、relationship type、score、retrieval reasons 和 warning。这个命令使用确定性的混合本地检索，不会调用外部 LLM API。
