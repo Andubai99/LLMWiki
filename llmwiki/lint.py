@@ -60,10 +60,11 @@ def lint_workspace(root: Path) -> LintReport:
 
         uncited_without_locator = conn.execute(
             """
-            select claim_id
-            from claims
-            where citation_locator is null
-               or citation_locator = ''
+            select distinct c.claim_id
+            from claims c
+            join relationships r on r.evidence_claim_id = c.claim_id
+            where c.citation_locator is null
+               or c.citation_locator = ''
             """
         ).fetchall()
         uncited_with_locator = conn.execute(

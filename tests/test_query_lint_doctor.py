@@ -115,6 +115,13 @@ def test_lint_fails_for_uncited_claims_without_locator(capsys):
             """,
             (source_id,),
         )
+        conn.execute(
+            """
+            insert into relationships (subject_id, object_id, relationship_type, evidence_claim_id, source_id)
+            values (?, ?, 'supports', 'clm_missing_locator', ?)
+            """,
+            (source_id, source_id, source_id),
+        )
     capsys.readouterr()
 
     assert main(["lint", "--root", str(root)]) == 1
