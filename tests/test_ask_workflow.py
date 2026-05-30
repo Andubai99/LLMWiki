@@ -586,3 +586,76 @@ def test_ask_writeback_mode_update_requires_existing_target(monkeypatch, capsys)
     assert "Writeback failed at: prepare" in out
     assert "update target synthesis page does not exist" in out
     assert synthesis_pages(root) == []
+
+
+def test_ask_writeback_invalid_synthesis_claim_does_not_stage(monkeypatch, capsys):
+    root = make_workspace()
+    context = setup_retrieval_workspace(root)
+    invalid_plan = synthesis_plan_payload(context)
+    invalid_plan["evidence"] = [
+        {
+            "role": "supports",
+            "claim_id": "clm_missing",
+            "source_id": context["source_id"],
+            "citation_locator": context["citation_locator"],
+            "page_path": context["page_path"],
+        }
+    ]
+    patch_planner_provider(monkeypatch, planner_payload("RAG citation anchors"))
+    patch_answer_provider(monkeypatch, answer_payload(context, title="Citation Anchors"))
+    patch_synthesis_provider(monkeypatch, invalid_plan)
+    capsys.readouterr()
+
+    assert main(["ask", "RAG citation anchors", "--root", str(root), "--writeback"]) == 1
+    out = capsys.readouterr().out
+
+    assert "Writeback failed at: prepare" in out
+    assert "unknown claim" in out
+    assert list((root / "staging").glob("run_synthesis_*")) == []
+    assert synthesis_pages(root) == []
+
+
+def test_ask_writeback_needs_review_does_not_apply(monkeypatch, capsys):
+    root = make_workspace()
+    context = setup_retrieval_workspace(root)
+    patch_planner_provider(monkeypatch, planner_payload("RAG citation anchors"))
+    patch_answer_provider(monkeypatch, answer_payload(context, title="Citation Anchors"))
+    patch_synthesis_provider(
+        monkeypatch,
+        synthesis_plan_payload(context, action="needs_review") | {"warnings": ["Multiple plausible targets."]},
+    )
+    capsys.readouterr()
+
+    assert main(["ask", "RAG citation anchors", "--root", str(root), "--writeback"]) == 1
+    out = capsys.readouterr().out
+
+    assert "Writeback failed at: prepare" in out
+    assert "needs review" in out
+    assert list((root / "staging").glob("run_synthesis_*")) == []
+    assert synthesis_pages(root) == []
+
+
+def test_ask_writeback_sanitizes_synthesis_plan_secrets(monkeypatch, capsys):
+    root = make_workspace()
+    context = setup_retrieval_workspace(root)
+    secret_plan = synthesis_plan_payload(context)
+    secret_plan["sections"] = {
+        "scope": "config/api-keys.toml",
+        "current_answer": "sk-test-secret",
+        "analysis": "The cited local evidence supports traceable answers.",
+        "conflicts_and_limits": [],
+        "open_questions": [],
+    }
+    patch_planner_provider(monkeypatch, planner_payload("RAG citation anchors"))
+    patch_answer_provider(monkeypatch, answer_payload(context, title="Citation Anchors"))
+    patch_synthesis_provider(monkeypatch, secret_plan)
+    capsys.readouterr()
+
+    assert main(["ask", "RAG citation anchors", "--root", str(root), "--writeback", "--json"]) == 1
+    out = capsys.readouterr().out
+    data = json.loads(out)
+
+    assert data["writeback"]["status"] == "failed"
+    assert "config/api-keys.toml" not in out
+    assert "sk-test-secret" not in out
+    assert list((root / "staging").glob("run_synthesis_*")) == []
