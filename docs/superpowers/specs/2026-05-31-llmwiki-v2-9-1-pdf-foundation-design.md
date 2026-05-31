@@ -389,6 +389,98 @@ The LLM prompt should not include:
 - unrelated full-document chunks;
 - unbounded full-paper text.
 
+### 9.1 Chunking Contract
+
+Chunk boundaries are system-owned, not LLM-owned.
+
+The required data flow is:
+
+```text
+PDF parser -> blocks
+deterministic chunker -> chunks
+LLM ingest -> claims
+```
+
+The parser decides blocks. The chunker decides chunks. The LLM receives a chunk and extracts claims only from the blocks inside that chunk.
+
+The LLM must not:
+
+- create chunk ids;
+- merge chunks;
+- split chunks;
+- rename chunks;
+- change chunk boundaries;
+- cite block ids outside the provided chunk;
+- infer evidence from another chunk unless that evidence is explicitly included in the current chunk context.
+
+The deterministic chunker should be generic and document-structure-aware, not domain-specific. It should use:
+
+- parser blocks;
+- section hierarchy;
+- page order;
+- block order;
+- token budget;
+- reserved output budget;
+- optional overlap policy.
+
+It must not use fruit-, medicine-, GUI-agent-, OSWorld-, benchmark-, or other domain-specific keyword rules.
+
+Recommended chunk schema:
+
+```json
+{
+  "schema_version": "source_chunk.v2.9.1",
+  "chunk_id": "src_d4c6e20dd594_sec_abstract_chunk_001",
+  "source_id": "src_d4c6e20dd594",
+  "chunk_type": "section_claim_extraction",
+  "section_path": ["Abstract"],
+  "page_start": 1,
+  "page_end": 1,
+  "block_ids": [
+    "src_d4c6e20dd594_p001_b0003",
+    "src_d4c6e20dd594_p001_b0004"
+  ],
+  "context_block_ids": [
+    "src_d4c6e20dd594_p001_b0001"
+  ],
+  "token_estimate": 4200,
+  "purpose": "extract claims from the abstract"
+}
+```
+
+Chunking rules:
+
+- Prefer one chunk per section when the section fits within budget.
+- Do not cross section boundaries unless a short heading/parent context block is explicitly included as context.
+- If a section is too long, split it by paragraph block order.
+- Do not split a block unless the block itself exceeds the maximum budget.
+- If a single block exceeds budget, create a `large_block_split` chunk with explicit split offsets and warnings.
+- Include parent section headings as context blocks when useful, but distinguish context blocks from evidence blocks.
+- Use small overlap only for continuity, and mark overlap block ids explicitly.
+- Keep abstract, conclusion, limitations, and appendix chunks identifiable through `chunk_type` or `purpose`.
+
+Allowed chunk types for V2.9.1:
+
+- `metadata_summary`
+- `section_claim_extraction`
+- `long_section_part`
+- `conclusion_or_limitations`
+- `appendix_text`
+- `reference_text`
+- `large_block_split`
+
+The LLM may return observations about parser quality, such as "this block appears to be a section heading" or "this text appears to contain table residue," but those observations are not authoritative. Parser repair suggestions must go through a validator and must not directly change block ids, chunk ids, or citation anchors.
+
+Claim validation must check:
+
+- every cited block id exists;
+- every cited block id belongs to the source;
+- every cited evidence block is present in the current chunk, or is a declared context/overlap block;
+- generated citation locators match the chunk's page and block metadata;
+- no claim depends on text outside the provided chunk unless the claim is later produced by an explicit consolidation pass using validated chunk-level claims.
+
+The consolidation pass may merge duplicate or overlapping claims across chunks, but it must preserve all source block locators that support the merged claim.
+
 ## 10. Catalog And Wiki Model
 
 V2.9.1 may introduce paper-specific pages if needed, but should keep compatibility with existing `source`, `concept`, `entity`, and `synthesis` pages.
