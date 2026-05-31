@@ -171,6 +171,62 @@ def test_pdf_chunked_ingest_rejects_unknown_block_claims(monkeypatch, capsys):
         create_llm_ingest_proposal(root, source_row(root, result.source_id), normalized_text)
 
 
+def test_pdf_chunked_ingest_drops_uncited_chunk_claims_when_cited_claims_exist(monkeypatch, capsys):
+    root = make_workspace()
+    assert main(["init", "--root", str(root)]) == 0
+    capsys.readouterr()
+
+    monkeypatch.setattr(
+        "llmwiki.pdf_blocks.read_pdf_pages",
+        lambda content: (
+            {"title": "Mixed Locator PDF"},
+            ["Mixed Locator PDF\n\nAbstract\nKnown block text.\n"],
+        ),
+    )
+    pdf = root / "mixed.pdf"
+    pdf.write_bytes(b"%PDF fake")
+    result = import_source(root, str(pdf))
+    known_block_id = load_blocks_jsonl(root / "sources" / "blocks" / f"{result.source_id}.jsonl")[-1].block_id
+
+    class MixedLocatorProvider:
+        def complete(self, messages: list[dict[str, str]], schema: dict[str, Any] | None = None) -> dict[str, Any]:
+            if "PDF consolidation" in messages[-1]["content"]:
+                payload = {
+                    "claims": [],
+                    "concept": {"title": "Mixed Locator PDF", "aliases": []},
+                    "entity": None,
+                    "duplicate_candidates": [],
+                    "conflict_candidates": [],
+                    "source_summary": "Mixed locator summary.",
+                    "concept_definition": "Mixed locator concept.",
+                }
+            else:
+                payload = {
+                    "claims": [
+                        {
+                            "claim_text": "Known block claim.",
+                            "citation_locator": f"block:{known_block_id}",
+                            "confidence_status": "cited",
+                        },
+                        {
+                            "claim_text": "Unknown block claim should stay out of catalog.",
+                            "citation_locator": "block:not_a_real_block",
+                            "confidence_status": "cited",
+                        },
+                    ],
+                    "chunk_summary": "Mixed locator.",
+                }
+            return {"provider": "fake", "model": "fake-pdf", "content": json.dumps(payload), "usage": {}}
+
+    monkeypatch.setattr("llmwiki.llm_ingest.create_provider", lambda config, root=None: MixedLocatorProvider())
+    normalized_text = (root / result.normalized_path).read_text(encoding="utf-8")
+
+    proposal = create_llm_ingest_proposal(root, source_row(root, result.source_id), normalized_text)
+
+    assert [claim["claim_text"] for claim in proposal.claims] == ["Known block claim."]
+    assert proposal.claims[0]["confidence_status"] == "cited"
+
+
 def test_pdf_add_exposes_parse_diagnostics_in_staging_and_source_page(monkeypatch, capsys):
     root = make_workspace()
     assert main(["init", "--root", str(root)]) == 0

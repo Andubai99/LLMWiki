@@ -104,7 +104,7 @@ def create_chunked_pdf_ingest_proposal(
         content = str(response.get("content") or "")
         payload = parse_json_object(content)
         chunk_proposal = normalize_payload({"claims": payload.get("claims") or []}, source_id, chunk_text)
-        all_claims.extend(chunk_proposal.claims)
+        all_claims.extend(cited_claims_only(chunk_proposal.claims))
         add_usage(usage, dict(response.get("usage") or {}))
         chunk_records.append(
             {
@@ -363,6 +363,14 @@ def dedupe_exact_claims(claims: list[dict[str, str]], source_id: str) -> list[di
         updated["claim_id"] = f"clm_{source_id}_llm_{len(result) + 1:03d}"
         result.append(updated)
     return result
+
+
+def cited_claims_only(claims: list[dict[str, str]]) -> list[dict[str, str]]:
+    return [
+        claim
+        for claim in claims
+        if claim.get("citation_locator") and claim.get("confidence_status") == "cited"
+    ]
 
 
 def empty_usage() -> dict[str, Any]:
