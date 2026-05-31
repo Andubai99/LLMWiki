@@ -139,7 +139,7 @@ def normalize_payload(
     source_id: str,
     normalized_text: str,
 ) -> LLMIngestProposal:
-    locators = line_locators(normalized_text)
+    locators = source_locators(normalized_text)
     claims: list[dict[str, str]] = []
     for index, item in enumerate(payload.get("claims") or [], start=1):
         if not isinstance(item, dict):
@@ -179,10 +179,21 @@ def normalize_payload(
 
 
 def line_locators(normalized_text: str) -> dict[str, str]:
+    locators = source_locators(normalized_text)
+    return {key: value for key, value in locators.items() if key.isdigit()}
+
+
+def source_locators(normalized_text: str) -> dict[str, str]:
     locators: dict[str, str] = {}
     current_section = ""
     current_paragraph = ""
     for line in normalized_text.splitlines():
+        block_locator = block_locator_from_comment(line)
+        if block_locator:
+            block_id, canonical = block_locator
+            locators[block_id] = canonical
+            locators[f"block:{block_id}"] = canonical
+            continue
         section_match = re.match(r"<!-- section:(.*?) -->", line)
         if section_match:
             current_section = section_match.group(1).strip()
@@ -200,28 +211,62 @@ def line_locators(normalized_text: str) -> dict[str, str]:
             parts.append(f"section:{current_section}")
         if current_paragraph:
             parts.append(f"paragraph:{current_paragraph}")
-        locators[line_match.group(1)] = ";".join(parts)
+        canonical = ";".join(parts)
+        locators[line_match.group(1)] = canonical
+        locators[f"line:{line_match.group(1)}"] = canonical
     return locators
 
 
 def canonical_locator(value: str, locators: dict[str, str]) -> str:
+    block_match = re.search(r"block:([A-Za-z0-9_.-]+)", value)
+    if block_match:
+        return locators.get(block_match.group(1), "") or locators.get(f"block:{block_match.group(1)}", "")
     match = re.search(r"line:(\d+)", value)
     if not match:
         return ""
-    return locators.get(match.group(1), "")
+    return locators.get(match.group(1), "") or locators.get(f"line:{match.group(1)}", "")
 
 
 def normalize_claim_confidence(locator: str, confidence_status: str) -> str:
     confidence = str(confidence_status or "cited").casefold()
     if confidence not in {"cited", "weak", "uncited"}:
         confidence = "cited"
-    if has_line_locator(locator):
+    if has_cited_locator(locator):
         return "cited"
     return "weak" if confidence == "cited" else confidence
 
 
 def has_line_locator(locator: str) -> bool:
     return re.search(r"(?:^|;)line:[1-9]\d*(?:;|$)", str(locator or "")) is not None
+
+
+def has_block_locator(locator: str) -> bool:
+    return re.search(r"(?:^|;)page:[1-9]\d*;block:[A-Za-z0-9_.-]+(?:;|$)", str(locator or "")) is not None
+
+
+def has_cited_locator(locator: str) -> bool:
+    return has_line_locator(locator) or has_block_locator(locator)
+
+
+def block_locator_from_comment(line: str) -> tuple[str, str] | None:
+    comment_match = re.match(r"<!--\s*(.*?)\s*-->", line.strip())
+    if not comment_match:
+        return None
+    attributes: dict[str, str] = {}
+    for part in comment_match.group(1).split(";"):
+        if ":" not in part:
+            continue
+        key, value = part.split(":", 1)
+        attributes[key.strip()] = value.strip()
+    block_id = attributes.get("block")
+    page = attributes.get("page")
+    if not block_id or not page or not page.isdigit() or int(page) <= 0:
+        return None
+    parts = [f"page:{int(page)}", f"block:{block_id}"]
+    section = attributes.get("section")
+    if section:
+        parts.append(f"section:{section}")
+    return block_id, ";".join(parts)
 
 
 def clean_optional_string(value: Any) -> str | None:

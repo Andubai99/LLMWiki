@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from llmwiki.cli import main
-from llmwiki.llm_ingest import normalize_payload
+from llmwiki.llm_ingest import canonical_locator, normalize_payload, source_locators
 from llmwiki.sources import import_source
 from tests.helpers import make_workspace
 
@@ -104,6 +104,65 @@ def test_normalize_payload_does_not_promote_missing_or_invalid_locators():
     assert proposal.claims[0]["confidence_status"] == "weak"
     assert proposal.claims[1]["citation_locator"] == ""
     assert proposal.claims[1]["confidence_status"] == "uncited"
+
+
+def test_normalize_payload_accepts_pdf_block_locators():
+    normalized = (
+        "---\nsource_id: src_pdf\nsource_type: pdf\n---\n\n"
+        "<!-- block:src_pdf_p001_b0004; page:1; type:abstract; section:Abstract -->\n"
+        "OSWorld evaluates computer-use agents.\n"
+    )
+    proposal = normalize_payload(
+        {
+            "claims": [
+                {
+                    "claim_text": "OSWorld evaluates computer-use agents.",
+                    "citation_locator": "block:src_pdf_p001_b0004",
+                    "confidence_status": "uncited",
+                },
+                {
+                    "claim_text": "The abstract reports the benchmark scope.",
+                    "citation_locator": "page:1;block:src_pdf_p001_b0004;section:Abstract",
+                    "confidence_status": "weak",
+                },
+            ]
+        },
+        "src_pdf",
+        normalized,
+    )
+
+    assert [claim["confidence_status"] for claim in proposal.claims] == ["cited", "cited"]
+    assert proposal.claims[0]["citation_locator"] == "page:1;block:src_pdf_p001_b0004;section:Abstract"
+    assert proposal.claims[1]["citation_locator"] == "page:1;block:src_pdf_p001_b0004;section:Abstract"
+
+
+def test_unknown_pdf_block_locator_is_not_promoted_to_cited():
+    normalized = (
+        "<!-- block:src_pdf_p001_b0004; page:1; type:abstract; section:Abstract -->\n"
+        "OSWorld evaluates computer-use agents.\n"
+    )
+    proposal = normalize_payload(
+        {
+            "claims": [
+                {
+                    "claim_text": "Unknown block should not be cited.",
+                    "citation_locator": "block:src_pdf_p999_b9999",
+                    "confidence_status": "cited",
+                }
+            ]
+        },
+        "src_pdf",
+        normalized,
+    )
+
+    assert proposal.claims[0]["citation_locator"] == ""
+    assert proposal.claims[0]["confidence_status"] == "weak"
+
+
+def test_source_locators_preserve_markdown_line_locators():
+    locators = source_locators("<!-- section:Intro -->\n<!-- paragraph:1 -->\n[line:7] Text\n")
+
+    assert canonical_locator("line:7", locators) == "line:7;section:Intro;paragraph:1"
 
 
 def test_ingest_reports_missing_llm_api_key_without_modifying_wiki(monkeypatch, capsys):
