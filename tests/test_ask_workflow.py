@@ -9,6 +9,7 @@ from llmwiki.retrieval import retrieve_context
 from tests.helpers import make_workspace
 from tests.test_hybrid_retrieval import setup_seeded_workspace
 from tests.test_query_lint_doctor import add_ingest_apply, fixture
+from tests.test_retrieval import seed_pdf_claim_catalog
 from tests.test_vector_retrieval import FakeEmbeddingProvider, seed_vector_workspace, write_fake_index
 
 
@@ -202,6 +203,25 @@ def test_ask_answers_from_retrieved_evidence_and_does_not_write_by_default(monke
     assert "Warnings: none" in out
     assert "Writeback:" in out
     assert "Not written" in out
+    assert synthesis_pages(root) == []
+
+
+def test_ask_accepts_pdf_page_block_citations(monkeypatch, capsys):
+    root = make_workspace()
+    assert main(["init", "--root", str(root)]) == 0
+    seed_pdf_claim_catalog(root)
+    context = retrieve_context(root, "OSWorld performance gap", limit=1)["contexts"][0]
+    patch_planner_provider(monkeypatch, planner_payload("OSWorld performance gap"))
+    calls = patch_answer_provider(monkeypatch, answer_payload(context, title="OSWorld Performance Gap"))
+    capsys.readouterr()
+
+    assert main(["ask", "OSWorld performance gap", "--root", str(root), "--no-writeback", "--json"]) == 0
+    data = json.loads(capsys.readouterr().out)
+
+    assert calls
+    assert data["status"] == "answered"
+    assert data["citations"][0]["citation_locator"] == "page:1;block:src_osworld_pdf_p001_b0004;section:Abstract"
+    assert data["citations"][0]["claim_id"] == context["claim_id"]
     assert synthesis_pages(root) == []
 
 
