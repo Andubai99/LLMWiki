@@ -15,6 +15,7 @@ DATASET = Path(__file__).resolve().parent / "evals" / "retrieval_v2_3.jsonl"
 FRUIT_DATASET = Path(__file__).resolve().parent / "evals" / "retrieval_v2_4_fruits.jsonl"
 SEMANTIC_FRUIT_DATASET = Path(__file__).resolve().parent / "evals" / "retrieval_v2_6_semantic_fruits.jsonl"
 SELECTION_FRUIT_DATASET = Path(__file__).resolve().parent / "evals" / "retrieval_v2_7_evidence_selection_fruits.jsonl"
+PDF_FOUNDATION_DATASET = Path(__file__).resolve().parent / "evals" / "retrieval_v2_9_1_pdf_foundation.jsonl"
 EVAL_FIXTURES = (
     "minimal_source.md",
     "regression_alias.md",
@@ -115,6 +116,21 @@ def test_load_v27_evidence_selection_eval_cases_from_committed_jsonl():
     assert cases[0].query_type == "comparison"
     assert "src_99ab0495789d" in cases[0].expected_source_ids
     assert "src_880c9f8a447c" in cases[0].expected_source_ids
+
+
+def test_load_v291_pdf_foundation_eval_cases_from_committed_jsonl():
+    from llmwiki.retrieval_eval import load_eval_cases
+
+    cases = load_eval_cases(PDF_FOUNDATION_DATASET)
+
+    assert [case.id for case in cases] == [
+        "pdf_osworld_definition_gap",
+        "pdf_gui_agent_benchmarks",
+        "pdf_compare_osworld_mobileagentbench",
+        "pdf_mobileagentbench_scope",
+    ]
+    assert cases[0].question == "What is OSWorld and what performance gap does it report?"
+    assert "OSWorld" in cases[0].expected_terms
 
 
 def test_load_eval_cases_reports_jsonl_line_errors(tmp_path: Path):

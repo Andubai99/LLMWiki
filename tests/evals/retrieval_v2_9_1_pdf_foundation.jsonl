@@ -1,0 +1,4 @@
+{"id":"pdf_osworld_definition_gap","question":"What is OSWorld and what performance gap does it report?","expected_status":"has_evidence","expected_terms":["OSWorld","performance gap"],"query_type":"lookup"}
+{"id":"pdf_gui_agent_benchmarks","question":"Which papers introduce benchmarks for GUI or computer-use agents?","expected_status":"has_evidence","expected_terms":["benchmark","GUI","computer-use agents"],"query_type":"comparison"}
+{"id":"pdf_compare_osworld_mobileagentbench","question":"Compare OSWorld and MobileAgentBench.","expected_status":"has_evidence","expected_terms":["OSWorld","MobileAgentBench"],"query_type":"comparison"}
+{"id":"pdf_mobileagentbench_scope","question":"What does MobileAgentBench evaluate?","expected_status":"has_evidence","expected_terms":["MobileAgentBench","evaluate"],"query_type":"lookup"}
