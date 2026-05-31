@@ -169,3 +169,67 @@ def test_pdf_chunked_ingest_rejects_unknown_block_claims(monkeypatch, capsys):
 
     with pytest.raises(LLMProviderError, match="valid source locators"):
         create_llm_ingest_proposal(root, source_row(root, result.source_id), normalized_text)
+
+
+def test_pdf_add_exposes_parse_diagnostics_in_staging_and_source_page(monkeypatch, capsys):
+    root = make_workspace()
+    assert main(["init", "--root", str(root)]) == 0
+    capsys.readouterr()
+
+    monkeypatch.setattr(
+        "llmwiki.pdf_blocks.read_pdf_pages",
+        lambda content: (
+            {"title": "OSWorld: Benchmarking Multimodal Agents"},
+            [
+                "OSWorld: Benchmarking Multimodal Agents\n"
+                "Alice Example\n\n"
+                "Abstract\n"
+                "OSWorld evaluates computer-use agents.\n\n"
+                "1 Introduction\n"
+                "The benchmark includes desktop tasks.\n\n"
+                "2 Results\n"
+                "Agents lag humans on many tasks.\n",
+            ],
+        ),
+    )
+    fake_provider = FakeChunkProvider({})
+    monkeypatch.setattr("llmwiki.llm_ingest.create_provider", lambda config, root=None: fake_provider)
+
+    pdf = root / "osworld.pdf"
+    pdf.write_bytes(b"%PDF fake")
+
+    assert main(["add", str(pdf), "--root", str(root)]) == 0
+    capsys.readouterr()
+
+    with sqlite3.connect(root / "state" / "catalog.sqlite") as conn:
+        conn.row_factory = sqlite3.Row
+        source = conn.execute("select * from sources where source_type = 'pdf'").fetchone()
+        source_id = source["source_id"]
+        run = conn.execute("select run_id from ingest_runs where source_id = ?", (source_id,)).fetchone()
+        assert conn.execute("select count(*) from pages where page_type = 'paper'").fetchone()[0] == 0
+    run_dir = root / "staging" / run["run_id"]
+    manifest = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
+    assert manifest["source_parse_schema"] == "source_block.v2.9.1"
+    assert manifest["source_chunk_schema"] == "source_chunk.v2.9.1"
+    assert manifest["page_count"] == 1
+    assert manifest["block_count"] >= 5
+    assert manifest["chunk_count"] >= 2
+
+    triage = (run_dir / "triage.md").read_text(encoding="utf-8")
+    assert "## PDF Parse Diagnostics" in triage
+    assert "- page_count: 1" in triage
+    assert "- metadata_path: `sources/metadata/" in triage
+    assert "- chunks_path: `sources/chunks/" in triage
+
+    proposal = json.loads((run_dir / "llm-proposal.json").read_text(encoding="utf-8"))
+    raw_content = json.loads(proposal["content"])
+    assert raw_content["mode"] == "chunked_pdf"
+    assert raw_content["chunk_count"] == manifest["chunk_count"]
+
+    source_page = (root / "wiki" / "sources" / f"{source_id}.md").read_text(encoding="utf-8")
+    assert "## Source Metadata" in source_page
+    assert "- page_count: `1`" in source_page
+    assert f"- metadata_path: `sources/metadata/{source_id}.json`" in source_page
+    assert f"- blocks_path: `sources/blocks/{source_id}.jsonl`" in source_page
+    assert f"- chunks_path: `sources/chunks/{source_id}.jsonl`" in source_page
+    assert "page:1;block:" in source_page
