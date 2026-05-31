@@ -314,16 +314,25 @@ def parse_json_object(content: str) -> dict[str, Any]:
         stripped = re.sub(r"^```(?:json)?\s*", "", stripped, flags=re.I)
         stripped = re.sub(r"\s*```$", "", stripped)
     try:
-        parsed = json.loads(stripped)
+        parsed = loads_json_object_text(stripped)
     except json.JSONDecodeError:
         start = stripped.find("{")
         end = stripped.rfind("}")
         if start == -1 or end == -1 or end <= start:
             raise LLMProviderError("LLM ingest response did not contain a JSON object")
-        parsed = json.loads(stripped[start : end + 1])
+        parsed = loads_json_object_text(stripped[start : end + 1])
     if not isinstance(parsed, dict):
         raise LLMProviderError("LLM ingest response JSON root must be an object")
     return parsed
+
+
+def loads_json_object_text(text: str) -> Any:
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError as first_error:
+        if "Invalid control character" not in str(first_error):
+            raise
+        return json.loads(text, strict=False)
 
 
 def render_chunk_evidence(chunk: SourceChunk, blocks_by_id: dict[str, SourceBlock]) -> str:

@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from llmwiki.cli import main
-from llmwiki.llm_ingest import canonical_locator, normalize_payload, source_locators
+from llmwiki.llm_ingest import canonical_locator, normalize_payload, parse_json_object, source_locators
 from llmwiki.sources import import_source
 from tests.helpers import make_workspace
 
@@ -163,6 +163,12 @@ def test_source_locators_preserve_markdown_line_locators():
     locators = source_locators("<!-- section:Intro -->\n<!-- paragraph:1 -->\n[line:7] Text\n")
 
     assert canonical_locator("line:7", locators) == "line:7;section:Intro;paragraph:1"
+
+
+def test_parse_json_object_accepts_raw_control_characters_inside_strings():
+    payload = parse_json_object('{"source_summary": "line one\nline two", "claims": []}')
+
+    assert payload["source_summary"] == "line one\nline two"
 
 
 def test_ingest_reports_missing_llm_api_key_without_modifying_wiki(monkeypatch, capsys):
