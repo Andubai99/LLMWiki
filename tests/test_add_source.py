@@ -98,6 +98,7 @@ def test_import_pdf_writes_metadata_blocks_and_block_normalized_source(monkeypat
     assert metadata_path.exists()
     assert blocks_path.exists()
     assert chunks_path.exists()
+    assert '"schema_version": "source_chunk.v2.9.1"' in chunks_path.read_text(encoding="utf-8")
 
     normalized = (root / row["normalized_path"]).read_text(encoding="utf-8")
     assert "page_count: 1" in normalized

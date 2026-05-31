@@ -15,6 +15,7 @@ from .pdf_blocks import (
     write_blocks_jsonl,
     write_metadata_json,
 )
+from .source_chunks import build_source_chunks, write_chunks_jsonl
 from .workspace import utc_now
 
 
@@ -81,8 +82,7 @@ def import_source(root: Path, locator: str) -> ImportResult:
         )
         write_metadata_json(root / metadata_rel, parsed_pdf.metadata)
         write_blocks_jsonl(root / blocks_rel, parsed_pdf.blocks)
-        (root / chunks_rel).parent.mkdir(parents=True, exist_ok=True)
-        (root / chunks_rel).write_text("", encoding="utf-8")
+        write_chunks_jsonl(root / chunks_rel, build_source_chunks(source_id, parsed_pdf.blocks))
         normalized_text = render_normalized_markdown_from_blocks(parsed_pdf.metadata, parsed_pdf.blocks)
         title = parsed_pdf.metadata.title
     else:
