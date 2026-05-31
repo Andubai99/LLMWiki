@@ -9,6 +9,12 @@ from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 from .db import catalog_path, connect
+from .pdf_blocks import (
+    parse_pdf_source,
+    render_normalized_markdown_from_blocks,
+    write_blocks_jsonl,
+    write_metadata_json,
+)
 from .workspace import utc_now
 
 
@@ -53,21 +59,42 @@ def import_source(root: Path, locator: str) -> ImportResult:
     source_type = infer_source_type(filename, content)
     raw_rel = Path("sources/raw") / f"{source_id}-{safe_name}"
     normalized_rel = Path("sources/normalized") / f"{source_id}.md"
+    metadata_rel = Path("sources/metadata") / f"{source_id}.json"
+    blocks_rel = Path("sources/blocks") / f"{source_id}.jsonl"
+    chunks_rel = Path("sources/chunks") / f"{source_id}.jsonl"
     raw_abs = root / raw_rel
     normalized_abs = root / normalized_rel
     raw_abs.parent.mkdir(parents=True, exist_ok=True)
     normalized_abs.parent.mkdir(parents=True, exist_ok=True)
     raw_abs.write_bytes(content)
 
-    normalized_text, title = normalize_content(
-        source_id=source_id,
-        source_type=source_type,
-        raw_path=to_posix(raw_rel),
-        sha256=digest,
-        url=url,
-        filename=filename,
-        content=content,
-    )
+    if source_type == "pdf":
+        parsed_pdf = parse_pdf_source(
+            source_id=source_id,
+            content=content,
+            filename=filename,
+            raw_path=to_posix(raw_rel),
+            normalized_path=to_posix(normalized_rel),
+            metadata_path=to_posix(metadata_rel),
+            blocks_path=to_posix(blocks_rel),
+            chunks_path=to_posix(chunks_rel),
+        )
+        write_metadata_json(root / metadata_rel, parsed_pdf.metadata)
+        write_blocks_jsonl(root / blocks_rel, parsed_pdf.blocks)
+        (root / chunks_rel).parent.mkdir(parents=True, exist_ok=True)
+        (root / chunks_rel).write_text("", encoding="utf-8")
+        normalized_text = render_normalized_markdown_from_blocks(parsed_pdf.metadata, parsed_pdf.blocks)
+        title = parsed_pdf.metadata.title
+    else:
+        normalized_text, title = normalize_content(
+            source_id=source_id,
+            source_type=source_type,
+            raw_path=to_posix(raw_rel),
+            sha256=digest,
+            url=url,
+            filename=filename,
+            content=content,
+        )
     normalized_abs.write_text(normalized_text, encoding="utf-8", newline="\n")
 
     with connect(catalog_path(root)) as conn:

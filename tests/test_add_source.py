@@ -58,6 +58,57 @@ def test_import_source_markdown_writes_raw_normalized_and_deduplicates(capsys):
     assert "Retrieval augmented generation links answers" in normalized
 
 
+def test_import_pdf_writes_metadata_blocks_and_block_normalized_source(monkeypatch, capsys):
+    root = make_workspace()
+    assert main(["init", "--root", str(root)]) == 0
+    capsys.readouterr()
+
+    def fake_read_pdf_pages(content: bytes):
+        return (
+            {"title": "OSWorld: Benchmarking Multimodal Agents"},
+            [
+                "OSWorld: Benchmarking Multimodal Agents\n"
+                "Alice Example\n\n"
+                "Abstract\n"
+                "OSWorld evaluates computer-use agents.\n",
+            ],
+        )
+
+    monkeypatch.setattr("llmwiki.pdf_blocks.read_pdf_pages", fake_read_pdf_pages)
+
+    source = root / "osworld.pdf"
+    source.write_bytes(b"%PDF fake")
+
+    result = import_source(root, str(source))
+    assert not result.duplicate
+    assert result.title == "OSWorld: Benchmarking Multimodal Agents"
+
+    rows = fetch_rows(
+        root / "state" / "catalog.sqlite",
+        "select source_id, title, source_type, raw_path, normalized_path from sources",
+    )
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["source_type"] == "pdf"
+    assert row["title"] == "OSWorld: Benchmarking Multimodal Agents"
+
+    metadata_path = root / "sources" / "metadata" / f"{result.source_id}.json"
+    blocks_path = root / "sources" / "blocks" / f"{result.source_id}.jsonl"
+    chunks_path = root / "sources" / "chunks" / f"{result.source_id}.jsonl"
+    assert metadata_path.exists()
+    assert blocks_path.exists()
+    assert chunks_path.exists()
+
+    normalized = (root / row["normalized_path"]).read_text(encoding="utf-8")
+    assert "page_count: 1" in normalized
+    assert f"metadata_path: sources/metadata/{result.source_id}.json" in normalized
+    assert f"blocks_path: sources/blocks/{result.source_id}.jsonl" in normalized
+    assert f"chunks_path: sources/chunks/{result.source_id}.jsonl" in normalized
+    assert "<!-- block:" in normalized
+    assert "<!-- page:1 -->" not in normalized
+    assert "# OSWorld: Benchmarking Multimodal Agents" in normalized
+
+
 def test_add_missing_file_returns_nonzero(capsys):
     root = make_workspace()
     assert main(["init", "--root", str(root)]) == 0
