@@ -210,10 +210,14 @@ def test_docs_describe_v1_commands_and_constraints():
     assert "V2.9.2 PDF Quality" in readme
     assert "V2.9.3 PDF Ingest Robustness" in readme
     assert "V2.9.4 Parser Backend And MinerU Adapter" in readme
+    assert "V2.9.5 MinerU Auto Parser Notes" in readme
     assert "sources/metadata/" in readme
     assert "sources/parser-artifacts/" in readme
     assert "page/block locators" in readme
+    assert "llmwiki parsers status --root ." in readme
     assert "llmwiki eval pdf-quality --root ." in readme
+    assert "defaults to `auto`" in readme
+    assert "tries MinerU first" in readme
     assert "content_role=\"ignored\"" in readme
     assert "JSON repair" in readme
     assert "formal alias" in readme
@@ -267,8 +271,11 @@ def test_docs_describe_v1_commands_and_constraints():
     assert "PDF chunk boundaries are deterministic" in agents
     assert "`llmwiki eval pdf-quality` is local" in agents
     assert "PDF parser backends produce source artifacts, not wiki knowledge" in agents
+    assert "defaults PDF parsing to `auto`" in agents
+    assert "Explicit `--parser mineru` is strict" in agents
     assert "Parser artifacts must not be returned as retrieval evidence" in agents
     assert "The LLM must not choose parser backend" in agents
+    assert "`llmwiki parsers status` is read-only" in agents
     assert "PDF source aliases must not include parser-created aliases or paper title aliases" in agents
     assert "LLM repair may only repair JSON syntax" in agents
     assert "content_role=\"ignored\"" in agents

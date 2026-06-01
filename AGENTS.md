@@ -84,11 +84,13 @@ This repository is a local, source-backed research wiki. Treat it as a knowledge
 - LLM ingest claims with valid `line:N` source locators are normalized to `cited` before staging. Claims without valid source locators must remain weak/uncited and must not become formal wiki conclusions.
 - PDF sources use V2.9.2 metadata/block/chunk sidecars under `sources/metadata/`, `sources/blocks/`, and `sources/chunks/`; these are generated local artifacts and must not be committed except `.gitkeep`.
 - V2.9.4 PDF parser backends produce source artifacts, not wiki knowledge. Backend output must normalize into LLMWiki metadata/block/chunk sidecars before ingest.
-- `pypdf` is the default PDF parser backend. MinerU is optional and opt-in through config or advanced/debug `add` parser options.
+- V2.9.5 defaults PDF parsing to `auto`: try MinerU first when installed/enabled, then visibly fall back to `pypdf` on auto-mode parser failure.
+- Explicit `--parser mineru` is strict and must fail hard if MinerU is unavailable or invalid. Explicit `--parser pypdf` is a debug/fallback path and must not invoke MinerU.
 - Backend-native files live under generated `sources/parser-artifacts/` and must not be committed except `.gitkeep`.
 - MinerU tables, formulas, images, captions, and layout data may become normalized blocks, but they are not formal evidence until LLM ingest extracts catalog claims with valid page/block locators.
 - Parser artifacts must not be returned as retrieval evidence. `retrieve`, `query`, and `ask` may only expose catalog-backed claims, page paths, locators, and relationships.
-- The LLM must not choose parser backend, block ids, chunk ids, chunk boundaries, page numbers, or citation anchors.
+- Parser backend choice is deterministic config/CLI behavior, not LLM behavior.
+- The LLM must not choose parser backend, block ids, chunk ids, chunk boundaries, page numbers, parser artifact paths, or citation anchors.
 - PDF parser quality rules may use structural signals such as title position, author density, venue/status line shape, repeated header/footer detection, page-number shape, sidecar schema, and locator validity. They must not use domain-specific keyword rules.
 - V2.9.2 blocks retain raw and cleaned text for traceability. `content_role="ignored"` blocks remain in sidecars for auditability but must not enter normalized body text or LLM chunk claim-extraction prompts.
 - `llmwiki eval pdf-quality` is local, deterministic, read-only, and must not call LLM, embedding, MinerU, network, or write `wiki/`, `staging/`, `sources/`, catalog, or vector cache files.
@@ -97,7 +99,9 @@ This repository is a local, source-backed research wiki. Treat it as a knowledge
 - LLM repair may only repair JSON syntax/schema shape for malformed PDF chunk or consolidation responses. It must not add evidence, invent claims, invent block ids, invent locators, or bypass source locator and staging validation.
 - PDF claims require valid page/block locators such as `page:1;block:src_xxx_p001_b0004;section:Abstract`. Bare `line:N` locators remain valid for Markdown/text sources, not for PDF claims.
 - PDF consolidation may propose source summary, concept/entity pages, duplicate candidates, and conflict notes, but it must not add new formal claims beyond chunk-level cited claims.
-- V2.9.4 may use optional MinerU output as a parser backend. Scanned PDF OCR, table cell-level evidence, figure understanding, and equation semantic interpretation are deferred.
+- `llmwiki parsers status` is read-only and must not call LLM, embedding, MinerU document parsing, network, or write workspace files.
+- Auto fallback from MinerU to `pypdf` must remain visible in source metadata, staging diagnostics, lint, and `eval pdf-quality`.
+- V2.9.5 may use MinerU as the preferred auto parser backend. Scanned PDF OCR, table cell-level evidence, figure understanding, and equation semantic interpretation are deferred.
 
 ## First-Version Boundaries
 

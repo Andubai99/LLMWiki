@@ -34,17 +34,31 @@ For PDF source pages, the paper title is title metadata, not a formal alias. The
 
 ## V2.9.4 Parser Backend And MinerU Adapter
 
-PDF import now has a parser backend boundary. The default backend is still `pypdf`, so normal import remains:
+PDF import now has a parser backend boundary. The normal import command remains:
 
 ```bash
 llmwiki add docs/papers/example.pdf --root .
 ```
 
-MinerU is optional and opt-in through `[pdf_parser]` config or advanced/debug `add` parser options. MinerU output is normalized into LLMWiki metadata, blocks, and chunks before LLM ingest; backend-native files are generated parser artifacts under `sources/parser-artifacts/` and are ignored by Git.
+MinerU output is normalized into LLMWiki metadata, blocks, and chunks before LLM ingest; backend-native files are generated parser artifacts under `sources/parser-artifacts/` and are ignored by Git.
 
 Parser backend output is not wiki knowledge. Tables, formulas, images, captions, and layout data from MinerU can become normalized blocks with canonical page/block locators, but formal evidence still must be extracted as catalog claims through staging/apply. Parser artifacts are never returned as retrieval evidence.
 
 V2.9.4 does not implement OCR for scanned PDFs, table cell-level evidence, figure understanding, equation semantic interpretation, new database tables, or `page_type="paper"`. Read-only quality checks such as `llmwiki eval pdf-quality --root . --json` inspect existing sidecars only; they do not call LLM, embedding, MinerU, network, or mutate the workspace.
+
+## V2.9.5 MinerU Auto Parser Notes
+
+PDF parsing now defaults to `auto`: when MinerU is installed and enabled, `llmwiki add <pdf> --root .` tries MinerU first and records the command diagnostics in generated source metadata. If MinerU is unavailable or fails in `auto` mode, import falls back to `pypdf` with a visible parser warning. Explicit `--parser mineru` is strict and fails hard on MinerU errors; explicit `--parser pypdf` is a debug/fallback path that skips MinerU.
+
+```bash
+llmwiki parsers status --root .
+llmwiki parsers status --root . --json
+llmwiki add docs/papers/example.pdf --root .
+```
+
+`llmwiki parsers status` is read-only. It checks local parser configuration and command availability, but it does not parse documents, call LLMs, call embedding providers, or write workspace files. `llmwiki eval pdf-quality --root . --json` reports backend distribution, MinerU command invocation/failure counts, fallback counts, artifact completeness, structured block counts, and locator validity from existing sidecars only.
+
+MinerU artifacts under `sources/parser-artifacts/` remain generated source artifacts, not evidence. The LLM must not choose the parser backend, block ids, chunk ids, page numbers, artifact paths, or chunk boundaries. Retrieval, query, and ask still expose only catalog-backed claims with real page/block locators.
 
 ## V2.9.2 PDF Quality Notes
 
@@ -67,7 +81,7 @@ llmwiki eval pdf-quality --root . --json
 
 `llmwiki eval pdf-quality` is deterministic and read-only. It reads catalog and PDF sidecars, reports title pass rate, sidecar completeness, block locator validity, content block ratio, and parser-created alias counts, and does not call LLM, embedding, network, or write workspace files.
 
-`pypdf` remains the default PDF backend. V2.9.4 adds an optional MinerU adapter, but OCR for scanned PDFs, table cell-level evidence, figure understanding, and equation semantic interpretation remain deferred to later rich parsing work.
+V2.9.5 changes the default PDF backend to `auto`: MinerU is tried first when available and enabled, then `pypdf` is used as the fallback/debug parser. OCR for scanned PDFs, table cell-level evidence, figure understanding, and equation semantic interpretation remain deferred to later rich parsing work.
 
 ## Retrieval Layer v2.7（混合本地检索 + 向量召回 + reranking）
 
