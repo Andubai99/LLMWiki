@@ -24,6 +24,14 @@ Synthesis pages are living wiki pages, not saved chat transcripts. V2.8 pages us
 
 Synthesis planning output is not evidence. Evidence maps may only cite existing catalog claims with real `claim_id`, `source_id`, `citation_locator`, and `page_path`. Synthesis writeback does not create derived formal claims; `claims.jsonl` remains empty for synthesis runs.
 
+## V2.9.3 PDF Ingest Robustness
+
+PDF chunk ingest and PDF consolidation now get one schema-aware JSON repair attempt when the configured LLM returns malformed JSON. The repair step can only repair JSON syntax/shape; it cannot create evidence, invent block ids, add citations, or bypass staging validation. If repair still fails, the source fails safely with a sanitized diagnostic.
+
+Malformed LLM JSON is not persisted. `llm-proposal.json`, `run.json`, `triage.md`, and `review --detail` record repair counts and sanitized repair events, but they do not store API keys, `config/api-keys.toml`, full prompts, or the raw malformed response.
+
+For PDF source pages, the paper title is title metadata, not a formal alias. The source page formal alias list only keeps the `source_id`; retrieval still matches the paper through `sources.title` and `pages.title`. `llmwiki eval pdf-quality` and `llmwiki lint` report source-title alias collisions, parser-created aliases, identity overlaps, and observed JSON repair counts.
+
 ## V2.9.2 PDF Quality Notes
 
 Text PDFs are now parsed into source metadata, stable blocks, and deterministic chunks before LLM ingest. Generated sidecars live under `sources/metadata/`, `sources/blocks/`, and `sources/chunks/`; these files are local generated artifacts and are ignored by Git like `sources/raw/` and `sources/normalized/`.
