@@ -268,6 +268,26 @@ def test_lint_reports_unknown_parser_backend_and_missing_artifact(capsys):
     assert "pdf missing parser artifacts: 1" in out
 
 
+def test_lint_reports_missing_mineru_content_list_and_secret_parser_snippet(capsys):
+    root = make_workspace()
+    assert main(["init", "--root", str(root)]) == 0
+    source_id = seed_pdf_source(root)
+    write_pdf_sidecars(root, source_id)
+    metadata_path = root / "sources" / "metadata" / f"{source_id}.json"
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    metadata["parser_backend"] = "mineru"
+    metadata["parser_content_list_path"] = "sources/parser-artifacts/src_pdf/missing/content_list.json"
+    metadata["parser_command_stdout_snippet"] = "sk-should-not-be-stored"
+    metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+    capsys.readouterr()
+
+    assert main(["lint", "--root", str(root)]) == 1
+    out = capsys.readouterr().out
+
+    assert "pdf missing parser content lists: 1" in out
+    assert "pdf parser secret snippets: 1" in out
+
+
 def test_lint_reports_ignored_blocks_in_chunks(capsys):
     root = make_workspace()
     assert main(["init", "--root", str(root)]) == 0
