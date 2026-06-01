@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+import json
 from pathlib import Path
 
 from llmwiki.cli import main
@@ -112,10 +113,11 @@ def test_import_pdf_writes_metadata_blocks_and_block_normalized_source(monkeypat
     assert "# OSWorld: Benchmarking Multimodal Agents" in normalized
 
 
-def test_import_pdf_records_default_pypdf_backend(monkeypatch, capsys):
+def test_import_pdf_records_auto_fallback_pypdf_backend(monkeypatch, capsys):
     root = make_workspace()
     assert main(["init", "--root", str(root)]) == 0
     capsys.readouterr()
+    monkeypatch.setattr("shutil.which", lambda command: None)
 
     monkeypatch.setattr(
         "llmwiki.pdf_blocks.read_pdf_pages",
@@ -126,9 +128,51 @@ def test_import_pdf_records_default_pypdf_backend(monkeypatch, capsys):
     source.write_bytes(b"%PDF fake")
 
     result = import_source(root, str(source))
-    metadata = (root / "sources" / "metadata" / f"{result.source_id}.json").read_text(encoding="utf-8")
+    metadata = json.loads((root / "sources" / "metadata" / f"{result.source_id}.json").read_text(encoding="utf-8"))
 
-    assert '"parser_backend": "pypdf"' in metadata
+    assert metadata["parser_backend"] == "pypdf"
+    assert metadata["parser_backend_fallback_from"] == "mineru"
+    assert "falling back to pypdf" in metadata["parser_backend_fallback_reason"]
+
+
+def test_import_pdf_auto_uses_mineru_command_and_records_diagnostics(monkeypatch, capsys):
+    root = make_workspace()
+    assert main(["init", "--root", str(root)]) == 0
+    capsys.readouterr()
+    fixture = Path("tests/fixtures/mineru")
+    monkeypatch.setattr("shutil.which", lambda command: "C:/Tools/mineru.exe")
+
+    def fake_run_mineru(request):
+        nested = request.output_root / "paper" / "auto"
+        nested.mkdir(parents=True)
+        content_list = nested / "content_list.json"
+        content_list.write_text((fixture / "content_list.json").read_text(encoding="utf-8"), encoding="utf-8")
+        from llmwiki.mineru_runner import MinerUCommandResult
+
+        return MinerUCommandResult(
+            command=["mineru", "-p", str(request.raw_path), "-o", str(request.output_root)],
+            output_root=request.output_root,
+            returncode=0,
+            duration_seconds=0.5,
+            stdout_snippet="parsed",
+            stderr_snippet="",
+            content_list_candidates=[content_list],
+        )
+
+    monkeypatch.setattr("llmwiki.mineru_runner.run_mineru_command", fake_run_mineru)
+
+    source = root / "auto-mineru.pdf"
+    source.write_bytes(b"%PDF fake")
+
+    result = import_source(root, str(source))
+    metadata = json.loads((root / "sources" / "metadata" / f"{result.source_id}.json").read_text(encoding="utf-8"))
+
+    assert metadata["parser_backend"] == "mineru"
+    assert metadata["parser_command_invoked"] is True
+    assert metadata["parser_command_returncode"] == 0
+    assert metadata["parser_command_stdout_snippet"] == "parsed"
+    assert metadata["parser_content_list_path"].endswith("content_list.json")
+    assert metadata["parser_content_list_discovery_count"] == 1
 
 
 def test_import_pdf_can_use_mineru_fixture_backend(capsys):
@@ -163,18 +207,13 @@ def test_import_pdf_explicit_mineru_without_output_or_config_fails(capsys):
     assert main(["add", str(source), "--root", str(root), "--parser", "mineru"]) == 1
     out = capsys.readouterr().out
     assert "Add pipeline failed at: import" in out
-    assert "MinerU parser backend is disabled" in out
+    assert "MinerU parser backend is unavailable" in out
 
 
 def test_import_pdf_auto_backend_records_fallback_warning(monkeypatch, capsys):
     root = make_workspace()
     assert main(["init", "--root", str(root)]) == 0
-    config_path = root / "config" / "config.toml"
-    config_path.write_text(
-        config_path.read_text(encoding="utf-8").replace('default_backend = "pypdf"', 'default_backend = "auto"'),
-        encoding="utf-8",
-        newline="\n",
-    )
+    monkeypatch.setattr("shutil.which", lambda command: None)
     monkeypatch.setattr(
         "llmwiki.pdf_blocks.read_pdf_pages",
         lambda content: ({"title": "Fallback Paper"}, ["Fallback Paper\n\nAbstract\nEvidence."]),
