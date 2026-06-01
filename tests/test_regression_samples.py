@@ -207,9 +207,11 @@ def test_docs_describe_v1_commands_and_constraints():
     assert "--writeback-mode update" in readme
     assert "Synthesis pages are living wiki pages" in readme
     assert "Synthesis planning output is not evidence" in readme
-    assert "V2.9.1 PDF Foundation" in readme
+    assert "V2.9.2 PDF Quality" in readme
     assert "sources/metadata/" in readme
     assert "page/block locators" in readme
+    assert "llmwiki eval pdf-quality --root ." in readme
+    assert "content_role=\"ignored\"" in readme
     assert "tests/evals/retrieval_v2_9_1_pdf_foundation.jsonl" in readme
     assert "RAG/Agent evidence layer" in readme
     assert "LLM Provider" in readme
@@ -257,6 +259,8 @@ def test_docs_describe_v1_commands_and_constraints():
     assert "valid source locators" in agents
     assert "page/block locators" in agents
     assert "PDF chunk boundaries are deterministic" in agents
+    assert "`llmwiki eval pdf-quality` is local" in agents
+    assert "content_role=\"ignored\"" in agents
     assert "MinerU" in agents
     assert "vector" in agents
     assert "Web UI" in agents

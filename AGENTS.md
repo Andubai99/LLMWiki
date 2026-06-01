@@ -82,11 +82,14 @@ This repository is a local, source-backed research wiki. Treat it as a knowledge
 - `llmwiki add` may automatically apply a validated staging run, but the LLM itself must not write formal wiki pages.
 - `llmwiki ask --writeback` may automatically apply a validated synthesis run, but the LLM itself must not write formal wiki pages.
 - LLM ingest claims with valid `line:N` source locators are normalized to `cited` before staging. Claims without valid source locators must remain weak/uncited and must not become formal wiki conclusions.
-- PDF sources use V2.9.1 metadata/block/chunk sidecars under `sources/metadata/`, `sources/blocks/`, and `sources/chunks/`; these are generated local artifacts and must not be committed except `.gitkeep`.
+- PDF sources use V2.9.2 metadata/block/chunk sidecars under `sources/metadata/`, `sources/blocks/`, and `sources/chunks/`; these are generated local artifacts and must not be committed except `.gitkeep`.
+- PDF parser quality rules may use structural signals such as title position, author density, venue/status line shape, repeated header/footer detection, page-number shape, sidecar schema, and locator validity. They must not use domain-specific keyword rules.
+- V2.9.2 blocks retain raw and cleaned text for traceability. `content_role="ignored"` blocks remain in sidecars for auditability but must not enter normalized body text or LLM chunk claim-extraction prompts.
+- `llmwiki eval pdf-quality` is local, deterministic, read-only, and must not call LLM, embedding, network, or write `wiki/`, `staging/`, `sources/`, catalog, or vector cache files.
 - PDF chunk boundaries are deterministic. The LLM may extract claims from chunks, but it must not choose chunk boundaries or invent block ids.
 - PDF claims require valid page/block locators such as `page:1;block:src_xxx_p001_b0004;section:Abstract`. Bare `line:N` locators remain valid for Markdown/text sources, not for PDF claims.
 - PDF consolidation may propose source summary, concept/entity pages, duplicate candidates, and conflict notes, but it must not add new formal claims beyond chunk-level cited claims.
-- V2.9.1 uses `pypdf` text extraction only. MinerU, scanned PDF OCR, table structure extraction, figure caption extraction, and equation object extraction are deferred.
+- V2.9.2 uses `pypdf` text extraction only. MinerU, scanned PDF OCR, table structure extraction, figure caption extraction, and equation object extraction are deferred.
 
 ## First-Version Boundaries
 

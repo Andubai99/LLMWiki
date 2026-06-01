@@ -24,7 +24,7 @@ Synthesis pages are living wiki pages, not saved chat transcripts. V2.8 pages us
 
 Synthesis planning output is not evidence. Evidence maps may only cite existing catalog claims with real `claim_id`, `source_id`, `citation_locator`, and `page_path`. Synthesis writeback does not create derived formal claims; `claims.jsonl` remains empty for synthesis runs.
 
-## V2.9.1 PDF Foundation Notes
+## V2.9.2 PDF Quality Notes
 
 Text PDFs are now parsed into source metadata, stable blocks, and deterministic chunks before LLM ingest. Generated sidecars live under `sources/metadata/`, `sources/blocks/`, and `sources/chunks/`; these files are local generated artifacts and are ignored by Git like `sources/raw/` and `sources/normalized/`.
 
@@ -34,9 +34,18 @@ PDF normalized Markdown is rendered from blocks and uses block anchors such as:
 <!-- block:src_xxx_p001_b0004; page:1; type:abstract; section:Abstract -->
 ```
 
-PDF claims must cite page/block locators, for example `page:1;block:src_xxx_p001_b0004;section:Abstract`. A bare `line:N` locator is still valid for Markdown/text sources, but it is not enough for PDF claims. `llmwiki lint` reports parser-marker titles, missing PDF sidecars, missing page/block locators, invalid block references, and extraction warnings.
+PDF claims must cite page/block locators, for example `page:1;block:src_xxx_p001_b0004;section:Abstract`. A bare `line:N` locator is still valid for Markdown/text sources, but it is not enough for PDF claims. `llmwiki lint` reports parser-marker titles, missing PDF sidecars, missing page/block locators, invalid block references, extraction warnings, title quality issues, invalid sidecar schemas, high parser warning counts, low content-block ratios, and parser-created aliases.
 
-V2.9.1 still uses `pypdf` only. MinerU, OCR for scanned PDFs, structured table extraction, figure caption extraction, and equation object extraction are deferred to later rich parsing work.
+V2.9.2 adds a local parser-quality layer. PDF sidecars now use `source_metadata.v2.9.2`, `source_block.v2.9.2`, and `source_chunk.v2.9.2`. Metadata records title candidates, paper identity, and parser quality; blocks keep raw and cleaned text plus `content_role`, `cleaning_operations`, and `quality_flags`. Repeated headers, footers, page numbers, and other `content_role="ignored"` blocks remain in sidecars for auditability but are excluded from normalized body text and chunk claim prompts.
+
+```bash
+llmwiki eval pdf-quality --root .
+llmwiki eval pdf-quality --root . --json
+```
+
+`llmwiki eval pdf-quality` is deterministic and read-only. It reads catalog and PDF sidecars, reports title pass rate, sidecar completeness, block locator validity, content block ratio, and parser-created alias counts, and does not call LLM, embedding, network, or write workspace files.
+
+V2.9.2 still uses `pypdf` only. MinerU, OCR for scanned PDFs, structured table extraction, figure caption extraction, and equation object extraction are deferred to later rich parsing work.
 
 ## Retrieval Layer v2.7（混合本地检索 + 向量召回 + reranking）
 
@@ -304,9 +313,9 @@ LLM Wiki 是一个本地优先的个人研究库：用 Python CLI 管理资料�
 - `config/api-keys.toml`：本地 API key 配置，已被 `.gitignore` 忽略，不应提交。
 - `sources/raw/`：原始 Markdown、文本 PDF、纯文本和网页快照。
 - `sources/normalized/`：带行号、页码或段落锚点的规范化 Markdown。
-- `sources/metadata/`：V2.9.1 PDF metadata sidecars，本地生成态，不提交。
-- `sources/blocks/`：V2.9.1 PDF block JSONL sidecars，本地生成态，不提交。
-- `sources/chunks/`：V2.9.1 PDF chunk JSONL sidecars，本地生成态，不提交。
+- `sources/metadata/`：V2.9.2 PDF metadata sidecars，本地生成态，不提交。
+- `sources/blocks/`：V2.9.2 PDF block JSONL sidecars，本地生成态，不提交。
+- `sources/chunks/`：V2.9.2 PDF chunk JSONL sidecars，本地生成态，不提交。
 - `state/catalog.sqlite`：可重建的索引和审计缓存，保存 source、claim、alias、page、link、relationship、ingest run。
 - `state/embeddings/`：V2.6 本地可重建 vector index 缓存，不提交。
 - `wiki/index.md`：wiki 入口索引。
