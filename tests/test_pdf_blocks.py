@@ -5,6 +5,10 @@ from pathlib import Path
 import pytest
 
 from llmwiki.pdf_blocks import (
+    BLOCK_SCHEMA_VERSION,
+    METADATA_SCHEMA_VERSION,
+    load_blocks_jsonl,
+    load_metadata_json,
     parse_pdf_source,
     render_normalized_markdown_from_blocks,
 )
@@ -43,6 +47,11 @@ def test_parse_pdf_uses_metadata_title_and_skips_page_marker(monkeypatch, tmp_pa
     )
 
     assert result.metadata.title == "OSWorld: Benchmarking Multimodal Agents for Open-Ended Tasks"
+    assert result.metadata.schema_version == "source_metadata.v2.9.2"
+    assert result.metadata.title_quality["selected_source"] == "metadata"
+    assert result.metadata.title_candidates
+    assert result.metadata.paper_identity["title"] == result.metadata.title
+    assert result.metadata.parser_quality["page_count"] == 1
     assert result.metadata.title != "<!-- page:1 -->"
     assert result.metadata.page_count == 1
     assert result.metadata.metadata_path == "sources/metadata/src_osworld.json"
@@ -57,6 +66,10 @@ def test_parse_pdf_uses_metadata_title_and_skips_page_marker(monkeypatch, tmp_pa
     assert {"title", "authors", "abstract", "section_heading", "paragraph", "reference"} <= block_types
     assert all(block.text_raw for block in result.blocks)
     assert all(block.text_clean for block in result.blocks)
+    assert all(block.schema_version == "source_block.v2.9.2" for block in result.blocks)
+    assert all(block.content_role for block in result.blocks)
+    assert all(isinstance(block.cleaning_operations, list) for block in result.blocks)
+    assert all(isinstance(block.quality_flags, list) for block in result.blocks)
     assert not any(block.text_clean.startswith("<!-- page:") for block in result.blocks)
     assert any("significantly lower success rate" in block.text_clean for block in result.blocks)
 
@@ -89,6 +102,78 @@ def test_parse_pdf_falls_back_to_clean_first_page_title_and_records_warnings(mon
 
     assert result.metadata.title == "OSWorld: Benchmarking Multimodal Agents"
     assert any("OSW ORLD" in warning and "OSWorld" in warning for warning in result.metadata.warnings)
+
+
+def test_parse_pdf_title_scoring_ignores_noisy_metadata_and_first_page_status(monkeypatch):
+    def fake_read_pdf_pages(content: bytes):
+        return (
+            {"title": "Published as a conference paper at ICLR 2025"},
+            [
+                "Published as a conference paper at ICLR 2025\n"
+                "Alice Example, Bob Example, Carol Example, David Example\n"
+                "A Clean Benchmark Title for Computer-Use Agents\n\n"
+                "Abstract\n"
+                "The paper introduces a benchmark.\n"
+            ],
+        )
+
+    monkeypatch.setattr("llmwiki.pdf_blocks.read_pdf_pages", fake_read_pdf_pages)
+
+    result = parse_pdf_source(
+        source_id="src_clean",
+        content=b"%PDF fake",
+        filename="clean.pdf",
+        raw_path="sources/raw/src_clean-clean.pdf",
+        normalized_path="sources/normalized/src_clean.md",
+        metadata_path="sources/metadata/src_clean.json",
+        blocks_path="sources/blocks/src_clean.jsonl",
+        chunks_path="sources/chunks/src_clean.jsonl",
+    )
+
+    assert result.metadata.title == "A Clean Benchmark Title for Computer-Use Agents"
+    assert result.metadata.title_quality["selected_source"] == "block"
+    assert any("venue_or_status_line" in candidate["reasons"] for candidate in result.metadata.title_candidates)
+
+
+def test_v2_9_1_sidecars_load_with_v2_9_2_defaults(tmp_path: Path):
+    metadata_path = tmp_path / "metadata.json"
+    metadata_path.write_text(
+        """{
+  "source_id": "src_old",
+  "title": "Old PDF",
+  "source_type": "pdf",
+  "page_count": 1,
+  "raw_path": "sources/raw/src_old.pdf",
+  "normalized_path": "sources/normalized/src_old.md",
+  "metadata_path": "sources/metadata/src_old.json",
+  "blocks_path": "sources/blocks/src_old.jsonl",
+  "chunks_path": "sources/chunks/src_old.jsonl",
+  "filename": "old.pdf",
+  "schema_version": "source_metadata.v2.9.1"
+}
+""",
+        encoding="utf-8",
+    )
+    blocks_path = tmp_path / "blocks.jsonl"
+    blocks_path.write_text(
+        """{"source_id":"src_old","block_id":"src_old_p001_b0001","block_type":"title","page_start":1,"page_end":1,"order":1,"text_raw":"Old PDF","text_clean":"Old PDF","schema_version":"source_block.v2.9.1"}\n""",
+        encoding="utf-8",
+    )
+
+    metadata = load_metadata_json(metadata_path)
+    blocks = load_blocks_jsonl(blocks_path)
+
+    assert metadata.schema_version == "source_metadata.v2.9.1"
+    assert metadata.title_quality["status"] == "legacy"
+    assert metadata.title_candidates == []
+    assert metadata.paper_identity["title"] == "Old PDF"
+    assert metadata.parser_quality["block_count"] == 0
+    assert blocks[0].schema_version == "source_block.v2.9.1"
+    assert blocks[0].content_role == "content"
+    assert blocks[0].cleaning_operations == []
+    assert blocks[0].quality_flags == []
+    assert METADATA_SCHEMA_VERSION == "source_metadata.v2.9.2"
+    assert BLOCK_SCHEMA_VERSION == "source_block.v2.9.2"
 
 
 def test_render_normalized_markdown_from_blocks_includes_block_anchors(monkeypatch):

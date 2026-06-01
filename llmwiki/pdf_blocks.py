@@ -7,9 +7,16 @@ from io import BytesIO
 from pathlib import Path
 from typing import Any
 
+from .pdf_quality import (
+    classify_block_roles,
+    detect_repeated_headers_footers,
+    parser_quality_from_blocks,
+    score_title_candidates,
+)
 
-METADATA_SCHEMA_VERSION = "source_metadata.v2.9.1"
-BLOCK_SCHEMA_VERSION = "source_block.v2.9.1"
+
+METADATA_SCHEMA_VERSION = "source_metadata.v2.9.2"
+BLOCK_SCHEMA_VERSION = "source_block.v2.9.2"
 PAGE_MARKER_RE = re.compile(r"^<!--\s*page:\d+\s*-->$")
 NUMBERED_HEADING_RE = re.compile(r"^\d+(?:\.\d+)*\s+\S")
 
@@ -31,6 +38,10 @@ class SourceMetadata:
     authors: list[str] = field(default_factory=list)
     abstract: str = ""
     warnings: list[str] = field(default_factory=list)
+    title_quality: dict[str, Any] = field(default_factory=dict)
+    title_candidates: list[dict[str, Any]] = field(default_factory=list)
+    paper_identity: dict[str, Any] = field(default_factory=dict)
+    parser_quality: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -92,9 +103,12 @@ def parse_pdf_source(
         raise ValueError("No text pages extracted from PDF")
 
     blocks, warnings = parse_pdf_blocks(source_id, pages)
-    title = choose_pdf_title(pdf_metadata, blocks, filename, warnings)
+    title_candidates = score_title_candidates(metadata=pdf_metadata, blocks=blocks, filename=filename)
+    title = choose_pdf_title(pdf_metadata, blocks, filename, warnings, title_candidates=title_candidates)
     authors = extract_authors(blocks)
     abstract = extract_abstract(blocks)
+    selected_candidate = title_candidates[0] if title_candidates else None
+    parser_quality = parser_quality_from_blocks(blocks, len(pages), warning_count=len(warnings))
     metadata = SourceMetadata(
         source_id=source_id,
         title=title,
@@ -109,6 +123,21 @@ def parse_pdf_source(
         authors=authors,
         abstract=abstract,
         warnings=warnings,
+        title_quality={
+            "status": "selected" if selected_candidate else "fallback",
+            "selected_source": selected_candidate.source if selected_candidate else "filename",
+            "score": selected_candidate.score if selected_candidate else 0.0,
+            "reasons": selected_candidate.reasons if selected_candidate else ["filename_fallback"],
+        },
+        title_candidates=[candidate.to_dict() for candidate in title_candidates],
+        paper_identity={
+            "title": title,
+            "authors": authors,
+            "venue_or_status": first_venue_or_status_line(blocks),
+            "canonical_names": [title] if title else [],
+            "warnings": [],
+        },
+        parser_quality=parser_quality.to_dict(),
     )
     return PdfParseResult(metadata=metadata, blocks=blocks)
 
@@ -170,6 +199,8 @@ def parse_pdf_blocks(source_id: str, pages: list[str]) -> tuple[list[SourceBlock
             order += 1
             page_block_index += 1
 
+    repeated = detect_repeated_headers_footers(blocks)
+    blocks = classify_block_roles(blocks, repeated_texts=repeated)
     return blocks, unique_preserve_order(document_warnings)
 
 
@@ -223,13 +254,13 @@ def choose_pdf_title(
     blocks: list[SourceBlock],
     filename: str,
     warnings: list[str],
+    title_candidates: list[Any] | None = None,
 ) -> str:
-    metadata_title = clean_metadata_value(metadata.get("title"))
-    if metadata_title and not is_parser_marker(metadata_title):
-        return metadata_title
-    for block in blocks:
-        if block.block_type == "title" and not is_parser_marker(block.text_clean):
-            return block.text_clean
+    candidates = title_candidates or score_title_candidates(metadata=metadata, blocks=blocks, filename=filename)
+    if candidates:
+        selected = candidates[0]
+        if selected.score > -20 and not is_parser_marker(selected.text):
+            return selected.text
     fallback = Path(filename).stem.replace("_", " ").replace("-", " ").strip()
     warnings.append("pdf title fallback used filename")
     return fallback or "Untitled PDF"
@@ -270,6 +301,32 @@ def write_blocks_jsonl(path: Path, blocks: list[SourceBlock]) -> None:
 
 def load_metadata_json(path: Path) -> SourceMetadata:
     data = json.loads(path.read_text(encoding="utf-8"))
+    data.setdefault("title_quality", {"status": "legacy", "selected_source": "unknown", "score": 0.0, "reasons": []})
+    data.setdefault("title_candidates", [])
+    data.setdefault(
+        "paper_identity",
+        {
+            "title": data.get("title", ""),
+            "authors": data.get("authors", []),
+            "venue_or_status": "",
+            "canonical_names": [data.get("title", "")] if data.get("title") else [],
+            "warnings": [],
+        },
+    )
+    data.setdefault(
+        "parser_quality",
+        {
+            "page_count": data.get("page_count", 0),
+            "block_count": 0,
+            "content_block_count": 0,
+            "ignored_block_count": 0,
+            "parser_marker_count": 0,
+            "page_number_count": 0,
+            "repeated_header_footer_count": 0,
+            "warning_count": len(data.get("warnings", [])),
+            "content_block_ratio": 0.0,
+        },
+    )
     return SourceMetadata(**data)
 
 
@@ -337,6 +394,13 @@ def extract_authors(blocks: list[SourceBlock]) -> list[str]:
 def extract_abstract(blocks: list[SourceBlock]) -> str:
     parts = [block.text_clean for block in blocks if block.block_type == "abstract"]
     return "\n\n".join(parts)
+
+
+def first_venue_or_status_line(blocks: list[SourceBlock]) -> str:
+    for block in blocks:
+        if "venue_or_status_line" in block.quality_flags:
+            return block.text_clean
+    return ""
 
 
 def escape_frontmatter_string(text: str) -> str:
