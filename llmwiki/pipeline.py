@@ -44,10 +44,16 @@ class AddPipelineError(Exception):
         self.debug_command = debug_command
 
 
-def add_and_process_source(root: Path, locator: str) -> AddPipelineResult:
+def add_and_process_source(
+    root: Path,
+    locator: str,
+    *,
+    parser_backend: str | None = None,
+    parser_output_dir: Path | None = None,
+) -> AddPipelineResult:
     root = root.resolve()
     try:
-        source = import_source(root, locator)
+        source = import_source(root, locator, parser_backend=parser_backend, parser_output_dir=parser_output_dir)
     except FileNotFoundError as exc:
         raise AddPipelineError(stage="import", reason=f"Source not found: {locator}") from exc
     except Exception as exc:

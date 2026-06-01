@@ -28,7 +28,13 @@ class ImportResult:
     duplicate: bool
 
 
-def import_source(root: Path, locator: str) -> ImportResult:
+def import_source(
+    root: Path,
+    locator: str,
+    *,
+    parser_backend: str | None = None,
+    parser_output_dir: Path | None = None,
+) -> ImportResult:
     root = root.resolve()
     if is_url(locator):
         content, filename, url = fetch_url(locator)
@@ -79,6 +85,9 @@ def import_source(root: Path, locator: str) -> ImportResult:
             metadata_path=to_posix(metadata_rel),
             blocks_path=to_posix(blocks_rel),
             chunks_path=to_posix(chunks_rel),
+            root=root,
+            parser_backend=parser_backend,
+            parser_output_dir=parser_output_dir,
         )
         write_metadata_json(root / metadata_rel, parsed_pdf.metadata)
         write_blocks_jsonl(root / blocks_rel, parsed_pdf.blocks)

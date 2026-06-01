@@ -66,7 +66,13 @@ def cmd_init(args: argparse.Namespace) -> int:
 def cmd_add(args: argparse.Namespace) -> int:
     root = Path(args.root).resolve()
     try:
-        result = add_and_process_source(root, args.source)
+        parser_output_dir = Path(args.parser_output_dir).resolve() if getattr(args, "parser_output_dir", None) else None
+        result = add_and_process_source(
+            root,
+            args.source,
+            parser_backend=getattr(args, "parser", None),
+            parser_output_dir=parser_output_dir,
+        )
     except AddPipelineError as exc:
         print(f"Add pipeline failed at: {exc.stage}")
         if exc.source_id:
@@ -468,6 +474,8 @@ def build_parser() -> argparse.ArgumentParser:
     add_parser = subparsers.add_parser("add", help="Add a Markdown, web, or text PDF source.")
     add_parser.add_argument("source")
     add_parser.add_argument("--root", default=".")
+    add_parser.add_argument("--parser", default=None, help=argparse.SUPPRESS)
+    add_parser.add_argument("--parser-output-dir", default=None, help=argparse.SUPPRESS)
     add_parser.set_defaults(func=cmd_add)
 
     ingest_parser = subparsers.add_parser(

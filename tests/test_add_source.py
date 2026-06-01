@@ -112,6 +112,84 @@ def test_import_pdf_writes_metadata_blocks_and_block_normalized_source(monkeypat
     assert "# OSWorld: Benchmarking Multimodal Agents" in normalized
 
 
+def test_import_pdf_records_default_pypdf_backend(monkeypatch, capsys):
+    root = make_workspace()
+    assert main(["init", "--root", str(root)]) == 0
+    capsys.readouterr()
+
+    monkeypatch.setattr(
+        "llmwiki.pdf_blocks.read_pdf_pages",
+        lambda content: ({"title": "Default Backend Paper"}, ["Default Backend Paper\n\nAbstract\nEvidence."]),
+    )
+
+    source = root / "default.pdf"
+    source.write_bytes(b"%PDF fake")
+
+    result = import_source(root, str(source))
+    metadata = (root / "sources" / "metadata" / f"{result.source_id}.json").read_text(encoding="utf-8")
+
+    assert '"parser_backend": "pypdf"' in metadata
+
+
+def test_import_pdf_can_use_mineru_fixture_backend(capsys):
+    root = make_workspace()
+    assert main(["init", "--root", str(root)]) == 0
+    capsys.readouterr()
+    source = root / "mineru.pdf"
+    source.write_bytes(b"%PDF fake")
+
+    result = import_source(
+        root,
+        str(source),
+        parser_backend="mineru",
+        parser_output_dir=Path("tests/fixtures/mineru"),
+    )
+
+    metadata = (root / "sources" / "metadata" / f"{result.source_id}.json").read_text(encoding="utf-8")
+    normalized = (root / result.normalized_path).read_text(encoding="utf-8")
+    assert result.title == "MinerU Structured Parsing Paper"
+    assert '"parser_backend": "mineru"' in metadata
+    assert "Table 1: Accuracy by task." in normalized
+    assert "E = mc^2" in normalized
+
+
+def test_import_pdf_explicit_mineru_without_output_or_config_fails(capsys):
+    root = make_workspace()
+    assert main(["init", "--root", str(root)]) == 0
+    capsys.readouterr()
+    source = root / "mineru.pdf"
+    source.write_bytes(b"%PDF fake")
+
+    assert main(["add", str(source), "--root", str(root), "--parser", "mineru"]) == 1
+    out = capsys.readouterr().out
+    assert "Add pipeline failed at: import" in out
+    assert "MinerU parser backend is disabled" in out
+
+
+def test_import_pdf_auto_backend_records_fallback_warning(monkeypatch, capsys):
+    root = make_workspace()
+    assert main(["init", "--root", str(root)]) == 0
+    config_path = root / "config" / "config.toml"
+    config_path.write_text(
+        config_path.read_text(encoding="utf-8").replace('default_backend = "pypdf"', 'default_backend = "auto"'),
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setattr(
+        "llmwiki.pdf_blocks.read_pdf_pages",
+        lambda content: ({"title": "Fallback Paper"}, ["Fallback Paper\n\nAbstract\nEvidence."]),
+    )
+    source = root / "fallback.pdf"
+    source.write_bytes(b"%PDF fake")
+
+    result = import_source(root, str(source))
+    metadata = (root / "sources" / "metadata" / f"{result.source_id}.json").read_text(encoding="utf-8")
+
+    assert '"parser_backend": "pypdf"' in metadata
+    assert '"parser_backend_fallback_from": "mineru"' in metadata
+    assert "falling back to pypdf" in metadata
+
+
 def test_add_missing_file_returns_nonzero(capsys):
     root = make_workspace()
     assert main(["init", "--root", str(root)]) == 0

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from io import BytesIO
 from pathlib import Path
 from typing import Any
@@ -115,12 +115,17 @@ def parse_pdf_source(
     metadata_path: str,
     blocks_path: str,
     chunks_path: str,
+    root: Path | None = None,
+    parser_backend: str | None = None,
+    parser_output_dir: Path | None = None,
 ) -> PdfParseResult:
-    from .pdf_parser_backends import PdfParseRequest, PypdfBackend
+    from .pdf_parser_backends import PdfParseRequest, select_pdf_parser_backend
 
-    result = PypdfBackend().parse(
+    selection = select_pdf_parser_backend(root or Path("."), requested_backend=parser_backend, output_dir=parser_output_dir)
+
+    result = selection.backend.parse(
         PdfParseRequest(
-            root=Path("."),
+            root=root or Path("."),
             source_id=source_id,
             raw_path=Path(raw_path),
             filename=filename,
@@ -129,10 +134,18 @@ def parse_pdf_source(
             blocks_path=blocks_path,
             chunks_path=chunks_path,
             content=content,
-            options={},
+            options={"parser_output_dir": str(parser_output_dir)} if parser_output_dir else {},
         )
     )
-    return PdfParseResult(metadata=result.metadata, blocks=result.blocks)
+    metadata = result.metadata
+    if selection.fallback_from or selection.warnings:
+        metadata = replace(
+            metadata,
+            parser_backend_fallback_from=selection.fallback_from,
+            parser_backend_fallback_reason="; ".join(selection.warnings),
+            parser_backend_warnings=[*metadata.parser_backend_warnings, *selection.warnings],
+        )
+    return PdfParseResult(metadata=metadata, blocks=result.blocks)
 
 
 def build_pdf_parse_result_from_pages(
