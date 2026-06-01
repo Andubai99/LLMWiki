@@ -123,6 +123,50 @@ def test_pdf_source_uses_chunked_ingest_without_16k_truncation(monkeypatch, caps
         assert prompt_block_ids
 
 
+def test_pdf_chunk_prompts_exclude_ignored_blocks(monkeypatch, capsys):
+    root = make_workspace()
+    assert main(["init", "--root", str(root)]) == 0
+    capsys.readouterr()
+
+    monkeypatch.setattr(
+        "llmwiki.pdf_blocks.read_pdf_pages",
+        lambda content: (
+            {"title": "Clean Paper"},
+            [
+                "Clean Paper\n\n"
+                "Repeated Header\n\n"
+                "1\n\n"
+                "Abstract\n"
+                "Useful first-page evidence.\n",
+                "Repeated Header\n\n"
+                "2\n\n"
+                "2 Method\n"
+                "Useful second-page evidence.\n",
+            ],
+        ),
+    )
+    pdf = root / "clean.pdf"
+    pdf.write_bytes(b"%PDF fake")
+    result = import_source(root, str(pdf))
+    ignored_blocks = [
+        block
+        for block in load_blocks_jsonl(root / "sources" / "blocks" / f"{result.source_id}.jsonl")
+        if block.content_role == "ignored"
+    ]
+    assert ignored_blocks
+
+    fake_provider = FakeChunkProvider({})
+    monkeypatch.setattr("llmwiki.llm_ingest.create_provider", lambda config, root=None: fake_provider)
+    normalized_text = (root / result.normalized_path).read_text(encoding="utf-8")
+    create_llm_ingest_proposal(root, source_row(root, result.source_id), normalized_text)
+
+    ignored_ids = {block.block_id for block in ignored_blocks}
+    prompts = "\n".join(call[-1]["content"] for call in fake_provider.calls[:-1])
+    assert not any(block_id in prompts for block_id in ignored_ids)
+    assert "Repeated Header" not in prompts
+    assert "Useful first-page evidence." in prompts
+
+
 def test_pdf_chunked_ingest_rejects_unknown_block_claims(monkeypatch, capsys):
     root = make_workspace()
     assert main(["init", "--root", str(root)]) == 0
@@ -265,14 +309,19 @@ def test_pdf_add_exposes_parse_diagnostics_in_staging_and_source_page(monkeypatc
         assert conn.execute("select count(*) from pages where page_type = 'paper'").fetchone()[0] == 0
     run_dir = root / "staging" / run["run_id"]
     manifest = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
-    assert manifest["source_parse_schema"] == "source_block.v2.9.1"
-    assert manifest["source_chunk_schema"] == "source_chunk.v2.9.1"
+    assert manifest["source_parse_schema"] == "source_block.v2.9.2"
+    assert manifest["source_chunk_schema"] == "source_chunk.v2.9.2"
+    assert manifest["title_quality"]["selected_source"] in {"metadata", "block"}
+    assert manifest["parser_quality"]["page_count"] == 1
     assert manifest["page_count"] == 1
     assert manifest["block_count"] >= 5
     assert manifest["chunk_count"] >= 2
 
     triage = (run_dir / "triage.md").read_text(encoding="utf-8")
     assert "## PDF Parse Diagnostics" in triage
+    assert "## Paper Metadata" in triage
+    assert "## Parser Quality" in triage
+    assert "title_candidates" in triage
     assert "- page_count: 1" in triage
     assert "- metadata_path: `sources/metadata/" in triage
     assert "- chunks_path: `sources/chunks/" in triage
@@ -284,6 +333,8 @@ def test_pdf_add_exposes_parse_diagnostics_in_staging_and_source_page(monkeypatc
 
     source_page = (root / "wiki" / "sources" / f"{source_id}.md").read_text(encoding="utf-8")
     assert "## Source Metadata" in source_page
+    assert "## Paper Metadata" in source_page
+    assert "## Parser Quality" in source_page
     assert "- page_count: `1`" in source_page
     assert f"- metadata_path: `sources/metadata/{source_id}.json`" in source_page
     assert f"- blocks_path: `sources/blocks/{source_id}.jsonl`" in source_page

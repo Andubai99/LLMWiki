@@ -248,6 +248,12 @@ def build_pdf_consolidation_messages(
     )
     title = getattr(metadata, "title", "") or source.get("title") or ""
     page_count = getattr(metadata, "page_count", None)
+    paper_identity = getattr(metadata, "paper_identity", {}) or {}
+    parser_quality = getattr(metadata, "parser_quality", {}) or {}
+    section_claim_counts = {
+        record["chunk_id"]: len(record.get("block_ids") or [])
+        for record in chunk_records
+    }
     return [
         {
             "role": "system",
@@ -263,7 +269,10 @@ def build_pdf_consolidation_messages(
                 "PDF consolidation\n"
                 f"source_id: {source['source_id']}\n"
                 f"title: {title}\n"
-                f"page_count: {page_count if page_count is not None else 'unknown'}\n\n"
+                f"page_count: {page_count if page_count is not None else 'unknown'}\n"
+                f"paper_identity: {json.dumps(paper_identity, ensure_ascii=False)}\n"
+                f"parser_quality: {json.dumps(parser_quality, ensure_ascii=False)}\n"
+                f"section_claim_context: {json.dumps(section_claim_counts, ensure_ascii=False)}\n\n"
                 "Return this JSON object:\n"
                 "{\n"
                 '  "claims": [],\n'
@@ -344,6 +353,8 @@ def render_chunk_evidence(chunk: SourceChunk, blocks_by_id: dict[str, SourceBloc
         for block_id in block_ids:
             block = blocks_by_id.get(block_id)
             if not block:
+                continue
+            if block.content_role == "ignored":
                 continue
             lines.append(block_comment(block))
             lines.append(block.text_clean)

@@ -180,6 +180,10 @@ def source_parse_diagnostics(root: Path, source: dict[str, str]) -> dict[str, ob
         "block_count": len(blocks),
         "chunk_count": len(chunks),
         "parser_warning_count": len(metadata.warnings) if metadata else 0,
+        "title_quality": metadata.title_quality if metadata else {},
+        "title_candidates": metadata.title_candidates if metadata else [],
+        "paper_identity": metadata.paper_identity if metadata else {},
+        "parser_quality": metadata.parser_quality if metadata else {},
         "metadata_path": metadata_rel,
         "blocks_path": blocks_rel,
         "chunks_path": chunks_rel,
@@ -551,6 +555,8 @@ def render_source_page(
 ) -> str:
     claim_ids = [claim.claim_id for claim in claims]
     pdf_metadata = pdf_source_metadata_lines(source_diagnostics or {})
+    paper_metadata = paper_metadata_lines(source_diagnostics or {})
+    parser_quality = parser_quality_lines(source_diagnostics or {})
     return "\n".join(
         [
             "---",
@@ -572,6 +578,14 @@ def render_source_page(
             f"- normalized_path: `{source['normalized_path']}`",
             f"- sha256: `{source['sha256']}`",
             *pdf_metadata,
+            "",
+            "## Paper Metadata",
+            "",
+            *paper_metadata,
+            "",
+            "## Parser Quality",
+            "",
+            *parser_quality,
             "",
             "## Key Claims",
             "",
@@ -607,6 +621,41 @@ def pdf_source_metadata_lines(source_diagnostics: dict[str, object]) -> list[str
         f"- metadata_path: `{source_diagnostics.get('metadata_path', '')}`",
         f"- blocks_path: `{source_diagnostics.get('blocks_path', '')}`",
         f"- chunks_path: `{source_diagnostics.get('chunks_path', '')}`",
+    ]
+
+
+def paper_metadata_lines(source_diagnostics: dict[str, object]) -> list[str]:
+    if not source_diagnostics:
+        return ["- Not a PDF source."]
+    identity = source_diagnostics.get("paper_identity")
+    title_quality = source_diagnostics.get("title_quality")
+    candidates = source_diagnostics.get("title_candidates")
+    if not isinstance(identity, dict):
+        identity = {}
+    if not isinstance(title_quality, dict):
+        title_quality = {}
+    candidate_count = len(candidates) if isinstance(candidates, list) else 0
+    authors = identity.get("authors") if isinstance(identity.get("authors"), list) else []
+    return [
+        f"- title: `{identity.get('title', '')}`",
+        f"- authors: `{', '.join(str(author) for author in authors) if authors else ''}`",
+        f"- venue_or_status: `{identity.get('venue_or_status', '')}`",
+        f"- title_selected_source: `{title_quality.get('selected_source', '')}`",
+        f"- title_score: `{title_quality.get('score', '')}`",
+        f"- title_candidates: `{candidate_count}`",
+    ]
+
+
+def parser_quality_lines(source_diagnostics: dict[str, object]) -> list[str]:
+    parser_quality = source_diagnostics.get("parser_quality") if source_diagnostics else {}
+    if not isinstance(parser_quality, dict):
+        parser_quality = {}
+    return [
+        f"- content_block_count: `{parser_quality.get('content_block_count', 0)}`",
+        f"- ignored_block_count: `{parser_quality.get('ignored_block_count', 0)}`",
+        f"- content_block_ratio: `{parser_quality.get('content_block_ratio', 0)}`",
+        f"- repeated_header_footer_count: `{parser_quality.get('repeated_header_footer_count', 0)}`",
+        f"- page_number_count: `{parser_quality.get('page_number_count', 0)}`",
     ]
 
 
@@ -781,6 +830,8 @@ def write_triage(
 def pdf_parse_diagnostics_section(source_diagnostics: dict[str, object]) -> list[str]:
     if not source_diagnostics:
         return []
+    title_candidates = source_diagnostics.get("title_candidates")
+    candidate_count = len(title_candidates) if isinstance(title_candidates, list) else 0
     return [
         "## PDF Parse Diagnostics",
         "",
@@ -793,6 +844,15 @@ def pdf_parse_diagnostics_section(source_diagnostics: dict[str, object]) -> list
         f"- metadata_path: `{source_diagnostics.get('metadata_path', '')}`",
         f"- blocks_path: `{source_diagnostics.get('blocks_path', '')}`",
         f"- chunks_path: `{source_diagnostics.get('chunks_path', '')}`",
+        "",
+        "## Paper Metadata",
+        "",
+        *paper_metadata_lines(source_diagnostics),
+        f"- title_candidates: `{candidate_count}`",
+        "",
+        "## Parser Quality",
+        "",
+        *parser_quality_lines(source_diagnostics),
         "",
     ]
 
