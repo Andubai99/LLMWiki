@@ -9,6 +9,7 @@ from pathlib import Path
 from .db import catalog_path, connect
 from .llm_ingest import LLMIngestProposal, create_llm_ingest_proposal, normalize_claim_confidence
 from .pdf_blocks import BLOCK_SCHEMA_VERSION, load_blocks_jsonl, load_metadata_json
+from .pdf_quality import detect_parser_created_alias
 from .source_chunks import CHUNK_SCHEMA_VERSION, load_chunks_jsonl
 from .workspace import utc_now
 
@@ -68,7 +69,7 @@ def ingest_source(
     patches_dir.mkdir(parents=True, exist_ok=False)
 
     concept_title, aliases = proposal_concept(source, patch_claims, llm_proposal)
-    entity = proposal_entity(patch_claims, llm_proposal)
+    entity = proposal_entity(patch_claims, llm_proposal, source)
     duplicate_candidates = find_duplicate_candidates(root, concept_title, aliases)
     if entity:
         entity_title, entity_aliases = entity
@@ -76,6 +77,7 @@ def ingest_source(
         duplicate_candidates = list(dict.fromkeys(duplicate_candidates))
     if llm_proposal:
         duplicate_candidates.extend(llm_proposal.duplicate_candidates)
+        duplicate_candidates.extend(pdf_identity_warning_candidates(source, llm_proposal))
         duplicate_candidates = list(dict.fromkeys(duplicate_candidates))
     conflict_candidates = find_conflict_candidates(root, patch_claims)
     if llm_proposal:
@@ -265,16 +267,28 @@ def proposal_concept(
     if not proposal or not proposal.concept_title:
         return fallback_title, fallback_aliases
     title = concise_concept_title(proposal.concept_title, source["title"])
-    aliases = concept_aliases(title, proposal.aliases or fallback_aliases, source["title"])
+    aliases = concept_aliases(
+        title,
+        proposal.aliases or fallback_aliases,
+        source["title"],
+        pdf=source.get("source_type") == "pdf",
+    )
     return title, aliases
 
 
 def proposal_entity(
     claims: list[Claim],
     proposal: LLMIngestProposal | None,
+    source: dict[str, str] | None = None,
 ) -> tuple[str, list[str]] | None:
     if proposal and proposal.entity_title:
         aliases = proposal.entity_aliases or [proposal.entity_title]
+        if source and source.get("source_type") == "pdf":
+            aliases = [
+                alias
+                for alias in aliases
+                if not detect_parser_created_alias(alias)
+            ] or [proposal.entity_title]
         return proposal.entity_title, aliases
     return infer_entity(claims)
 
@@ -334,17 +348,29 @@ def concise_concept_title(title: str, source_title: str) -> str:
     return title
 
 
-def concept_aliases(title: str, aliases: list[str], source_title: str) -> list[str]:
+def concept_aliases(title: str, aliases: list[str], source_title: str, *, pdf: bool = False) -> list[str]:
     source_key = normalize_alias(source_title)
     cleaned: list[str] = []
     seen: set[str] = set()
     for alias in [title, *aliases]:
+        if pdf and detect_parser_created_alias(alias):
+            continue
         key = normalize_alias(alias)
         if not key or key == source_key or key in seen:
             continue
         cleaned.append(alias)
         seen.add(key)
     return cleaned or [title]
+
+
+def pdf_identity_warning_candidates(source: dict[str, str], proposal: LLMIngestProposal | None) -> list[str]:
+    if source.get("source_type") != "pdf" or not proposal:
+        return []
+    warnings: list[str] = []
+    for alias in [proposal.concept_title or "", *(proposal.aliases or []), proposal.entity_title or "", *(proposal.entity_aliases or [])]:
+        if alias and detect_parser_created_alias(alias):
+            warnings.append(f"parser-created alias ignored: {alias}")
+    return list(dict.fromkeys(warnings))
 
 
 def infer_entity(claims: list[Claim]) -> tuple[str, list[str]] | None:
