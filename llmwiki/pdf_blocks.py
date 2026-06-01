@@ -360,7 +360,7 @@ def render_normalized_markdown_from_blocks(metadata: SourceMetadata, blocks: lis
         if block.content_role == "ignored":
             continue
         lines.append(block_comment(block))
-        lines.append(block.text_clean)
+        lines.append(block_evidence_text(block))
         lines.append("")
     return "\n".join(lines).rstrip() + "\n"
 
@@ -420,6 +420,15 @@ def block_comment(block: SourceBlock) -> str:
     if block.section_path:
         parts.append("section:" + " > ".join(block.section_path))
     return "<!-- " + "; ".join(parts) + " -->"
+
+
+def block_evidence_text(block: SourceBlock) -> str:
+    parts = [block.text_clean.strip()]
+    for value in (block.table_markdown, block.latex, block.markdown):
+        cleaned = value.strip()
+        if cleaned and cleaned not in parts:
+            parts.append(cleaned)
+    return "\n".join(part for part in parts if part)
 
 
 def clean_metadata_value(value: Any) -> str:

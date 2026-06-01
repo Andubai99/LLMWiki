@@ -7,7 +7,7 @@ import json
 import re
 
 from .llm import create_provider, load_llm_config
-from .pdf_blocks import SourceBlock, block_comment, load_blocks_jsonl, load_metadata_json
+from .pdf_blocks import SourceBlock, block_comment, block_evidence_text, load_blocks_jsonl, load_metadata_json
 from .providers.base import LLMProviderError
 from .source_chunks import SourceChunk, load_chunks_jsonl
 
@@ -488,7 +488,7 @@ def render_chunk_evidence(chunk: SourceChunk, blocks_by_id: dict[str, SourceBloc
             if block.content_role == "ignored":
                 continue
             lines.append(block_comment(block))
-            lines.append(block.text_clean)
+            lines.append(block_evidence_text(block))
             lines.append("")
     return "\n".join(lines).strip()
 

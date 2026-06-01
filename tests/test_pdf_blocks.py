@@ -7,6 +7,8 @@ import pytest
 from llmwiki.pdf_blocks import (
     BLOCK_SCHEMA_VERSION,
     METADATA_SCHEMA_VERSION,
+    SourceBlock,
+    SourceMetadata,
     load_blocks_jsonl,
     load_metadata_json,
     parse_pdf_source,
@@ -252,6 +254,40 @@ def test_render_normalized_markdown_excludes_ignored_repeated_headers_and_page_n
     assert "\n2\n" not in markdown
     assert "Useful first-page evidence." in markdown
     assert "Useful second-page evidence." in markdown
+
+
+def test_render_normalized_markdown_includes_structured_payload_text():
+    metadata = SourceMetadata(
+        source_id="src_structured",
+        title="Structured Paper",
+        source_type="pdf",
+        page_count=1,
+        raw_path="sources/raw/src_structured.pdf",
+        normalized_path="sources/normalized/src_structured.md",
+        metadata_path="sources/metadata/src_structured.json",
+        blocks_path="sources/blocks/src_structured.jsonl",
+        chunks_path="sources/chunks/src_structured.jsonl",
+        filename="structured.pdf",
+    )
+    blocks = [
+        SourceBlock(
+            source_id="src_structured",
+            block_id="src_structured_p001_b0001",
+            block_type="table",
+            page_start=1,
+            page_end=1,
+            order=1,
+            text_raw="Table 1",
+            text_clean="Table 1: Results.",
+            content_role="table_like",
+            table_markdown="| Metric | Value |",
+        )
+    ]
+
+    markdown = render_normalized_markdown_from_blocks(metadata, blocks)
+
+    assert "Table 1: Results." in markdown
+    assert "| Metric | Value |" in markdown
 
 
 def test_parse_pdf_requires_at_least_one_page(monkeypatch):

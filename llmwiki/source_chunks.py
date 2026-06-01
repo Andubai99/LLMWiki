@@ -6,7 +6,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
-from .pdf_blocks import SourceBlock
+from .pdf_blocks import SourceBlock, block_evidence_text
 
 
 CHUNK_SCHEMA_VERSION = "source_chunk.v2.9.2"
@@ -122,7 +122,7 @@ def split_section_blocks(
     split_needed = total_tokens(section_blocks) > max_tokens
 
     for block in section_blocks:
-        block_tokens = estimate_tokens(block.text_clean)
+        block_tokens = estimate_tokens(block_evidence_text(block))
         if block_tokens > max_tokens:
             if current:
                 chunks.append(
@@ -213,7 +213,7 @@ def make_chunk(
         section_path=list(section_path),
         page_start=page_start,
         page_end=page_end,
-        token_estimate=estimate_tokens(" ".join(block.text_clean for block in blocks)),
+        token_estimate=estimate_tokens(" ".join(block_evidence_text(block) for block in blocks)),
         warnings=warnings or [],
         diagnostics=diagnostics or chunk_diagnostics(blocks),
     )
@@ -231,7 +231,7 @@ def section_chunk_type(section_key: tuple[str, ...], blocks: list[SourceBlock]) 
 
 
 def total_tokens(blocks: list[SourceBlock]) -> int:
-    return estimate_tokens(" ".join(block.text_clean for block in blocks))
+    return estimate_tokens(" ".join(block_evidence_text(block) for block in blocks))
 
 
 def write_chunks_jsonl(path: Path, chunks: list[SourceChunk]) -> None:
@@ -251,6 +251,10 @@ def load_chunks_jsonl(path: Path) -> list[SourceChunk]:
                     "total_block_count": 0,
                     "content_block_count": 0,
                     "ignored_block_count": 0,
+                    "structured_block_count": 0,
+                    "table_like_block_count": 0,
+                    "equation_like_block_count": 0,
+                    "image_or_caption_block_count": 0,
                 },
             )
             chunks.append(SourceChunk(**data))
@@ -259,8 +263,15 @@ def load_chunks_jsonl(path: Path) -> list[SourceChunk]:
 
 def chunk_diagnostics(blocks: list[SourceBlock]) -> dict[str, int]:
     ignored = sum(1 for block in blocks if getattr(block, "content_role", "content") == "ignored")
+    table_like = sum(1 for block in blocks if getattr(block, "content_role", "") == "table_like")
+    equation_like = sum(1 for block in blocks if getattr(block, "content_role", "") == "equation_like")
+    image_or_caption = sum(1 for block in blocks if getattr(block, "content_role", "") in {"image", "caption"})
     return {
         "total_block_count": len(blocks),
         "content_block_count": len(blocks) - ignored,
         "ignored_block_count": ignored,
+        "structured_block_count": table_like + equation_like + image_or_caption,
+        "table_like_block_count": table_like,
+        "equation_like_block_count": equation_like,
+        "image_or_caption_block_count": image_or_caption,
     }
