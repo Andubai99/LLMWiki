@@ -10,6 +10,7 @@ from typing import Any
 from .pdf_quality import (
     classify_block_roles,
     detect_repeated_headers_footers,
+    is_page_number,
     parser_quality_from_blocks,
     score_title_candidates,
 )
@@ -226,6 +227,15 @@ def split_pdf_paragraphs(text: str) -> list[str]:
                     current = []
                 parts.append(stripped)
                 continue
+            if is_page_number(stripped):
+                if current:
+                    if len(current) > 1 and all(len(item) <= 120 for item in current):
+                        parts.extend(current)
+                    else:
+                        parts.append("\n".join(current))
+                    current = []
+                parts.append(stripped)
+                continue
             if current and looks_like_authors(stripped) and "," in stripped and "," not in " ".join(current):
                 parts.append("\n".join(current))
                 current = []
@@ -282,6 +292,8 @@ def render_normalized_markdown_from_blocks(metadata: SourceMetadata, blocks: lis
         "",
     ]
     for block in blocks:
+        if block.content_role == "ignored":
+            continue
         lines.append(block_comment(block))
         lines.append(block.text_clean)
         lines.append("")

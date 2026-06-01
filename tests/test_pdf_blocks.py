@@ -214,6 +214,46 @@ def test_render_normalized_markdown_from_blocks_includes_block_anchors(monkeypat
     assert "<!-- page:1 -->" not in markdown
 
 
+def test_render_normalized_markdown_excludes_ignored_repeated_headers_and_page_numbers(monkeypatch):
+    def fake_read_pdf_pages(content: bytes):
+        return (
+            {"title": "Clean Paper"},
+            [
+                "Clean Paper\n"
+                "Repeated Header\n"
+                "1\n\n"
+                "Abstract\n"
+                "Useful first-page evidence.\n",
+                "Repeated Header\n"
+                "2\n\n"
+                "2 Method\n"
+                "Useful second-page evidence.\n",
+            ],
+        )
+
+    monkeypatch.setattr("llmwiki.pdf_blocks.read_pdf_pages", fake_read_pdf_pages)
+    result = parse_pdf_source(
+        source_id="src_clean",
+        content=b"%PDF fake",
+        filename="clean.pdf",
+        raw_path="sources/raw/src_clean-clean.pdf",
+        normalized_path="sources/normalized/src_clean.md",
+        metadata_path="sources/metadata/src_clean.json",
+        blocks_path="sources/blocks/src_clean.jsonl",
+        chunks_path="sources/chunks/src_clean.jsonl",
+    )
+
+    ignored_ids = [block.block_id for block in result.blocks if block.content_role == "ignored"]
+    markdown = render_normalized_markdown_from_blocks(result.metadata, result.blocks)
+
+    assert ignored_ids
+    assert "Repeated Header" not in markdown
+    assert "\n1\n" not in markdown
+    assert "\n2\n" not in markdown
+    assert "Useful first-page evidence." in markdown
+    assert "Useful second-page evidence." in markdown
+
+
 def test_parse_pdf_requires_at_least_one_page(monkeypatch):
     monkeypatch.setattr("llmwiki.pdf_blocks.read_pdf_pages", lambda content: ({}, []))
 

@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from llmwiki.pdf_blocks import SourceBlock
 from llmwiki.source_chunks import (
     CHUNK_SCHEMA_VERSION,
     build_source_chunks,
     estimate_tokens,
+    load_chunks_jsonl,
 )
 
 
@@ -13,6 +16,7 @@ def block(
     block_type: str,
     text: str,
     section_path: list[str] | None = None,
+    content_role: str = "content",
 ) -> SourceBlock:
     return SourceBlock(
         source_id="src_pdf",
@@ -24,6 +28,7 @@ def block(
         text_raw=text,
         text_clean=text,
         section_path=section_path or [],
+        content_role=content_role,
     )
 
 
@@ -48,6 +53,29 @@ def test_chunker_builds_section_aware_chunks_without_llm():
     assert any(chunk.chunk_type == "section_claim_extraction" for chunk in chunks)
     assert all("src_pdf_p001_b0005" in chunk.context_block_ids for chunk in chunks if chunk.section_path == ["Introduction"])
     assert all(chunk.token_estimate <= 60 for chunk in chunks)
+    assert all(chunk.schema_version == "source_chunk.v2.9.2" for chunk in chunks)
+    assert chunks[0].diagnostics["total_block_count"] == 8
+    assert chunks[0].diagnostics["ignored_block_count"] == 0
+
+
+def test_chunker_excludes_ignored_blocks_and_records_diagnostics():
+    blocks = [
+        block(1, "paragraph", "Repeated Header", content_role="ignored"),
+        block(2, "title", "Clean Paper Title"),
+        block(3, "section_heading", "Method", ["Method"]),
+        block(4, "paragraph", "Useful method evidence.", ["Method"]),
+        block(5, "paragraph", "1", content_role="ignored"),
+    ]
+
+    chunks = build_source_chunks("src_pdf", blocks, target_tokens=30, max_tokens=60)
+    all_block_ids = [block_id for chunk in chunks for block_id in chunk.block_ids + chunk.context_block_ids]
+
+    assert "src_pdf_p001_b0001" not in all_block_ids
+    assert "src_pdf_p001_b0005" not in all_block_ids
+    assert any("src_pdf_p001_b0004" in chunk.block_ids for chunk in chunks)
+    assert all(chunk.diagnostics["total_block_count"] == 5 for chunk in chunks)
+    assert all(chunk.diagnostics["content_block_count"] == 3 for chunk in chunks)
+    assert all(chunk.diagnostics["ignored_block_count"] == 2 for chunk in chunks)
 
 
 def test_chunker_splits_long_section_by_paragraph_order():
@@ -89,3 +117,21 @@ def test_estimate_tokens_uses_four_character_rule():
     assert estimate_tokens("abc") == 1
     assert estimate_tokens("abcd") == 1
     assert estimate_tokens("abcde") == 2
+
+
+def test_v2_9_1_chunks_load_with_default_diagnostics(tmp_path: Path):
+    path = tmp_path / "chunks.jsonl"
+    path.write_text(
+        """{"source_id":"src_pdf","chunk_id":"src_pdf_c0001","chunk_type":"metadata_summary","block_ids":["b1"],"context_block_ids":[],"section_path":[],"page_start":1,"page_end":1,"token_estimate":5,"schema_version":"source_chunk.v2.9.1","warnings":[]}\n""",
+        encoding="utf-8",
+    )
+
+    chunks = load_chunks_jsonl(path)
+
+    assert CHUNK_SCHEMA_VERSION == "source_chunk.v2.9.2"
+    assert chunks[0].schema_version == "source_chunk.v2.9.1"
+    assert chunks[0].diagnostics == {
+        "total_block_count": 0,
+        "content_block_count": 0,
+        "ignored_block_count": 0,
+    }
