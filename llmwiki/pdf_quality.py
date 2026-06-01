@@ -81,6 +81,9 @@ class PdfQualitySummary:
     invalid_sidecar_schema_count: int = 0
     high_parser_warning_source_count: int = 0
     low_content_block_ratio_source_count: int = 0
+    source_title_alias_collision_count: int = 0
+    paper_identity_overlap_count: int = 0
+    llm_json_repair_observed_count: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -287,6 +290,13 @@ def evaluate_pdf_quality(root: Path) -> PdfQualitySummary:
         parser_alias_count = sum(1 for row in aliases if detect_parser_created_alias(row["alias"]))
         if parser_alias_count:
             issues.append(f"parser-created aliases: {parser_alias_count}")
+        source_title_alias_collision_count = count_source_title_alias_collisions(conn)
+        if source_title_alias_collision_count:
+            issues.append(f"pdf source title alias collisions: {source_title_alias_collision_count}")
+        paper_identity_overlap_count = count_paper_identity_overlaps(conn)
+        if paper_identity_overlap_count:
+            warnings.append(f"pdf paper identity overlaps: {paper_identity_overlap_count}")
+        llm_json_repair_observed_count = count_llm_json_repairs(root)
         block_locator_validity = _pdf_block_locator_validity(conn, root)
         if block_locator_validity < 1.0:
             issues.append("invalid pdf block locators")
@@ -302,6 +312,9 @@ def evaluate_pdf_quality(root: Path) -> PdfQualitySummary:
             invalid_sidecar_schema_count=invalid_sidecar_schema_count,
             high_parser_warning_source_count=high_parser_warning_source_count,
             low_content_block_ratio_source_count=low_content_block_ratio_source_count,
+            source_title_alias_collision_count=source_title_alias_collision_count,
+            paper_identity_overlap_count=paper_identity_overlap_count,
+            llm_json_repair_observed_count=llm_json_repair_observed_count,
             issues=issues,
             warnings=warnings,
         )
@@ -322,6 +335,9 @@ def format_pdf_quality_report(summary: PdfQualitySummary) -> str:
         f"Invalid sidecar schema: {summary.invalid_sidecar_schema_count}",
         f"High parser warnings: {summary.high_parser_warning_source_count}",
         f"Low content block ratio: {summary.low_content_block_ratio_source_count}",
+        f"Source title alias collisions: {summary.source_title_alias_collision_count}",
+        f"Paper identity overlaps: {summary.paper_identity_overlap_count}",
+        f"LLM JSON repairs observed: {summary.llm_json_repair_observed_count}",
     ]
     if summary.issues:
         lines.append("Issues:")
@@ -462,8 +478,63 @@ def _pdf_block_locator_validity(conn: sqlite3.Connection, root: Path) -> float:
     return valid / len(rows)
 
 
+def count_source_title_alias_collisions(conn: sqlite3.Connection) -> int:
+    rows = conn.execute(
+        """
+        select s.source_id, s.title, a.alias
+        from sources s
+        join aliases a on a.target_type = 'source' and a.target_id = s.source_id
+        where s.source_type = 'pdf'
+        """
+    ).fetchall()
+    return sum(1 for row in rows if _alias_key(row["alias"]) == _alias_key(row["title"]))
+
+
+def count_paper_identity_overlaps(conn: sqlite3.Connection) -> int:
+    rows = conn.execute(
+        """
+        select normalized_alias, target_type, target_id
+        from aliases
+        where target_type in ('concept', 'entity')
+        order by normalized_alias, target_type, target_id
+        """
+    ).fetchall()
+    groups: dict[str, list[tuple[str, str]]] = defaultdict(list)
+    for row in rows:
+        groups[row["normalized_alias"]].append((row["target_type"], row["target_id"]))
+    count = 0
+    for targets in groups.values():
+        target_types = {target_type for target_type, _ in targets}
+        if not {"concept", "entity"} <= target_types:
+            continue
+        identities = {target_id.split(":", 1)[1] if ":" in target_id else target_id for _, target_id in targets}
+        if len(identities) == 1:
+            count += 1
+    return count
+
+
+def count_llm_json_repairs(root: Path) -> int:
+    total = 0
+    staging = root / "staging"
+    if not staging.exists():
+        return total
+    for manifest_path in staging.glob("*/run.json"):
+        try:
+            payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        value = payload.get("llm_json_repair_count")
+        if isinstance(value, int | float):
+            total += int(value)
+    return total
+
+
 def _tokens(text: str) -> set[str]:
     return {part.casefold() for part in re.findall(r"[\w]+", text) if len(part) > 2}
+
+
+def _alias_key(text: Any) -> str:
+    return re.sub(r"[\W_]+", "", str(text or "").casefold())
 
 
 def _repeat_key(text: str) -> str:

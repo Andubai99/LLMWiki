@@ -98,6 +98,7 @@ def lint_workspace(root: Path) -> LintReport:
             + pdf_issues["high_parser_warnings"]
             + pdf_issues["low_content_block_ratio"]
             + pdf_issues["parser_created_aliases"]
+            + pdf_issues["source_title_alias_collisions"]
         )
         lines.append(f"- pdf parser issues: {pdf_issue_count}")
         lines.append(f"  - pdf marker titles: {pdf_issues['marker_titles']}")
@@ -110,6 +111,9 @@ def lint_workspace(root: Path) -> LintReport:
         lines.append(f"  - pdf high parser warnings: {pdf_issues['high_parser_warnings']}")
         lines.append(f"  - pdf low content block ratio: {pdf_issues['low_content_block_ratio']}")
         lines.append(f"  - pdf parser-created aliases: {pdf_issues['parser_created_aliases']}")
+        lines.append(f"  - pdf source title alias collisions: {pdf_issues['source_title_alias_collisions']}")
+        lines.append(f"  - pdf paper identity overlaps: {pdf_issues['paper_identity_overlaps']}")
+        lines.append(f"  - pdf llm json repairs observed: {pdf_issues['llm_json_repairs_observed']}")
         issue_count += pdf_issue_count
 
         recorded_contradicts = conn.execute(
@@ -248,6 +252,9 @@ def pdf_parser_quality_issues(root: Path, conn) -> dict[str, int]:
         "high_parser_warnings": summary.high_parser_warning_source_count,
         "low_content_block_ratio": summary.low_content_block_ratio_source_count,
         "parser_created_aliases": summary.parser_created_duplicate_alias_count,
+        "source_title_alias_collisions": summary.source_title_alias_collision_count,
+        "paper_identity_overlaps": summary.paper_identity_overlap_count,
+        "llm_json_repairs_observed": summary.llm_json_repair_observed_count,
     }
 
 

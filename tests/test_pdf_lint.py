@@ -179,6 +179,54 @@ def test_lint_reports_pdf_title_quality_and_parser_alias_issues(capsys):
     assert "pdf parser-created aliases: 1" in out
 
 
+def test_lint_reports_pdf_source_title_alias_collision(capsys):
+    root = make_workspace()
+    assert main(["init", "--root", str(root)]) == 0
+    source_id = seed_pdf_source(root, title="OSWorld")
+    write_pdf_sidecars(root, source_id)
+    with sqlite3.connect(root / "state" / "catalog.sqlite") as conn:
+        conn.execute(
+            """
+            insert into aliases (alias, target_type, target_id, normalized_alias)
+            values ('OSWorld', 'source', ?, 'osworld')
+            """,
+            (source_id,),
+        )
+    capsys.readouterr()
+
+    assert main(["lint", "--root", str(root)]) == 1
+    out = capsys.readouterr().out
+
+    assert "pdf source title alias collisions: 1" in out
+
+
+def test_lint_reports_pdf_paper_identity_overlap_without_failing(capsys):
+    root = make_workspace()
+    assert main(["init", "--root", str(root)]) == 0
+    source_id = seed_pdf_source(root, title="OSWorld")
+    write_pdf_sidecars(root, source_id)
+    with sqlite3.connect(root / "state" / "catalog.sqlite") as conn:
+        conn.execute(
+            """
+            insert into aliases (alias, target_type, target_id, normalized_alias)
+            values ('OSWorld', 'concept', 'concept:osworld', 'osworld')
+            """
+        )
+        conn.execute(
+            """
+            insert into aliases (alias, target_type, target_id, normalized_alias)
+            values ('OSWorld', 'entity', 'entity:osworld', 'osworld')
+            """
+        )
+    capsys.readouterr()
+
+    assert main(["lint", "--root", str(root)]) == 0
+    out = capsys.readouterr().out
+
+    assert "pdf paper identity overlaps: 1" in out
+    assert "Lint OK" in out
+
+
 def test_lint_reports_invalid_sidecar_schema_and_parser_warning_threshold(capsys):
     root = make_workspace()
     assert main(["init", "--root", str(root)]) == 0

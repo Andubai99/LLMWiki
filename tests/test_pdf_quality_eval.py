@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 from pathlib import Path
 
 from llmwiki.cli import main
@@ -71,6 +72,46 @@ def test_cli_eval_pdf_quality_outputs_json_and_is_read_only(monkeypatch, capsys)
     assert payload["schema_version"] == "eval.pdf_quality.v2.9.2"
     assert payload["pdf_source_count"] == 1
     assert before == after
+
+
+def test_evaluate_pdf_quality_reports_identity_and_repair_counters(monkeypatch, capsys):
+    root = make_workspace()
+    assert main(["init", "--root", str(root)]) == 0
+    capsys.readouterr()
+    source_id = seed_pdf_source(root, monkeypatch)
+    with sqlite3.connect(root / "state" / "catalog.sqlite") as conn:
+        conn.execute(
+            """
+            insert into aliases (alias, target_type, target_id, normalized_alias)
+            values (?, ?, ?, ?)
+            """,
+            ("OSWorld: Benchmarking Multimodal Agents", "source", source_id, "osworldbenchmarkingmultimodalagents"),
+        )
+        conn.execute(
+            """
+            insert into aliases (alias, target_type, target_id, normalized_alias)
+            values ('OSWorld', 'concept', 'concept:osworld', 'osworld')
+            """
+        )
+        conn.execute(
+            """
+            insert into aliases (alias, target_type, target_id, normalized_alias)
+            values ('OSWorld', 'entity', 'entity:osworld', 'osworld')
+            """
+        )
+    run_dir = root / "staging" / "run_pdf_repair"
+    run_dir.mkdir(parents=True)
+    (run_dir / "run.json").write_text(
+        json.dumps({"run_id": "run_pdf_repair", "llm_json_repair_count": 2}),
+        encoding="utf-8",
+    )
+
+    summary = evaluate_pdf_quality(root)
+    payload = summary.to_dict()
+
+    assert payload["source_title_alias_collision_count"] == 1
+    assert payload["paper_identity_overlap_count"] == 1
+    assert payload["llm_json_repair_observed_count"] == 2
 
 
 def test_cli_eval_pdf_quality_outputs_human_report(monkeypatch, capsys):
