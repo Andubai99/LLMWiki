@@ -30,6 +30,8 @@ sources/blocks/*
 !sources/blocks/.gitkeep
 sources/chunks/*
 !sources/chunks/.gitkeep
+sources/parser-artifacts/*
+!sources/parser-artifacts/.gitkeep
 
 state/*.sqlite
 state/*.sqlite-*
