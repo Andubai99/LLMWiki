@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
 import shutil
 import tomllib
+from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
@@ -152,7 +154,105 @@ class MinerUBackend:
         return shutil.which(config.mineru_command) is not None
 
     def parse(self, request: PdfParseRequest) -> PdfParseResult:
-        raise PdfParserBackendError("MinerU parser backend is not implemented for direct parsing yet")
+        from .pdf_blocks import SourceBlock, SourceMetadata
+
+        output_dir = self.output_dir or _request_output_dir(request)
+        if output_dir is None:
+            raise PdfParserBackendError("MinerU parser output directory is required for V2.9.4")
+        content_list_path = output_dir / "content_list.json"
+        if not content_list_path.exists():
+            raise PdfParserBackendError("MinerU content_list.json not found")
+        try:
+            content = json.loads(content_list_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            raise PdfParserBackendError(f"Invalid MinerU content_list.json: {exc.msg}") from exc
+        if not isinstance(content, list):
+            raise PdfParserBackendError("MinerU content_list.json must contain a list")
+
+        blocks: list[SourceBlock] = []
+        page_counts: dict[int, int] = defaultdict(int)
+        seen_title = False
+        current_section: list[str] = []
+        for index, item in enumerate(content):
+            if not isinstance(item, dict):
+                raise PdfParserBackendError("MinerU content_list.json entries must be objects")
+            page = int(item.get("page_idx", item.get("page", 0))) + 1
+            page_counts[page] += 1
+            backend_type = str(item.get("type", item.get("category", "unknown")) or "unknown")
+            text = _mineru_text(item, backend_type)
+            block_type, content_role = _mineru_block_type_and_role(item, backend_type, text, seen_title)
+            if block_type == "title":
+                seen_title = True
+            if block_type == "section_heading" and text:
+                current_section = [text]
+            block_id = f"{request.source_id}_p{page:03d}_b{page_counts[page]:04d}"
+            blocks.append(
+                SourceBlock(
+                    source_id=request.source_id,
+                    block_id=block_id,
+                    block_type=block_type,
+                    page_start=page,
+                    page_end=page,
+                    order=index + 1,
+                    text_raw=text,
+                    text_clean=text,
+                    section_path=list(current_section),
+                    content_role=content_role,
+                    parser_backend=self.name,
+                    backend_ref=f"content_list:{index}",
+                    backend_type=backend_type,
+                    bbox=_mineru_bbox(item),
+                    asset_path=str(item.get("img_path", item.get("image_path", "")) or ""),
+                    html=str(item.get("html", "")),
+                    latex=str(item.get("latex", "")),
+                    markdown=str(item.get("markdown", "")),
+                    table_markdown=str(item.get("table_body", item.get("table_markdown", "")) or ""),
+                )
+            )
+
+        title = _first_block_text(blocks, "title") or Path(request.filename).stem
+        page_count = max((block.page_start for block in blocks), default=0)
+        structured_counts = Counter(block.content_role for block in blocks if block.content_role != "content")
+        artifact_path = to_posix(content_list_path)
+        metadata = SourceMetadata(
+            source_id=request.source_id,
+            title=title,
+            source_type="pdf",
+            page_count=page_count,
+            raw_path=to_posix(request.raw_path),
+            normalized_path=request.normalized_path,
+            metadata_path=request.metadata_path,
+            blocks_path=request.blocks_path,
+            chunks_path=request.chunks_path,
+            filename=request.filename,
+            extraction_engine=self.name,
+            parser_backend=self.name,
+            parser_backend_options={"parser_output_dir": to_posix(output_dir)},
+            parser_artifact_paths=[artifact_path],
+            structured_block_counts=dict(structured_counts),
+            title_quality={"status": "selected", "selected_source": "mineru", "score": 1.0, "reasons": ["mineru_title"]},
+            title_candidates=[{"text": title, "source": "mineru", "score": 1.0, "reasons": ["mineru_title"]}],
+            paper_identity={"title": title, "authors": [], "venue_or_status": "", "canonical_names": [title], "warnings": []},
+            parser_quality={
+                "page_count": page_count,
+                "block_count": len(blocks),
+                "content_block_count": sum(1 for block in blocks if block.content_role != "ignored"),
+                "ignored_block_count": sum(1 for block in blocks if block.content_role == "ignored"),
+                "parser_marker_count": 0,
+                "page_number_count": sum(1 for block in blocks if block.backend_type == "page_number"),
+                "repeated_header_footer_count": 0,
+                "warning_count": 0,
+                "content_block_ratio": (
+                    sum(1 for block in blocks if block.content_role != "ignored") / len(blocks) if blocks else 0.0
+                ),
+            },
+        )
+        return PdfParseResult(
+            metadata=metadata,
+            blocks=blocks,
+            artifacts=[ParserArtifact(path=artifact_path, artifact_type="content_list")],
+            backend_name=self.name,
+        )
 
 
 def load_pdf_parser_config(root: Path) -> PdfParserConfig:
@@ -204,3 +304,79 @@ def select_pdf_parser_backend(
 
 def to_posix(path: str | Path) -> str:
     return Path(path).as_posix()
+
+
+def _request_output_dir(request: PdfParseRequest) -> Path | None:
+    value = request.options.get("parser_output_dir")
+    if not value:
+        return None
+    return Path(str(value))
+
+
+def _mineru_text(item: dict[str, Any], backend_type: str) -> str:
+    if backend_type in {"table", "chart"}:
+        parts = _list_or_text(item.get("table_caption"))
+        body = str(item.get("table_body", item.get("table_markdown", "")) or "")
+        if body:
+            parts.append(body)
+        return "\n".join(part for part in parts if part).strip()
+    if backend_type == "equation":
+        return str(item.get("text", item.get("latex", "")) or "").strip()
+    if backend_type == "image":
+        parts = _list_or_text(item.get("caption"))
+        if not parts:
+            parts = _list_or_text(item.get("image_caption"))
+        if not parts:
+            parts = [str(item.get("text", ""))]
+        return "\n".join(part for part in parts if part).strip()
+    return str(item.get("text", item.get("content", "")) or "").strip()
+
+
+def _list_or_text(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    text = str(value).strip()
+    return [text] if text else []
+
+
+def _mineru_block_type_and_role(
+    item: dict[str, Any],
+    backend_type: str,
+    text: str,
+    seen_title: bool,
+) -> tuple[str, str]:
+    if backend_type in {"header", "footer", "page_number"}:
+        return backend_type, "ignored"
+    if backend_type in {"table", "chart"}:
+        return "table", "table_like"
+    if backend_type == "equation":
+        return "equation", "equation_like"
+    if backend_type == "image":
+        return ("caption" if text else "image"), ("caption" if text else "image")
+    level = item.get("text_level", item.get("level"))
+    if level is not None:
+        if not seen_title and text:
+            return "title", "content"
+        return "section_heading", "content"
+    return "paragraph", "content"
+
+
+def _mineru_bbox(item: dict[str, Any]) -> list[float]:
+    bbox = item.get("bbox")
+    if not isinstance(bbox, list):
+        return []
+    values: list[float] = []
+    for value in bbox:
+        if not isinstance(value, (int, float)):
+            return []
+        values.append(value)
+    return values
+
+
+def _first_block_text(blocks: list[Any], block_type: str) -> str:
+    for block in blocks:
+        if getattr(block, "block_type", "") == block_type and getattr(block, "text_clean", ""):
+            return str(block.text_clean)
+    return ""
