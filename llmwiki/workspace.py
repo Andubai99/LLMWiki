@@ -39,6 +39,13 @@ metadata_dir = "sources/metadata"
 blocks_dir = "sources/blocks"
 chunks_dir = "sources/chunks"
 
+[pdf_parser]
+default_backend = "pypdf"
+fallback_backend = "pypdf"
+mineru_enabled = false
+mineru_command = "mineru"
+artifact_dir = "sources/parser-artifacts"
+
 [wiki]
 root = "wiki"
 

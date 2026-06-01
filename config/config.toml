@@ -9,6 +9,13 @@ normalized_dir = "sources/normalized"
 supported_types = ["markdown", "web", "text_pdf"]
 ocr_enabled = false
 
+[pdf_parser]
+default_backend = "pypdf"
+fallback_backend = "pypdf"
+mineru_enabled = false
+mineru_command = "mineru"
+artifact_dir = "sources/parser-artifacts"
+
 [wiki]
 dir = "wiki"
 index = "wiki/index.md"

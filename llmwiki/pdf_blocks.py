@@ -35,6 +35,14 @@ class SourceMetadata:
     chunks_path: str
     filename: str
     extraction_engine: str = "pypdf"
+    parser_backend: str = "pypdf"
+    parser_backend_version: str | None = None
+    parser_backend_options: dict[str, Any] = field(default_factory=dict)
+    parser_artifact_paths: list[str] = field(default_factory=list)
+    parser_backend_warnings: list[str] = field(default_factory=list)
+    parser_backend_fallback_from: str | None = None
+    parser_backend_fallback_reason: str = ""
+    structured_block_counts: dict[str, int] = field(default_factory=dict)
     schema_version: str = METADATA_SCHEMA_VERSION
     authors: list[str] = field(default_factory=list)
     abstract: str = ""
@@ -63,6 +71,15 @@ class SourceBlock:
     content_role: str = "content"
     cleaning_operations: list[str] = field(default_factory=list)
     quality_flags: list[str] = field(default_factory=list)
+    parser_backend: str = "pypdf"
+    backend_ref: str = ""
+    backend_type: str = ""
+    bbox: list[float] = field(default_factory=list)
+    asset_path: str = ""
+    html: str = ""
+    latex: str = ""
+    markdown: str = ""
+    table_markdown: str = ""
     schema_version: str = BLOCK_SCHEMA_VERSION
 
     def to_dict(self) -> dict[str, Any]:
@@ -99,11 +116,42 @@ def parse_pdf_source(
     blocks_path: str,
     chunks_path: str,
 ) -> PdfParseResult:
-    pdf_metadata, pages = read_pdf_pages(content)
+    from .pdf_parser_backends import PdfParseRequest, PypdfBackend
+
+    result = PypdfBackend().parse(
+        PdfParseRequest(
+            root=Path("."),
+            source_id=source_id,
+            raw_path=Path(raw_path),
+            filename=filename,
+            normalized_path=normalized_path,
+            metadata_path=metadata_path,
+            blocks_path=blocks_path,
+            chunks_path=chunks_path,
+            content=content,
+            options={},
+        )
+    )
+    return PdfParseResult(metadata=result.metadata, blocks=result.blocks)
+
+
+def build_pdf_parse_result_from_pages(
+    *,
+    source_id: str,
+    pdf_metadata: dict[str, Any],
+    pages: list[str],
+    filename: str,
+    raw_path: str,
+    normalized_path: str,
+    metadata_path: str,
+    blocks_path: str,
+    chunks_path: str,
+    parser_backend: str = "pypdf",
+) -> PdfParseResult:
     if not pages:
         raise ValueError("No text pages extracted from PDF")
 
-    blocks, warnings = parse_pdf_blocks(source_id, pages)
+    blocks, warnings = parse_pdf_blocks(source_id, pages, parser_backend=parser_backend)
     title_candidates = score_title_candidates(metadata=pdf_metadata, blocks=blocks, filename=filename)
     title = choose_pdf_title(pdf_metadata, blocks, filename, warnings, title_candidates=title_candidates)
     authors = extract_authors(blocks)
@@ -121,6 +169,9 @@ def parse_pdf_source(
         blocks_path=blocks_path,
         chunks_path=chunks_path,
         filename=filename,
+        extraction_engine=parser_backend,
+        parser_backend=parser_backend,
+        parser_backend_warnings=warnings,
         authors=authors,
         abstract=abstract,
         warnings=warnings,
@@ -143,7 +194,7 @@ def parse_pdf_source(
     return PdfParseResult(metadata=metadata, blocks=blocks)
 
 
-def parse_pdf_blocks(source_id: str, pages: list[str]) -> tuple[list[SourceBlock], list[str]]:
+def parse_pdf_blocks(source_id: str, pages: list[str], *, parser_backend: str = "pypdf") -> tuple[list[SourceBlock], list[str]]:
     blocks: list[SourceBlock] = []
     document_warnings: list[str] = []
     order = 1
@@ -195,6 +246,7 @@ def parse_pdf_blocks(source_id: str, pages: list[str]) -> tuple[list[SourceBlock
                     text_clean=cleaned,
                     section_path=list(current_section),
                     warnings=warnings,
+                    parser_backend=parser_backend,
                 )
             )
             order += 1
