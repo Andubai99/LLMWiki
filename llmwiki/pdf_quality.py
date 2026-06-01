@@ -205,7 +205,7 @@ def evaluate_pdf_quality(root: Path) -> PdfQualitySummary:
     conn.row_factory = sqlite3.Row
     try:
         sources = conn.execute(
-            "select source_id, title, metadata_path, blocks_path, chunks_path from sources where source_type = 'pdf'"
+            "select source_id, title from sources where source_type = 'pdf'"
         ).fetchall()
         pdf_count = len(sources)
         if pdf_count == 0:
@@ -228,8 +228,9 @@ def evaluate_pdf_quality(root: Path) -> PdfQualitySummary:
         warnings: list[str] = []
         parser_alias_count = 0
         for source in sources:
-            paths = [source["metadata_path"], source["blocks_path"], source["chunks_path"]]
-            existing = [bool(path and (root / path).exists()) for path in paths]
+            metadata_rel, blocks_rel, chunks_rel = pdf_sidecar_paths(source["source_id"])
+            paths = [metadata_rel, blocks_rel, chunks_rel]
+            existing = [bool((root / path).exists()) for path in paths]
             if all(existing):
                 complete += 1
             else:
@@ -240,8 +241,8 @@ def evaluate_pdf_quality(root: Path) -> PdfQualitySummary:
             else:
                 issues.append(f"{source['source_id']}: parser-created title")
 
-            metadata_path = root / source["metadata_path"] if source["metadata_path"] else None
-            if metadata_path and metadata_path.exists():
+            metadata_path = root / metadata_rel
+            if metadata_path.exists():
                 try:
                     metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
                     parser_quality = metadata.get("parser_quality") or {}
@@ -394,7 +395,7 @@ def _score_title(text: str, source: str, page: int, order: int, metadata_tokens:
 def _pdf_block_locator_validity(conn: sqlite3.Connection, root: Path) -> float:
     rows = conn.execute(
         """
-        select c.claim_id, c.source_id, c.citation_locator, s.blocks_path
+        select c.claim_id, c.source_id, c.citation_locator
         from claims c
         join sources s on s.source_id = c.source_id
         where s.source_type = 'pdf'
@@ -405,11 +406,12 @@ def _pdf_block_locator_validity(conn: sqlite3.Connection, root: Path) -> float:
     blocks_by_source: dict[str, set[str]] = {}
     valid = 0
     for row in rows:
-        blocks_path = row["blocks_path"]
         if row["source_id"] not in blocks_by_source:
             block_ids: set[str] = set()
-            if blocks_path and (root / blocks_path).exists():
-                for line in (root / blocks_path).read_text(encoding="utf-8").splitlines():
+            _, blocks_rel, _ = pdf_sidecar_paths(row["source_id"])
+            blocks_path = root / blocks_rel
+            if blocks_path.exists():
+                for line in blocks_path.read_text(encoding="utf-8").splitlines():
                     if line.strip():
                         data = json.loads(line)
                         block_ids.add(data.get("block_id", ""))
@@ -441,3 +443,11 @@ def _unique(values: list[str]) -> list[str]:
         seen.add(value)
         result.append(value)
     return result
+
+
+def pdf_sidecar_paths(source_id: str) -> tuple[str, str, str]:
+    return (
+        f"sources/metadata/{source_id}.json",
+        f"sources/blocks/{source_id}.jsonl",
+        f"sources/chunks/{source_id}.jsonl",
+    )

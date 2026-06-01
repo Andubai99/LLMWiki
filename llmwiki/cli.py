@@ -15,6 +15,7 @@ from .ingest import ingest_source, review_run
 from .lint import lint_workspace
 from .llm import create_provider, load_llm_config, override_llm_config
 from .pipeline import AddPipelineError, add_and_process_source
+from .pdf_quality import evaluate_pdf_quality, format_pdf_quality_report
 from .providers.base import LLMProviderError
 from .query import query_context
 from .retrieval_eval import evaluate_retrieval, format_eval_report, sanitize_error
@@ -244,6 +245,20 @@ def cmd_eval_retrieval(args: argparse.Namespace) -> int:
         print(json.dumps(summary.to_dict(), ensure_ascii=False, indent=2))
     else:
         print(format_eval_report(summary))
+    return 0
+
+
+def cmd_eval_pdf_quality(args: argparse.Namespace) -> int:
+    root = Path(args.root).resolve()
+    try:
+        summary = evaluate_pdf_quality(root)
+    except Exception as exc:
+        print(f"PDF quality eval failed: {sanitize_error(exc)}")
+        return 1
+    if args.json:
+        print(json.dumps(summary.to_dict(), ensure_ascii=False, indent=2))
+    else:
+        print(format_pdf_quality_report(summary))
     return 0
 
 
@@ -542,6 +557,13 @@ def build_parser() -> argparse.ArgumentParser:
     retrieval_eval_parser.add_argument("--limit", type=int, default=5)
     retrieval_eval_parser.add_argument("--json", action="store_true", help="Output stable machine-readable JSON.")
     retrieval_eval_parser.set_defaults(func=cmd_eval_retrieval)
+    pdf_quality_eval_parser = eval_subparsers.add_parser(
+        "pdf-quality",
+        help="Evaluate local PDF parser quality metrics.",
+    )
+    pdf_quality_eval_parser.add_argument("--root", default=".")
+    pdf_quality_eval_parser.add_argument("--json", action="store_true", help="Output stable machine-readable JSON.")
+    pdf_quality_eval_parser.set_defaults(func=cmd_eval_pdf_quality)
 
     embeddings_parser = subparsers.add_parser(
         "embeddings",
