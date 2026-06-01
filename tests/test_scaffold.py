@@ -23,6 +23,7 @@ class ScaffoldTests(unittest.TestCase):
                 "ask",
                 "eval",
                 "embeddings",
+                "parsers",
                 "llm-test",
                 "doctor",
             },

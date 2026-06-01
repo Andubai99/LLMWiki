@@ -29,9 +29,10 @@ def test_init_writes_default_llm_config():
     assert 'fallback_method = "deterministic"' in config
     assert "candidate_pool_limit = 80" in config
     assert "[pdf_parser]" in config
-    assert 'default_backend = "pypdf"' in config
+    assert 'default_backend = "auto"' in config
     assert 'fallback_backend = "pypdf"' in config
-    assert "mineru_enabled = false" in config
+    assert "mineru_enabled = true" in config
+    assert 'mineru_command = "mineru"' in config
     assert 'artifact_dir = "sources/parser-artifacts"' in config
     assert (root / "config" / "api-keys.toml").exists()
     assert (root / "config" / "api-keys.example.toml").exists()
@@ -60,9 +61,10 @@ def test_repository_config_has_default_llm_settings():
     assert 'fallback_method = "deterministic"' in config
     assert "candidate_pool_limit = 80" in config
     assert "[pdf_parser]" in config
-    assert 'default_backend = "pypdf"' in config
+    assert 'default_backend = "auto"' in config
     assert 'fallback_backend = "pypdf"' in config
-    assert "mineru_enabled = false" in config
+    assert "mineru_enabled = true" in config
+    assert 'mineru_command = "mineru"' in config
     assert 'artifact_dir = "sources/parser-artifacts"' in config
     assert "[llm]" in api_keys_example
     assert "api_key" in api_keys_example
