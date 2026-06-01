@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+from llmwiki.apply import sync_catalog
+from llmwiki.cli import main
+from llmwiki.db import connect
 from llmwiki.ingest import Claim, build_patches, pdf_identity_warning_candidates, proposal_concept
 from llmwiki.llm_ingest import LLMIngestProposal
+from tests.helpers import make_workspace
 
 
 def claim() -> Claim:
@@ -108,6 +112,33 @@ def test_pdf_source_page_aliases_exclude_paper_title():
     source_patch = next(patch for patch in patches if patch["page_type"] == "source")
     assert source_patch["title"] == "OSWorld: Benchmarking Multimodal Agents"
     assert source_patch["aliases"] == ["src_pdf"]
+
+
+def test_pdf_source_title_is_not_indexed_as_formal_alias_after_apply():
+    root = make_workspace()
+    assert main(["init", "--root", str(root)]) == 0
+    patches = build_patches(
+        source=source_dict("src_pdf", "OSWorld: Benchmarking Multimodal Agents", "pdf"),
+        claims=[claim()],
+        concept_title="OSWorld",
+        aliases=["OSWorld"],
+        duplicate_candidates=[],
+        conflict_candidates=[],
+        entity=None,
+    )
+    with connect(root / "state" / "catalog.sqlite") as conn:
+        sync_catalog(
+            root,
+            run_id="run_pdf_alias",
+            claims=[claim().__dict__],
+            patches=patches,
+        )
+        aliases = [
+            row["alias"]
+            for row in conn.execute("select alias from aliases where target_id = 'src_pdf' order by alias")
+        ]
+
+    assert aliases == ["src_pdf"]
 
 
 def test_markdown_source_page_aliases_still_include_title():
