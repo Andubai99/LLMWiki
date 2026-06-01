@@ -521,6 +521,9 @@ def test_pdf_add_exposes_parse_diagnostics_in_staging_and_source_page(monkeypatc
     manifest = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
     assert manifest["source_parse_schema"] == "source_block.v2.9.2"
     assert manifest["source_chunk_schema"] == "source_chunk.v2.9.2"
+    assert manifest["parser_backend"] == "pypdf"
+    assert manifest["parser_artifact_count"] == 0
+    assert "structured_block_counts" in manifest
     assert manifest["title_quality"]["selected_source"] in {"metadata", "block"}
     assert manifest["parser_quality"]["page_count"] == 1
     assert manifest["page_count"] == 1
@@ -535,6 +538,7 @@ def test_pdf_add_exposes_parse_diagnostics_in_staging_and_source_page(monkeypatc
     assert "- page_count: 1" in triage
     assert "- metadata_path: `sources/metadata/" in triage
     assert "- chunks_path: `sources/chunks/" in triage
+    assert "- parser_backend: `pypdf`" in triage
 
     proposal = json.loads((run_dir / "llm-proposal.json").read_text(encoding="utf-8"))
     raw_content = json.loads(proposal["content"])
@@ -549,6 +553,7 @@ def test_pdf_add_exposes_parse_diagnostics_in_staging_and_source_page(monkeypatc
     assert f"- metadata_path: `sources/metadata/{source_id}.json`" in source_page
     assert f"- blocks_path: `sources/blocks/{source_id}.jsonl`" in source_page
     assert f"- chunks_path: `sources/chunks/{source_id}.jsonl`" in source_page
+    assert "- parser_backend: `pypdf`" in source_page
     assert "page:1;block:" in source_page
 
 
