@@ -32,6 +32,20 @@ Malformed LLM JSON is not persisted. `llm-proposal.json`, `run.json`, `triage.md
 
 For PDF source pages, the paper title is title metadata, not a formal alias. The source page formal alias list only keeps the `source_id`; retrieval still matches the paper through `sources.title` and `pages.title`. `llmwiki eval pdf-quality` and `llmwiki lint` report source-title alias collisions, parser-created aliases, identity overlaps, and observed JSON repair counts.
 
+## V2.9.4 Parser Backend And MinerU Adapter
+
+PDF import now has a parser backend boundary. The default backend is still `pypdf`, so normal import remains:
+
+```bash
+llmwiki add docs/papers/example.pdf --root .
+```
+
+MinerU is optional and opt-in through `[pdf_parser]` config or advanced/debug `add` parser options. MinerU output is normalized into LLMWiki metadata, blocks, and chunks before LLM ingest; backend-native files are generated parser artifacts under `sources/parser-artifacts/` and are ignored by Git.
+
+Parser backend output is not wiki knowledge. Tables, formulas, images, captions, and layout data from MinerU can become normalized blocks with canonical page/block locators, but formal evidence still must be extracted as catalog claims through staging/apply. Parser artifacts are never returned as retrieval evidence.
+
+V2.9.4 does not implement OCR for scanned PDFs, table cell-level evidence, figure understanding, equation semantic interpretation, new database tables, or `page_type="paper"`. Read-only quality checks such as `llmwiki eval pdf-quality --root . --json` inspect existing sidecars only; they do not call LLM, embedding, MinerU, network, or mutate the workspace.
+
 ## V2.9.2 PDF Quality Notes
 
 Text PDFs are now parsed into source metadata, stable blocks, and deterministic chunks before LLM ingest. Generated sidecars live under `sources/metadata/`, `sources/blocks/`, and `sources/chunks/`; these files are local generated artifacts and are ignored by Git like `sources/raw/` and `sources/normalized/`.
@@ -53,7 +67,7 @@ llmwiki eval pdf-quality --root . --json
 
 `llmwiki eval pdf-quality` is deterministic and read-only. It reads catalog and PDF sidecars, reports title pass rate, sidecar completeness, block locator validity, content block ratio, and parser-created alias counts, and does not call LLM, embedding, network, or write workspace files.
 
-V2.9.2 still uses `pypdf` only. MinerU, OCR for scanned PDFs, structured table extraction, figure caption extraction, and equation object extraction are deferred to later rich parsing work.
+`pypdf` remains the default PDF backend. V2.9.4 adds an optional MinerU adapter, but OCR for scanned PDFs, table cell-level evidence, figure understanding, and equation semantic interpretation remain deferred to later rich parsing work.
 
 ## Retrieval Layer v2.7（混合本地检索 + 向量召回 + reranking）
 
