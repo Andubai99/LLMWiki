@@ -15,11 +15,18 @@ from .ingest import ingest_source, review_run
 from .lint import lint_workspace
 from .llm import create_provider, load_llm_config, override_llm_config
 from .pipeline import AddPipelineError, add_and_process_source
+from .pdf_quality import evaluate_pdf_quality, format_pdf_quality_report
 from .providers.base import LLMProviderError
 from .query import query_context
 from .retrieval_eval import evaluate_retrieval, format_eval_report, sanitize_error
 from .retrieval import format_retrieval_prompt, retrieve_context
 from .synthesis import SynthesisWritebackError, SynthesisWritebackResult, create_synthesis_run
+from .synthesis_planner import (
+    SynthesisPlan,
+    SynthesisPlanningError,
+    SynthesisPlanningOptions,
+    plan_synthesis_writeback,
+)
 from .workspace import check_workspace, init_workspace
 
 
@@ -183,18 +190,44 @@ def cmd_ask(args: argparse.Namespace) -> int:
             confidence=args.confidence,
         ),
     )
+    synthesis_plan: SynthesisPlan | None = None
     writeback: SynthesisWritebackResult | None = None
     writeback_error: SynthesisWritebackError | None = None
-    if result.status == "answered" and should_writeback(args):
+    if result.status == "answered" and should_plan_synthesis(args):
+        planning_options = SynthesisPlanningOptions(writeback_mode=args.writeback_mode)
         try:
-            writeback = create_synthesis_run(root, result)
-        except SynthesisWritebackError as exc:
-            writeback_error = exc
+            synthesis_plan = plan_synthesis_writeback(root, result, planning_options)
+        except SynthesisPlanningError as exc:
+            writeback_error = SynthesisWritebackError(stage="prepare", reason=sanitize_error(exc))
+        if synthesis_plan is not None and synthesis_plan.action == "needs_review":
+            writeback_error = SynthesisWritebackError(
+                stage="prepare",
+                reason="Synthesis plan needs review before writeback.",
+            )
+        elif synthesis_plan is not None and should_apply_synthesis(args, synthesis_plan):
+            try:
+                writeback = create_synthesis_run(
+                    root,
+                    result,
+                    synthesis_plan,
+                    planning_options=planning_options,
+                )
+            except (SynthesisWritebackError, SynthesisPlanningError) as exc:
+                if isinstance(exc, SynthesisWritebackError):
+                    writeback_error = exc
+                else:
+                    writeback_error = SynthesisWritebackError(stage="prepare", reason=sanitize_error(exc))
 
     if args.json:
-        print(json.dumps(ask_output_dict(result, writeback, writeback_error), ensure_ascii=False, indent=2))
+        print(
+            json.dumps(
+                ask_output_dict(result, writeback, writeback_error, synthesis_plan),
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
     else:
-        print(format_ask_result(result, writeback, writeback_error))
+        print(format_ask_result(result, writeback, writeback_error, synthesis_plan))
     if writeback_error is not None:
         return 1
     return 0 if result.status in {"answered", "insufficient_evidence", "planned_insufficient_evidence"} else 1
@@ -212,6 +245,20 @@ def cmd_eval_retrieval(args: argparse.Namespace) -> int:
         print(json.dumps(summary.to_dict(), ensure_ascii=False, indent=2))
     else:
         print(format_eval_report(summary))
+    return 0
+
+
+def cmd_eval_pdf_quality(args: argparse.Namespace) -> int:
+    root = Path(args.root).resolve()
+    try:
+        summary = evaluate_pdf_quality(root)
+    except Exception as exc:
+        print(f"PDF quality eval failed: {sanitize_error(exc)}")
+        return 1
+    if args.json:
+        print(json.dumps(summary.to_dict(), ensure_ascii=False, indent=2))
+    else:
+        print(format_pdf_quality_report(summary))
     return 0
 
 
@@ -486,6 +533,13 @@ def build_parser() -> argparse.ArgumentParser:
     ask_parser.add_argument("--limit", type=int, default=8)
     ask_parser.add_argument("--json", action="store_true", help="Output stable machine-readable JSON.")
     ask_parser.add_argument("--writeback", action="store_true", help="Write the answer back as a synthesis page.")
+    ask_parser.add_argument("--preview-writeback", action="store_true", help="Preview synthesis create/update without writing.")
+    ask_parser.add_argument(
+        "--writeback-mode",
+        choices=("auto", "create", "update"),
+        default="auto",
+        help="Constrain synthesis writeback planning.",
+    )
     ask_parser.add_argument("--no-writeback", action="store_true", help="Do not prompt or write back.")
     ask_parser.add_argument("--source-id")
     ask_parser.add_argument("--page-type")
@@ -503,6 +557,13 @@ def build_parser() -> argparse.ArgumentParser:
     retrieval_eval_parser.add_argument("--limit", type=int, default=5)
     retrieval_eval_parser.add_argument("--json", action="store_true", help="Output stable machine-readable JSON.")
     retrieval_eval_parser.set_defaults(func=cmd_eval_retrieval)
+    pdf_quality_eval_parser = eval_subparsers.add_parser(
+        "pdf-quality",
+        help="Evaluate local PDF parser quality metrics.",
+    )
+    pdf_quality_eval_parser.add_argument("--root", default=".")
+    pdf_quality_eval_parser.add_argument("--json", action="store_true", help="Output stable machine-readable JSON.")
+    pdf_quality_eval_parser.set_defaults(func=cmd_eval_pdf_quality)
 
     embeddings_parser = subparsers.add_parser(
         "embeddings",
@@ -574,6 +635,7 @@ def format_ask_result(
     result: AskResult,
     writeback: SynthesisWritebackResult | None = None,
     writeback_error: SynthesisWritebackError | None = None,
+    synthesis_plan: SynthesisPlan | None = None,
 ) -> str:
     lines = [
         f"Question: {result.question}",
@@ -612,6 +674,7 @@ def format_ask_result(
 
     lines.extend(["", "Writeback:"])
     if writeback is not None:
+        lines.extend(["", format_synthesis_plan_dict(writeback.synthesis_plan), ""])
         lines.append(f"Applied synthesis run: {writeback.run_id}")
         lines.append("Page:")
         for page in writeback.pages:
@@ -621,18 +684,34 @@ def format_ask_result(
         lines.append(f"reason: {writeback_error.reason}")
         if writeback_error.run_id:
             lines.append(f"Debug: llmwiki review {writeback_error.run_id} --detail --root .")
+    elif synthesis_plan is not None:
+        lines.extend(["", format_synthesis_plan_dict(synthesis_plan.to_dict())])
+        lines.append("Not written. Run with --writeback to apply this synthesis plan.")
     else:
         lines.append("Not written. Run with --writeback or answer yes when prompted to create a synthesis page.")
     return "\n".join(lines)
 
 
-def should_writeback(args: argparse.Namespace) -> bool:
+def should_plan_synthesis(args: argparse.Namespace) -> bool:
+    if args.writeback or args.preview_writeback:
+        return True
+    if args.no_writeback or args.json:
+        return False
+    if not sys.stdin.isatty():
+        return False
+    return True
+
+
+def should_apply_synthesis(args: argparse.Namespace, plan: SynthesisPlan) -> bool:
+    if args.preview_writeback:
+        return False
     if args.writeback:
         return True
     if args.no_writeback or args.json:
         return False
     if not sys.stdin.isatty():
         return False
+    print(format_synthesis_plan_dict(plan.to_dict()))
     return confirm_writeback()
 
 
@@ -645,8 +724,11 @@ def ask_output_dict(
     result: AskResult,
     writeback: SynthesisWritebackResult | None,
     writeback_error: SynthesisWritebackError | None,
+    synthesis_plan: SynthesisPlan | None = None,
 ) -> dict[str, object]:
     data = result.to_dict()
+    if synthesis_plan is not None:
+        data["synthesis_plan"] = synthesis_plan.to_dict()
     if writeback is not None:
         data["writeback"] = writeback.to_dict()
     elif writeback_error is not None:
@@ -657,3 +739,22 @@ def ask_output_dict(
             "reason": writeback_error.reason,
         }
     return data
+
+
+def format_synthesis_plan_dict(plan: dict[str, object]) -> str:
+    lines = [
+        "Synthesis proposal:",
+        f"- action: {plan.get('action', '')}",
+        f"- page: {plan.get('target_path', '')}",
+        f"- title: {plan.get('title', '')}",
+        f"- evidence claims: {len(plan.get('evidence_claim_ids', [])) if isinstance(plan.get('evidence_claim_ids'), list) else 0}",
+    ]
+    related_pages = plan.get("related_pages")
+    if isinstance(related_pages, list) and related_pages:
+        lines.append("- related pages:")
+        lines.extend(f"  - {page}" for page in related_pages)
+    warnings = plan.get("warnings")
+    if isinstance(warnings, list) and warnings:
+        lines.append("- warnings:")
+        lines.extend(f"  - {warning}" for warning in warnings)
+    return "\n".join(lines)

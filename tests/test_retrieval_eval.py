@@ -15,6 +15,7 @@ DATASET = Path(__file__).resolve().parent / "evals" / "retrieval_v2_3.jsonl"
 FRUIT_DATASET = Path(__file__).resolve().parent / "evals" / "retrieval_v2_4_fruits.jsonl"
 SEMANTIC_FRUIT_DATASET = Path(__file__).resolve().parent / "evals" / "retrieval_v2_6_semantic_fruits.jsonl"
 SELECTION_FRUIT_DATASET = Path(__file__).resolve().parent / "evals" / "retrieval_v2_7_evidence_selection_fruits.jsonl"
+PDF_FOUNDATION_DATASET = Path(__file__).resolve().parent / "evals" / "retrieval_v2_9_1_pdf_foundation.jsonl"
 EVAL_FIXTURES = (
     "minimal_source.md",
     "regression_alias.md",
@@ -117,6 +118,21 @@ def test_load_v27_evidence_selection_eval_cases_from_committed_jsonl():
     assert "src_880c9f8a447c" in cases[0].expected_source_ids
 
 
+def test_load_v291_pdf_foundation_eval_cases_from_committed_jsonl():
+    from llmwiki.retrieval_eval import load_eval_cases
+
+    cases = load_eval_cases(PDF_FOUNDATION_DATASET)
+
+    assert [case.id for case in cases] == [
+        "pdf_osworld_definition_gap",
+        "pdf_gui_agent_benchmarks",
+        "pdf_compare_osworld_mobileagentbench",
+        "pdf_mobileagentbench_scope",
+    ]
+    assert cases[0].question == "What is OSWorld and what performance gap does it report?"
+    assert "OSWorld" in cases[0].expected_terms
+
+
 def test_load_eval_cases_reports_jsonl_line_errors(tmp_path: Path):
     from llmwiki.retrieval_eval import load_eval_cases
 
@@ -155,6 +171,32 @@ def test_evaluate_retrieval_computes_metrics_and_contract(capsys):
     assert data["evidence_contract"]["citation_locator_presence"] == 1.0
     assert 0 <= data["evidence_contract"]["relationship_validity"] <= 1
     assert not contains_secret_text(data)
+
+
+def test_relationship_contract_allows_synthesis_page_to_claim_edges():
+    from llmwiki.retrieval_eval import valid_relationship
+
+    catalog = {
+        "claim_ids": {"clm_rag_anchor"},
+        "source_ids": {"src_doc"},
+        "page_ids": {"synthesis-rag", "src_doc"},
+        "page_paths": {"wiki/syntheses/rag.md", "wiki/sources/src_doc.md"},
+        "page_id_by_path": {
+            "wiki/syntheses/rag.md": "synthesis-rag",
+            "wiki/sources/src_doc.md": "src_doc",
+        },
+    }
+
+    assert valid_relationship(
+        {
+            "subject_id": "synthesis-rag",
+            "object_id": "clm_rag_anchor",
+            "relationship_type": "supports",
+            "evidence_claim_id": "clm_rag_anchor",
+            "source_id": "synthesis:answer",
+        },
+        catalog,
+    )
 
 
 def test_eval_retrieval_does_not_call_llm_planner_or_provider(monkeypatch, capsys):

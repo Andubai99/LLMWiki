@@ -203,6 +203,19 @@ def test_docs_describe_v1_commands_and_constraints():
     assert "--format prompt" in readme
     assert "retrieve_context" in readme
     assert "llmwiki ask" in readme
+    assert "--preview-writeback" in readme
+    assert "--writeback-mode update" in readme
+    assert "Synthesis pages are living wiki pages" in readme
+    assert "Synthesis planning output is not evidence" in readme
+    assert "V2.9.2 PDF Quality" in readme
+    assert "V2.9.3 PDF Ingest Robustness" in readme
+    assert "sources/metadata/" in readme
+    assert "page/block locators" in readme
+    assert "llmwiki eval pdf-quality --root ." in readme
+    assert "content_role=\"ignored\"" in readme
+    assert "JSON repair" in readme
+    assert "formal alias" in readme
+    assert "tests/evals/retrieval_v2_9_1_pdf_foundation.jsonl" in readme
     assert "RAG/Agent evidence layer" in readme
     assert "LLM Provider" in readme
     assert "LLM Ingest Proposal" in readme
@@ -236,6 +249,10 @@ def test_docs_describe_v1_commands_and_constraints():
     assert "source locator" in agents
     assert "`llmwiki retrieve` is the standard evidence interface" in agents
     assert "`llmwiki ask` is the standard local evidence question-answering interface" in agents
+    assert "`llmwiki ask --preview-writeback` is read-only" in agents
+    assert "synthesis plan output is not evidence" in agents
+    assert "Do not create duplicate synthesis pages" in agents
+    assert "preserve user-authored custom sections" in agents
     assert "Do not forge claim ids" in agents
     assert "`contradicts` relationships must be exposed" in agents
     assert "API Key" in agents
@@ -243,6 +260,13 @@ def test_docs_describe_v1_commands_and_constraints():
     assert "mock provider" in agents
     assert "llm-proposal.json" in agents
     assert "valid source locators" in agents
+    assert "page/block locators" in agents
+    assert "PDF chunk boundaries are deterministic" in agents
+    assert "`llmwiki eval pdf-quality` is local" in agents
+    assert "PDF source aliases must not include parser-created aliases or paper title aliases" in agents
+    assert "LLM repair may only repair JSON syntax" in agents
+    assert "content_role=\"ignored\"" in agents
+    assert "MinerU" in agents
     assert "vector" in agents
     assert "Web UI" in agents
 
@@ -264,6 +288,12 @@ def test_gitignore_excludes_generated_workspace_content():
         "!sources/raw/.gitkeep",
         "sources/normalized/*",
         "!sources/normalized/.gitkeep",
+        "sources/metadata/*",
+        "!sources/metadata/.gitkeep",
+        "sources/blocks/*",
+        "!sources/blocks/.gitkeep",
+        "sources/chunks/*",
+        "!sources/chunks/.gitkeep",
         "staging/*",
         "!staging/.gitkeep",
         "state/*.sqlite",

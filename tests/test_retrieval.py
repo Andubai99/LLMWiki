@@ -1,11 +1,78 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 from pathlib import Path
 
 from llmwiki.cli import main
 from tests.helpers import make_workspace, seed_contradicts_relationship
 from tests.test_query_lint_doctor import add_ingest_apply, fixture
+
+
+def seed_pdf_claim_catalog(root: Path) -> str:
+    source_id = "src_osworld_pdf"
+    with sqlite3.connect(root / "state" / "catalog.sqlite") as conn:
+        conn.execute(
+            """
+            insert into sources (
+                source_id, title, source_type, raw_path, normalized_path,
+                sha256, url, imported_at, status
+            )
+            values (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                source_id,
+                "OSWorld: Benchmarking Multimodal Agents",
+                "pdf",
+                "sources/raw/src_osworld_pdf-osworld.pdf",
+                "sources/normalized/src_osworld_pdf.md",
+                "sha-osworld",
+                None,
+                "2026-05-31T00:00:00+00:00",
+                "applied",
+            ),
+        )
+        conn.execute(
+            """
+            insert into claims (claim_id, source_id, claim_text, citation_locator, confidence_status, created_at)
+            values (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "clm_osworld_gap",
+                source_id,
+                "OSWorld reports a performance gap between computer-use agents and humans.",
+                "page:1;block:src_osworld_pdf_p001_b0004;section:Abstract",
+                "cited",
+                "2026-05-31T00:00:00+00:00",
+            ),
+        )
+        conn.execute(
+            """
+            insert into claims_fts (claim_id, claim_text, source_id, citation_locator)
+            values (?, ?, ?, ?)
+            """,
+            (
+                "clm_osworld_gap",
+                "OSWorld reports a performance gap between computer-use agents and humans.",
+                source_id,
+                "page:1;block:src_osworld_pdf_p001_b0004;section:Abstract",
+            ),
+        )
+        conn.execute(
+            """
+            insert into pages (page_id, path, page_type, title, aliases, updated_at)
+            values (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                source_id,
+                "wiki/sources/src_osworld_pdf.md",
+                "source",
+                "OSWorld: Benchmarking Multimodal Agents",
+                json.dumps(["OSWorld"]),
+                "2026-05-31T00:00:00+00:00",
+            ),
+        )
+    return source_id
 
 
 def test_retrieve_json_schema_and_python_api(capsys):
@@ -56,6 +123,38 @@ def test_retrieve_json_schema_and_python_api(capsys):
     api_result = retrieve_context(root, "retrieval citation anchors")
     assert api_result["contexts"]
     assert api_result["contexts"][0]["source_id"] == source_id
+
+
+def test_retrieve_preserves_pdf_page_block_locator(capsys):
+    root = make_workspace()
+    assert main(["init", "--root", str(root)]) == 0
+    source_id = seed_pdf_claim_catalog(root)
+    capsys.readouterr()
+
+    assert main(["retrieve", "OSWorld performance gap", "--root", str(root), "--json"]) == 0
+    data = json.loads(capsys.readouterr().out)
+
+    assert data["contexts"]
+    context = data["contexts"][0]
+    assert context["source_id"] == source_id
+    assert context["page_path"] == "wiki/sources/src_osworld_pdf.md"
+    assert context["citation_locator"] == "page:1;block:src_osworld_pdf_p001_b0004;section:Abstract"
+
+
+def test_retrieve_pdf_source_by_title_without_source_title_alias(capsys):
+    root = make_workspace()
+    assert main(["init", "--root", str(root)]) == 0
+    source_id = seed_pdf_claim_catalog(root)
+    capsys.readouterr()
+
+    with sqlite3.connect(root / "state" / "catalog.sqlite") as conn:
+        assert conn.execute("select count(*) from aliases where target_id = ?", (source_id,)).fetchone()[0] == 0
+
+    assert main(["retrieve", "OSWorld Benchmarking Multimodal Agents", "--root", str(root), "--json"]) == 0
+    data = json.loads(capsys.readouterr().out)
+
+    assert data["contexts"]
+    assert data["contexts"][0]["source_id"] == source_id
 
 
 def test_retrieve_does_not_call_llm_planner_or_provider(monkeypatch, capsys):

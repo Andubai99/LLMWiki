@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import hashlib
+import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
 from .db import catalog_path, connect, schema_status
+from .pdf_quality import evaluate_pdf_quality
 
 
 @dataclass(frozen=True)
@@ -84,6 +87,35 @@ def lint_workspace(root: Path) -> LintReport:
         lines.append(f"- source hash drift: {drift_count}")
         issue_count += drift_count
 
+        pdf_issues = pdf_parser_quality_issues(root, conn)
+        pdf_issue_count = (
+            pdf_issues["marker_titles"]
+            + pdf_issues["missing_sidecars"]
+            + pdf_issues["claims_missing_block_locator"]
+            + pdf_issues["claims_invalid_block_locator"]
+            + pdf_issues["title_quality_issues"]
+            + pdf_issues["invalid_sidecar_schema"]
+            + pdf_issues["high_parser_warnings"]
+            + pdf_issues["low_content_block_ratio"]
+            + pdf_issues["parser_created_aliases"]
+            + pdf_issues["source_title_alias_collisions"]
+        )
+        lines.append(f"- pdf parser issues: {pdf_issue_count}")
+        lines.append(f"  - pdf marker titles: {pdf_issues['marker_titles']}")
+        lines.append(f"  - pdf missing sidecars: {pdf_issues['missing_sidecars']}")
+        lines.append(f"  - pdf claims missing page/block locator: {pdf_issues['claims_missing_block_locator']}")
+        lines.append(f"  - pdf claims with invalid block locator: {pdf_issues['claims_invalid_block_locator']}")
+        lines.append(f"  - pdf extraction warnings: {pdf_issues['extraction_warnings']}")
+        lines.append(f"  - pdf title quality issues: {pdf_issues['title_quality_issues']}")
+        lines.append(f"  - pdf invalid sidecar schema: {pdf_issues['invalid_sidecar_schema']}")
+        lines.append(f"  - pdf high parser warnings: {pdf_issues['high_parser_warnings']}")
+        lines.append(f"  - pdf low content block ratio: {pdf_issues['low_content_block_ratio']}")
+        lines.append(f"  - pdf parser-created aliases: {pdf_issues['parser_created_aliases']}")
+        lines.append(f"  - pdf source title alias collisions: {pdf_issues['source_title_alias_collisions']}")
+        lines.append(f"  - pdf paper identity overlaps: {pdf_issues['paper_identity_overlaps']}")
+        lines.append(f"  - pdf llm json repairs observed: {pdf_issues['llm_json_repairs_observed']}")
+        issue_count += pdf_issue_count
+
         recorded_contradicts = conn.execute(
             "select count(*) from relationships where relationship_type = 'contradicts'"
         ).fetchone()[0]
@@ -160,6 +192,95 @@ def source_hash_drift(root: Path, conn) -> int:
         if digest != row["sha256"]:
             drift += 1
     return drift
+
+
+def pdf_parser_quality_issues(root: Path, conn) -> dict[str, int]:
+    pdf_sources = conn.execute(
+        "select source_id, title from sources where source_type = 'pdf'"
+    ).fetchall()
+    marker_titles = 0
+    missing_sidecars = 0
+    extraction_warnings = 0
+    known_blocks_by_source: dict[str, set[str]] = {}
+
+    for source in pdf_sources:
+        source_id = source["source_id"]
+        if re.fullmatch(r"<!--\s*page:\d+\s*-->", str(source["title"] or "").strip()):
+            marker_titles += 1
+        metadata_path = root / "sources" / "metadata" / f"{source_id}.json"
+        blocks_path = root / "sources" / "blocks" / f"{source_id}.jsonl"
+        chunks_path = root / "sources" / "chunks" / f"{source_id}.jsonl"
+        if not (metadata_path.exists() and blocks_path.exists() and chunks_path.exists()):
+            missing_sidecars += 1
+        if metadata_path.exists():
+            try:
+                metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+                warnings = metadata.get("warnings") if isinstance(metadata, dict) else []
+                extraction_warnings += len(warnings) if isinstance(warnings, list) else 0
+            except (OSError, json.JSONDecodeError):
+                extraction_warnings += 1
+        known_blocks_by_source[source_id] = load_known_block_ids(blocks_path)
+
+    claims_missing_block_locator = 0
+    claims_invalid_block_locator = 0
+    for claim in conn.execute(
+        """
+        select c.claim_id, c.source_id, c.citation_locator
+        from claims c
+        join sources s on s.source_id = c.source_id
+        where s.source_type = 'pdf'
+        """
+    ).fetchall():
+        locator = str(claim["citation_locator"] or "")
+        block_id = block_id_from_locator(locator)
+        if not is_pdf_page_block_locator(locator) or not block_id:
+            claims_missing_block_locator += 1
+            continue
+        if block_id not in known_blocks_by_source.get(claim["source_id"], set()):
+            claims_invalid_block_locator += 1
+
+    summary = evaluate_pdf_quality(root)
+
+    return {
+        "marker_titles": marker_titles,
+        "missing_sidecars": missing_sidecars,
+        "claims_missing_block_locator": claims_missing_block_locator,
+        "claims_invalid_block_locator": claims_invalid_block_locator,
+        "extraction_warnings": extraction_warnings,
+        "title_quality_issues": summary.title_quality_issue_count,
+        "invalid_sidecar_schema": summary.invalid_sidecar_schema_count,
+        "high_parser_warnings": summary.high_parser_warning_source_count,
+        "low_content_block_ratio": summary.low_content_block_ratio_source_count,
+        "parser_created_aliases": summary.parser_created_duplicate_alias_count,
+        "source_title_alias_collisions": summary.source_title_alias_collision_count,
+        "paper_identity_overlaps": summary.paper_identity_overlap_count,
+        "llm_json_repairs_observed": summary.llm_json_repair_observed_count,
+    }
+
+
+def load_known_block_ids(path: Path) -> set[str]:
+    if not path.exists():
+        return set()
+    block_ids: set[str] = set()
+    try:
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            payload = json.loads(line)
+            if isinstance(payload, dict) and payload.get("block_id"):
+                block_ids.add(str(payload["block_id"]))
+    except (OSError, json.JSONDecodeError):
+        return set()
+    return block_ids
+
+
+def is_pdf_page_block_locator(locator: str) -> bool:
+    return re.search(r"(?:^|;)page:[1-9]\d*;block:[A-Za-z0-9_.-]+(?:;|$)", locator) is not None
+
+
+def block_id_from_locator(locator: str) -> str | None:
+    match = re.search(r"(?:^|;)page:[1-9]\d*;block:([A-Za-z0-9_.-]+)(?:;|$)", locator)
+    return match.group(1) if match else None
 
 
 def unresolved_potential_contradictions(conn) -> int:

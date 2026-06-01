@@ -1,0 +1,266 @@
+from __future__ import annotations
+
+import json
+import math
+from dataclasses import asdict, dataclass, field
+from pathlib import Path
+from typing import Any
+
+from .pdf_blocks import SourceBlock
+
+
+CHUNK_SCHEMA_VERSION = "source_chunk.v2.9.2"
+DEFAULT_TARGET_TOKENS = 4500
+DEFAULT_MAX_TOKENS = 6000
+
+
+@dataclass(frozen=True)
+class SourceChunk:
+    source_id: str
+    chunk_id: str
+    chunk_type: str
+    block_ids: list[str]
+    context_block_ids: list[str]
+    section_path: list[str]
+    page_start: int
+    page_end: int
+    token_estimate: int
+    schema_version: str = CHUNK_SCHEMA_VERSION
+    warnings: list[str] = field(default_factory=list)
+    diagnostics: dict[str, int] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+def estimate_tokens(text: str) -> int:
+    if not text:
+        return 0
+    return math.ceil(len(text) / 4)
+
+
+def build_source_chunks(
+    source_id: str,
+    blocks: list[SourceBlock],
+    *,
+    target_tokens: int = DEFAULT_TARGET_TOKENS,
+    max_tokens: int = DEFAULT_MAX_TOKENS,
+) -> list[SourceChunk]:
+    chunks: list[SourceChunk] = []
+    next_index = 1
+    diagnostics = chunk_diagnostics(blocks)
+    content_blocks = [block for block in blocks if getattr(block, "content_role", "content") != "ignored"]
+
+    metadata_ids = [
+        block.block_id
+        for block in content_blocks
+        if block.block_type in {"title", "authors", "abstract"}
+    ]
+    if metadata_ids:
+        chunks.append(
+            make_chunk(
+                source_id,
+                next_index,
+                "metadata_summary",
+                [block for block in content_blocks if block.block_id in metadata_ids],
+                [],
+                target_tokens,
+                max_tokens,
+                diagnostics=diagnostics,
+            )
+        )
+        next_index += 1
+
+    headings_by_section: dict[tuple[str, ...], SourceBlock] = {}
+    section_blocks: dict[tuple[str, ...], list[SourceBlock]] = {}
+    for block in content_blocks:
+        section_key = tuple(block.section_path)
+        if block.block_type == "section_heading" and section_key:
+            headings_by_section[section_key] = block
+            continue
+        if block.block_type in {"title", "authors", "abstract"}:
+            continue
+        if not section_key:
+            section_key = ("Body",)
+        section_blocks.setdefault(section_key, []).append(block)
+
+    for section_key, section_items in section_blocks.items():
+        context = [headings_by_section[section_key].block_id] if section_key in headings_by_section else []
+        chunk_type = section_chunk_type(section_key, section_items)
+        section_chunks = split_section_blocks(
+            source_id,
+            section_key,
+            section_items,
+            context,
+            next_index,
+            chunk_type,
+            target_tokens,
+            max_tokens,
+            diagnostics,
+        )
+        chunks.extend(section_chunks)
+        next_index += len(section_chunks)
+
+    return chunks
+
+
+def split_section_blocks(
+    source_id: str,
+    section_key: tuple[str, ...],
+    section_blocks: list[SourceBlock],
+    context_block_ids: list[str],
+    start_index: int,
+    chunk_type: str,
+    target_tokens: int,
+    max_tokens: int,
+    diagnostics: dict[str, int] | None = None,
+) -> list[SourceChunk]:
+    chunks: list[SourceChunk] = []
+    current: list[SourceBlock] = []
+    current_tokens = 0
+    next_index = start_index
+    split_needed = total_tokens(section_blocks) > max_tokens
+
+    for block in section_blocks:
+        block_tokens = estimate_tokens(block.text_clean)
+        if block_tokens > max_tokens:
+            if current:
+                chunks.append(
+                    make_chunk(
+                        source_id,
+                        next_index,
+                        "long_section_part" if split_needed else chunk_type,
+                        current,
+                        context_block_ids,
+                        target_tokens,
+                        max_tokens,
+                        diagnostics=diagnostics,
+                    )
+                )
+                next_index += 1
+                current = []
+                current_tokens = 0
+            chunks.append(
+                make_chunk(
+                    source_id,
+                    next_index,
+                    "large_block_split",
+                    [block],
+                    context_block_ids,
+                    target_tokens,
+                    max_tokens,
+                    warnings=["large_block_split"],
+                    diagnostics=diagnostics,
+                )
+            )
+            next_index += 1
+            continue
+        if current and current_tokens + block_tokens > target_tokens:
+            chunks.append(
+                make_chunk(
+                    source_id,
+                    next_index,
+                    "long_section_part" if split_needed else chunk_type,
+                    current,
+                    context_block_ids,
+                    target_tokens,
+                    max_tokens,
+                    diagnostics=diagnostics,
+                )
+            )
+            next_index += 1
+            current = []
+            current_tokens = 0
+        current.append(block)
+        current_tokens += block_tokens
+
+    if current:
+        chunks.append(
+            make_chunk(
+                source_id,
+                next_index,
+                "long_section_part" if split_needed else chunk_type,
+                current,
+                context_block_ids,
+                target_tokens,
+                max_tokens,
+                diagnostics=diagnostics,
+            )
+        )
+    return chunks
+
+
+def make_chunk(
+    source_id: str,
+    chunk_index: int,
+    chunk_type: str,
+    blocks: list[SourceBlock],
+    context_block_ids: list[str],
+    target_tokens: int,
+    max_tokens: int,
+    warnings: list[str] | None = None,
+    diagnostics: dict[str, int] | None = None,
+) -> SourceChunk:
+    page_start = min(block.page_start for block in blocks)
+    page_end = max(block.page_end for block in blocks)
+    section_path = blocks[0].section_path if blocks else []
+    return SourceChunk(
+        source_id=source_id,
+        chunk_id=f"{source_id}_c{chunk_index:04d}",
+        chunk_type=chunk_type,
+        block_ids=[block.block_id for block in blocks],
+        context_block_ids=context_block_ids,
+        section_path=list(section_path),
+        page_start=page_start,
+        page_end=page_end,
+        token_estimate=estimate_tokens(" ".join(block.text_clean for block in blocks)),
+        warnings=warnings or [],
+        diagnostics=diagnostics or chunk_diagnostics(blocks),
+    )
+
+
+def section_chunk_type(section_key: tuple[str, ...], blocks: list[SourceBlock]) -> str:
+    section_name = " ".join(section_key).lower()
+    if "reference" in section_name or all(block.block_type == "reference" for block in blocks):
+        return "reference_text"
+    if any(term in section_name for term in ("conclusion", "limitations", "discussion")):
+        return "conclusion_or_limitations"
+    if "appendix" in section_name:
+        return "appendix_text"
+    return "section_claim_extraction"
+
+
+def total_tokens(blocks: list[SourceBlock]) -> int:
+    return estimate_tokens(" ".join(block.text_clean for block in blocks))
+
+
+def write_chunks_jsonl(path: Path, chunks: list[SourceChunk]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    content = "".join(json.dumps(chunk.to_dict(), ensure_ascii=False) + "\n" for chunk in chunks)
+    path.write_text(content, encoding="utf-8")
+
+
+def load_chunks_jsonl(path: Path) -> list[SourceChunk]:
+    chunks: list[SourceChunk] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if line.strip():
+            data = json.loads(line)
+            data.setdefault(
+                "diagnostics",
+                {
+                    "total_block_count": 0,
+                    "content_block_count": 0,
+                    "ignored_block_count": 0,
+                },
+            )
+            chunks.append(SourceChunk(**data))
+    return chunks
+
+
+def chunk_diagnostics(blocks: list[SourceBlock]) -> dict[str, int]:
+    ignored = sum(1 for block in blocks if getattr(block, "content_role", "content") == "ignored")
+    return {
+        "total_block_count": len(blocks),
+        "content_block_count": len(blocks) - ignored,
+        "ignored_block_count": ignored,
+    }

@@ -44,12 +44,14 @@ REQUIRED_SECTIONS = {
         "Open Questions",
     ),
     "synthesis": (
-        "Question/Topic",
-        "Short Answer",
-        "Evidence",
+        "Scope",
+        "Current Answer",
+        "Evidence Map",
         "Analysis",
-        "Uncertainties",
+        "Conflicts And Limits",
+        "Open Questions",
         "Related Pages",
+        "Revision History",
     ),
 }
 
@@ -355,7 +357,7 @@ def sync_catalog(
             )
             conn.execute("delete from aliases where target_id = ?", (page_id,))
             seen_aliases: set[str] = set()
-            for alias in [str(patch["title"]), *aliases]:
+            for alias in aliases_for_index(patch, aliases):
                 normalized = normalize_alias(alias)
                 if normalized in seen_aliases:
                     continue
@@ -415,6 +417,13 @@ def sync_catalog(
             """,
             (run_id, source_id, "applied", now, now),
         )
+
+
+def aliases_for_index(patch: dict[str, object], aliases: list[str]) -> list[str]:
+    title = str(patch["title"])
+    if str(patch.get("page_type") or "") == "source" and title not in aliases:
+        return aliases
+    return [title, *aliases]
 
 
 def page_reference_map(conn, patches: list[dict[str, object]]) -> dict[str, str]:

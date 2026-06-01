@@ -609,7 +609,7 @@ def valid_relationship(relationship: dict[str, Any], catalog: dict[str, set[str]
     known_node_ids = catalog["page_ids"] | catalog["source_ids"]
     return (
         subject_id in known_node_ids
-        and object_id in known_node_ids
+        and object_id in (known_node_ids | catalog["claim_ids"])
         and evidence_claim_id in catalog["claim_ids"]
         and (source_id in catalog["source_ids"] or source_id.startswith("synthesis:"))
     )

@@ -14,6 +14,9 @@ REQUIRED_PATHS = (
     "AGENTS.md",
     "sources/raw",
     "sources/normalized",
+    "sources/metadata",
+    "sources/blocks",
+    "sources/chunks",
     "state/catalog.sqlite",
     "wiki/index.md",
     "wiki/log.md",
@@ -32,6 +35,9 @@ name = "LLM Wiki"
 [sources]
 raw_dir = "sources/raw"
 normalized_dir = "sources/normalized"
+metadata_dir = "sources/metadata"
+blocks_dir = "sources/blocks"
+chunks_dir = "sources/chunks"
 
 [wiki]
 root = "wiki"
@@ -176,6 +182,9 @@ def init_workspace(root: Path) -> None:
         "config",
         "sources/raw",
         "sources/normalized",
+        "sources/metadata",
+        "sources/blocks",
+        "sources/chunks",
         "wiki/sources",
         "wiki/concepts",
         "wiki/entities",

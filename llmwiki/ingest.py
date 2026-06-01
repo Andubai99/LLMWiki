@@ -8,6 +8,9 @@ from pathlib import Path
 
 from .db import catalog_path, connect
 from .llm_ingest import LLMIngestProposal, create_llm_ingest_proposal, normalize_claim_confidence
+from .pdf_blocks import BLOCK_SCHEMA_VERSION, load_blocks_jsonl, load_metadata_json
+from .pdf_quality import detect_parser_created_alias
+from .source_chunks import CHUNK_SCHEMA_VERSION, load_chunks_jsonl
 from .workspace import utc_now
 
 
@@ -58,6 +61,7 @@ def ingest_source(
     patch_claims = formal_claims(claims)
     if not patch_claims:
         raise ValueError(f"no cited claims found for source {source_id}")
+    parse_diagnostics = source_parse_diagnostics(root, source)
 
     run_id = f"run_{source_id}_{created_at.replace(':', '').replace('+', 'Z')}_{uuid.uuid4().hex[:8]}"
     run_dir = root / "staging" / run_id
@@ -65,7 +69,7 @@ def ingest_source(
     patches_dir.mkdir(parents=True, exist_ok=False)
 
     concept_title, aliases = proposal_concept(source, patch_claims, llm_proposal)
-    entity = proposal_entity(patch_claims, llm_proposal)
+    entity = proposal_entity(patch_claims, llm_proposal, source)
     duplicate_candidates = find_duplicate_candidates(root, concept_title, aliases)
     if entity:
         entity_title, entity_aliases = entity
@@ -73,6 +77,7 @@ def ingest_source(
         duplicate_candidates = list(dict.fromkeys(duplicate_candidates))
     if llm_proposal:
         duplicate_candidates.extend(llm_proposal.duplicate_candidates)
+        duplicate_candidates.extend(pdf_identity_warning_candidates(source, llm_proposal))
         duplicate_candidates = list(dict.fromkeys(duplicate_candidates))
     conflict_candidates = find_conflict_candidates(root, patch_claims)
     if llm_proposal:
@@ -93,11 +98,15 @@ def ingest_source(
                 {
                     "llm_provider": llm_proposal.provider,
                     "llm_model": llm_proposal.model,
+                    "llm_json_repair_count": llm_json_repair_count(llm_proposal),
+                    "llm_json_repair_failed_count": llm_json_repair_failed_count(llm_proposal),
+                    "llm_json_repair_events": llm_json_repair_events(llm_proposal),
                 }
                 if llm_proposal
                 else {}
             ),
             **({"trigger": trigger} if trigger else {}),
+            **parse_diagnostics,
         },
     )
     if llm_proposal:
@@ -112,6 +121,7 @@ def ingest_source(
         entity=entity,
         source_summary=llm_proposal.source_summary if llm_proposal else None,
         concept_definition=llm_proposal.concept_definition if llm_proposal else None,
+        source_diagnostics=parse_diagnostics,
     )
     for index, patch in enumerate(patches, start=1):
         patch_path = patches_dir / f"{index:03d}-{patch['page_type']}-{safe_patch_file_stem(str(patch['page_id']))}.json"
@@ -131,6 +141,7 @@ def ingest_source(
         coverage=coverage,
         llm_proposal=llm_proposal,
         proposal_engine=proposal_engine,
+        source_diagnostics=parse_diagnostics,
     )
     return IngestResult(
         run_id=run_id,
@@ -152,6 +163,36 @@ def load_source(root: Path, source_id: str) -> dict[str, str]:
     if not row:
         raise ValueError(f"unknown source_id: {source_id}")
     return dict(row)
+
+
+def source_parse_diagnostics(root: Path, source: dict[str, str]) -> dict[str, object]:
+    if source.get("source_type") != "pdf":
+        return {}
+    source_id = source["source_id"]
+    metadata_rel = f"sources/metadata/{source_id}.json"
+    blocks_rel = f"sources/blocks/{source_id}.jsonl"
+    chunks_rel = f"sources/chunks/{source_id}.jsonl"
+    metadata_path = root / metadata_rel
+    blocks_path = root / blocks_rel
+    chunks_path = root / chunks_rel
+    metadata = load_metadata_json(metadata_path) if metadata_path.exists() else None
+    blocks = load_blocks_jsonl(blocks_path) if blocks_path.exists() else []
+    chunks = load_chunks_jsonl(chunks_path) if chunks_path.exists() else []
+    return {
+        "source_parse_schema": BLOCK_SCHEMA_VERSION,
+        "source_chunk_schema": CHUNK_SCHEMA_VERSION,
+        "page_count": metadata.page_count if metadata else 0,
+        "block_count": len(blocks),
+        "chunk_count": len(chunks),
+        "parser_warning_count": len(metadata.warnings) if metadata else 0,
+        "title_quality": metadata.title_quality if metadata else {},
+        "title_candidates": metadata.title_candidates if metadata else [],
+        "paper_identity": metadata.paper_identity if metadata else {},
+        "parser_quality": metadata.parser_quality if metadata else {},
+        "metadata_path": metadata_rel,
+        "blocks_path": blocks_rel,
+        "chunks_path": chunks_rel,
+    }
 
 
 def extract_claims(source_id: str, normalized_text: str, created_at: str | None = None) -> list[Claim]:
@@ -229,16 +270,28 @@ def proposal_concept(
     if not proposal or not proposal.concept_title:
         return fallback_title, fallback_aliases
     title = concise_concept_title(proposal.concept_title, source["title"])
-    aliases = concept_aliases(title, proposal.aliases or fallback_aliases, source["title"])
+    aliases = concept_aliases(
+        title,
+        proposal.aliases or fallback_aliases,
+        source["title"],
+        pdf=source.get("source_type") == "pdf",
+    )
     return title, aliases
 
 
 def proposal_entity(
     claims: list[Claim],
     proposal: LLMIngestProposal | None,
+    source: dict[str, str] | None = None,
 ) -> tuple[str, list[str]] | None:
     if proposal and proposal.entity_title:
         aliases = proposal.entity_aliases or [proposal.entity_title]
+        if source and source.get("source_type") == "pdf":
+            aliases = [
+                alias
+                for alias in aliases
+                if not detect_parser_created_alias(alias)
+            ] or [proposal.entity_title]
         return proposal.entity_title, aliases
     return infer_entity(claims)
 
@@ -298,17 +351,37 @@ def concise_concept_title(title: str, source_title: str) -> str:
     return title
 
 
-def concept_aliases(title: str, aliases: list[str], source_title: str) -> list[str]:
+def concept_aliases(title: str, aliases: list[str], source_title: str, *, pdf: bool = False) -> list[str]:
     source_key = normalize_alias(source_title)
     cleaned: list[str] = []
     seen: set[str] = set()
     for alias in [title, *aliases]:
+        if pdf and detect_parser_created_alias(alias):
+            continue
         key = normalize_alias(alias)
         if not key or key == source_key or key in seen:
             continue
         cleaned.append(alias)
         seen.add(key)
     return cleaned or [title]
+
+
+def pdf_identity_warning_candidates(source: dict[str, str], proposal: LLMIngestProposal | None) -> list[str]:
+    if source.get("source_type") != "pdf" or not proposal:
+        return []
+    warnings: list[str] = []
+    for alias in [proposal.concept_title or "", *(proposal.aliases or []), proposal.entity_title or "", *(proposal.entity_aliases or [])]:
+        if alias and detect_parser_created_alias(alias):
+            warnings.append(f"parser-created alias ignored: {alias}")
+        if alias and normalize_alias(alias) == normalize_alias(source.get("title", "")):
+            warnings.append(f"source title alias ignored: {alias}")
+    concept_values = [proposal.concept_title or "", *(proposal.aliases or [])]
+    entity_values = [proposal.entity_title or "", *(proposal.entity_aliases or [])]
+    concept_keys = {normalize_alias(value) for value in concept_values if normalize_alias(value)}
+    entity_keys = {normalize_alias(value) for value in entity_values if normalize_alias(value)}
+    for key in sorted(concept_keys & entity_keys):
+        warnings.append(f"concept/entity identity overlap: {key}")
+    return list(dict.fromkeys(warnings))
 
 
 def infer_entity(claims: list[Claim]) -> tuple[str, list[str]] | None:
@@ -370,6 +443,7 @@ def build_patches(
     entity: tuple[str, list[str]] | None,
     source_summary: str | None = None,
     concept_definition: str | None = None,
+    source_diagnostics: dict[str, object] | None = None,
 ) -> list[dict[str, object]]:
     source_page_id = source["source_id"]
     concept_slug = slugify(concept_title)
@@ -386,7 +460,7 @@ def build_patches(
             "page_type": "source",
             "target_path": source_path,
             "title": source["title"],
-            "aliases": [source["title"], source["source_id"]],
+            "aliases": source_page_aliases(source),
             "claim_ids": claim_ids,
             "source_id": source["source_id"],
             "content": render_source_page(
@@ -396,6 +470,7 @@ def build_patches(
                 concept_path,
                 now,
                 source_summary=source_summary,
+                source_diagnostics=source_diagnostics,
             ),
             "links": [
                 {"from_page": source_page_id, "to_page": concept_page_id, "link_type": "mentions"}
@@ -478,6 +553,12 @@ def build_patches(
     return patches
 
 
+def source_page_aliases(source: dict[str, str]) -> list[str]:
+    if source.get("source_type") == "pdf":
+        return [source["source_id"]]
+    return [source["title"], source["source_id"]]
+
+
 def typed_page_id(page_type: str, slug: str) -> str:
     return f"{page_type}:{slug}"
 
@@ -513,8 +594,12 @@ def render_source_page(
     concept_path: str,
     updated_at: str,
     source_summary: str | None = None,
+    source_diagnostics: dict[str, object] | None = None,
 ) -> str:
     claim_ids = [claim.claim_id for claim in claims]
+    pdf_metadata = pdf_source_metadata_lines(source_diagnostics or {})
+    paper_metadata = paper_metadata_lines(source_diagnostics or {})
+    parser_quality = parser_quality_lines(source_diagnostics or {})
     return "\n".join(
         [
             "---",
@@ -535,6 +620,15 @@ def render_source_page(
             f"- raw_path: `{source['raw_path']}`",
             f"- normalized_path: `{source['normalized_path']}`",
             f"- sha256: `{source['sha256']}`",
+            *pdf_metadata,
+            "",
+            "## Paper Metadata",
+            "",
+            *paper_metadata,
+            "",
+            "## Parser Quality",
+            "",
+            *parser_quality,
             "",
             "## Key Claims",
             "",
@@ -558,6 +652,54 @@ def render_source_page(
             "",
         ]
     )
+
+
+def pdf_source_metadata_lines(source_diagnostics: dict[str, object]) -> list[str]:
+    if not source_diagnostics:
+        return []
+    return [
+        f"- page_count: `{source_diagnostics.get('page_count', 0)}`",
+        f"- block_count: `{source_diagnostics.get('block_count', 0)}`",
+        f"- chunk_count: `{source_diagnostics.get('chunk_count', 0)}`",
+        f"- metadata_path: `{source_diagnostics.get('metadata_path', '')}`",
+        f"- blocks_path: `{source_diagnostics.get('blocks_path', '')}`",
+        f"- chunks_path: `{source_diagnostics.get('chunks_path', '')}`",
+    ]
+
+
+def paper_metadata_lines(source_diagnostics: dict[str, object]) -> list[str]:
+    if not source_diagnostics:
+        return ["- Not a PDF source."]
+    identity = source_diagnostics.get("paper_identity")
+    title_quality = source_diagnostics.get("title_quality")
+    candidates = source_diagnostics.get("title_candidates")
+    if not isinstance(identity, dict):
+        identity = {}
+    if not isinstance(title_quality, dict):
+        title_quality = {}
+    candidate_count = len(candidates) if isinstance(candidates, list) else 0
+    authors = identity.get("authors") if isinstance(identity.get("authors"), list) else []
+    return [
+        f"- title: `{identity.get('title', '')}`",
+        f"- authors: `{', '.join(str(author) for author in authors) if authors else ''}`",
+        f"- venue_or_status: `{identity.get('venue_or_status', '')}`",
+        f"- title_selected_source: `{title_quality.get('selected_source', '')}`",
+        f"- title_score: `{title_quality.get('score', '')}`",
+        f"- title_candidates: `{candidate_count}`",
+    ]
+
+
+def parser_quality_lines(source_diagnostics: dict[str, object]) -> list[str]:
+    parser_quality = source_diagnostics.get("parser_quality") if source_diagnostics else {}
+    if not isinstance(parser_quality, dict):
+        parser_quality = {}
+    return [
+        f"- content_block_count: `{parser_quality.get('content_block_count', 0)}`",
+        f"- ignored_block_count: `{parser_quality.get('ignored_block_count', 0)}`",
+        f"- content_block_ratio: `{parser_quality.get('content_block_ratio', 0)}`",
+        f"- repeated_header_footer_count: `{parser_quality.get('repeated_header_footer_count', 0)}`",
+        f"- page_number_count: `{parser_quality.get('page_number_count', 0)}`",
+    ]
 
 
 def render_concept_page(
@@ -692,6 +834,7 @@ def write_triage(
     coverage: int,
     llm_proposal: LLMIngestProposal | None = None,
     proposal_engine: str = "heuristic",
+    source_diagnostics: dict[str, object] | None = None,
 ) -> None:
     lines = [
         f"# Triage: {run_id}",
@@ -706,6 +849,7 @@ def write_triage(
         "",
         *llm_proposal_lines(llm_proposal),
         "",
+        *pdf_parse_diagnostics_section(source_diagnostics or {}),
         "## Candidate Patches",
         "",
         *[f"- `{patch['target_path']}` ({patch['page_type']})" for patch in patches],
@@ -726,6 +870,36 @@ def write_triage(
     path.write_text("\n".join(lines), encoding="utf-8", newline="\n")
 
 
+def pdf_parse_diagnostics_section(source_diagnostics: dict[str, object]) -> list[str]:
+    if not source_diagnostics:
+        return []
+    title_candidates = source_diagnostics.get("title_candidates")
+    candidate_count = len(title_candidates) if isinstance(title_candidates, list) else 0
+    return [
+        "## PDF Parse Diagnostics",
+        "",
+        f"- source_parse_schema: `{source_diagnostics.get('source_parse_schema', '')}`",
+        f"- source_chunk_schema: `{source_diagnostics.get('source_chunk_schema', '')}`",
+        f"- page_count: {source_diagnostics.get('page_count', 0)}",
+        f"- block_count: {source_diagnostics.get('block_count', 0)}",
+        f"- chunk_count: {source_diagnostics.get('chunk_count', 0)}",
+        f"- parser_warning_count: {source_diagnostics.get('parser_warning_count', 0)}",
+        f"- metadata_path: `{source_diagnostics.get('metadata_path', '')}`",
+        f"- blocks_path: `{source_diagnostics.get('blocks_path', '')}`",
+        f"- chunks_path: `{source_diagnostics.get('chunks_path', '')}`",
+        "",
+        "## Paper Metadata",
+        "",
+        *paper_metadata_lines(source_diagnostics),
+        f"- title_candidates: `{candidate_count}`",
+        "",
+        "## Parser Quality",
+        "",
+        *parser_quality_lines(source_diagnostics),
+        "",
+    ]
+
+
 def write_jsonl(path: Path, rows: list[dict[str, str]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
@@ -738,12 +912,34 @@ def write_jsonl(path: Path, rows: list[dict[str, str]]) -> None:
 def llm_proposal_lines(proposal: LLMIngestProposal | None) -> list[str]:
     if not proposal:
         return ["- proposal_engine: `heuristic`", "- LLM provider was not called."]
-    return [
+    lines = [
         "- proposal_engine: `llm`",
         f"- provider: `{proposal.provider}`",
         f"- model: `{proposal.model}`",
         f"- usage: `{json.dumps(proposal.usage, ensure_ascii=False)}`",
+        f"- llm_json_repair_count: `{llm_json_repair_count(proposal)}`",
+        f"- llm_json_repair_failed_count: `{llm_json_repair_failed_count(proposal)}`",
     ]
+    for event in proposal.repair_events:
+        details = event.to_dict()
+        chunk = f", chunk_id={details['chunk_id']}" if details.get("chunk_id") else ""
+        lines.append(
+            "- llm_json_repair_event: "
+            f"`{details['response_kind']}` status=`{details['status']}`{chunk} error=`{details['error']}`"
+        )
+    return lines
+
+
+def llm_json_repair_events(proposal: LLMIngestProposal) -> list[dict[str, str | None]]:
+    return [event.to_dict() for event in proposal.repair_events]
+
+
+def llm_json_repair_count(proposal: LLMIngestProposal) -> int:
+    return len(proposal.repair_events)
+
+
+def llm_json_repair_failed_count(proposal: LLMIngestProposal) -> int:
+    return sum(1 for event in proposal.repair_events if event.status != "repaired")
 
 
 def write_run_manifest(
@@ -775,6 +971,9 @@ def write_llm_proposal(path: Path, proposal: LLMIngestProposal) -> None:
         "provider": proposal.provider,
         "model": proposal.model,
         "usage": proposal.usage,
+        "llm_json_repair_count": llm_json_repair_count(proposal),
+        "llm_json_repair_failed_count": llm_json_repair_failed_count(proposal),
+        "llm_json_repair_events": llm_json_repair_events(proposal),
         "content": proposal.raw_content,
         "claims": proposal.claims,
         "concept_title": proposal.concept_title,

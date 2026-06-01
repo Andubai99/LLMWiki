@@ -24,6 +24,12 @@ sources/raw/*
 !sources/raw/.gitkeep
 sources/normalized/*
 !sources/normalized/.gitkeep
+sources/metadata/*
+!sources/metadata/.gitkeep
+sources/blocks/*
+!sources/blocks/.gitkeep
+sources/chunks/*
+!sources/chunks/.gitkeep
 
 state/*.sqlite
 state/*.sqlite-*

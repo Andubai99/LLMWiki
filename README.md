@@ -8,6 +8,53 @@ Planner filter validation remains strict. Invalid values such as `confidence = "
 
 LLM ingest normalizes locator-backed claims before staging. A claim with a valid `line:N` locator is treated as `cited`; claims without a valid locator remain weak/uncited and cannot become formal conclusions.
 
+## V2.8 Synthesis Quality Notes
+
+`llmwiki ask --writeback` now plans synthesis writeback before applying it. The plan decides whether to create a new synthesis page, update an existing synthesis page, or stop with `needs_review` when multiple targets are plausible. The plan is inspectable in CLI output, JSON output, and `staging/<run-id>/synthesis-plan.json`.
+
+```bash
+llmwiki ask "RAG 为什么需要引用锚点？" --root . --preview-writeback
+llmwiki ask "RAG 为什么需要引用锚点？" --root . --writeback
+llmwiki ask "RAG 为什么需要引用锚点？" --root . --writeback --writeback-mode update
+```
+
+`--preview-writeback` is read-only: it answers the question and shows the proposed synthesis structure without creating staging runs, wiki pages, or catalog rows. `--writeback` is explicit approval to apply the validated synthesis plan through staging/apply.
+
+Synthesis pages are living wiki pages, not saved chat transcripts. V2.8 pages use `Scope`, `Current Answer`, `Evidence Map`, `Analysis`, `Conflicts And Limits`, `Open Questions`, `Related Pages`, and `Revision History`. Repeated questions about the same topic should update the same synthesis page instead of creating near-duplicates.
+
+Synthesis planning output is not evidence. Evidence maps may only cite existing catalog claims with real `claim_id`, `source_id`, `citation_locator`, and `page_path`. Synthesis writeback does not create derived formal claims; `claims.jsonl` remains empty for synthesis runs.
+
+## V2.9.3 PDF Ingest Robustness
+
+PDF chunk ingest and PDF consolidation now get one schema-aware JSON repair attempt when the configured LLM returns malformed JSON. The repair step can only repair JSON syntax/shape; it cannot create evidence, invent block ids, add citations, or bypass staging validation. If repair still fails, the source fails safely with a sanitized diagnostic.
+
+Malformed LLM JSON is not persisted. `llm-proposal.json`, `run.json`, `triage.md`, and `review --detail` record repair counts and sanitized repair events, but they do not store API keys, `config/api-keys.toml`, full prompts, or the raw malformed response.
+
+For PDF source pages, the paper title is title metadata, not a formal alias. The source page formal alias list only keeps the `source_id`; retrieval still matches the paper through `sources.title` and `pages.title`. `llmwiki eval pdf-quality` and `llmwiki lint` report source-title alias collisions, parser-created aliases, identity overlaps, and observed JSON repair counts.
+
+## V2.9.2 PDF Quality Notes
+
+Text PDFs are now parsed into source metadata, stable blocks, and deterministic chunks before LLM ingest. Generated sidecars live under `sources/metadata/`, `sources/blocks/`, and `sources/chunks/`; these files are local generated artifacts and are ignored by Git like `sources/raw/` and `sources/normalized/`.
+
+PDF normalized Markdown is rendered from blocks and uses block anchors such as:
+
+```markdown
+<!-- block:src_xxx_p001_b0004; page:1; type:abstract; section:Abstract -->
+```
+
+PDF claims must cite page/block locators, for example `page:1;block:src_xxx_p001_b0004;section:Abstract`. A bare `line:N` locator is still valid for Markdown/text sources, but it is not enough for PDF claims. `llmwiki lint` reports parser-marker titles, missing PDF sidecars, missing page/block locators, invalid block references, extraction warnings, title quality issues, invalid sidecar schemas, high parser warning counts, low content-block ratios, and parser-created aliases.
+
+V2.9.2 adds a local parser-quality layer. PDF sidecars now use `source_metadata.v2.9.2`, `source_block.v2.9.2`, and `source_chunk.v2.9.2`. Metadata records title candidates, paper identity, and parser quality; blocks keep raw and cleaned text plus `content_role`, `cleaning_operations`, and `quality_flags`. Repeated headers, footers, page numbers, and other `content_role="ignored"` blocks remain in sidecars for auditability but are excluded from normalized body text and chunk claim prompts.
+
+```bash
+llmwiki eval pdf-quality --root .
+llmwiki eval pdf-quality --root . --json
+```
+
+`llmwiki eval pdf-quality` is deterministic and read-only. It reads catalog and PDF sidecars, reports title pass rate, sidecar completeness, block locator validity, content block ratio, and parser-created alias counts, and does not call LLM, embedding, network, or write workspace files.
+
+V2.9.2 still uses `pypdf` only. MinerU, OCR for scanned PDFs, structured table extraction, figure caption extraction, and equation object extraction are deferred to later rich parsing work.
+
 ## Retrieval Layer v2.7（混合本地检索 + 向量召回 + reranking）
 
 `llmwiki retrieve` 是外部 RAG 系统、Agent 和 LLM prompt 调用 LLMWiki 的稳定证据接口。它从本地 SQLite catalog 检索 source-backed claims，并返回 citation、page path、relationship type、score、retrieval reasons 和 warning。这个命令使用确定性的混合本地检索，不会调用外部 LLM API。
@@ -116,6 +163,7 @@ llmwiki eval retrieval --root . --dataset tests/evals/retrieval_v2_3.jsonl --jso
 llmwiki eval retrieval --root . --dataset tests/evals/retrieval_v2_4_fruits.jsonl
 llmwiki eval retrieval --root . --dataset tests/evals/retrieval_v2_6_semantic_fruits.jsonl
 llmwiki eval retrieval --root . --dataset tests/evals/retrieval_v2_7_evidence_selection_fruits.jsonl
+llmwiki eval retrieval --root . --dataset tests/evals/retrieval_v2_9_1_pdf_foundation.jsonl
 ```
 
 评测输出包含 `hit@5`、`recall@5`、`precision@5`、`MRR`、`nDCG@5`、`MAP@5`、coverage、source diversity、redundancy rate、selected conflict exposure 和 weak evidence visibility，并继续包含 LLMWiki 特有的 `claim_id_validity`、`source_id_validity`、`citation_locator_presence`、`page_path_validity`、`relationship_validity` 和 `contradiction_exposure_rate`。
@@ -225,9 +273,9 @@ staging/<run-id>/
   patches/
 ```
 
-`run.json` 会记录 `proposal_engine=llm`、provider、model 和 `trigger=add`；`triage.md` 会包含 `## LLM Proposal` 调试信息。`add` 不会让 LLM 直接写正式 `wiki/`，也不会在 ingest 阶段修改 `sources/raw/` 或 `sources/normalized/`。只有内部 `apply` 安全校验通过后，候选 patch 才能落入正式 wiki 和 SQLite catalog。
+`run.json` 会记录 `proposal_engine=llm`、provider、model 和 `trigger=add`；PDF source 还会记录 `source_parse_schema`、`source_chunk_schema`、page/block/chunk counts 和 sidecar paths。`triage.md` 会包含 `## LLM Proposal` 调试信息；PDF run 还会包含 `## PDF Parse Diagnostics`。`add` 不会让 LLM 直接写正式 `wiki/`，也不会在 ingest 阶段修改 `sources/raw/`。只有内部 `apply` 安全校验通过后，候选 patch 才能落入正式 wiki 和 SQLite catalog。
 
-LLM claims 必须带有效 source locator。没有合法 `line:N` 的 claim 会被标记为 weak/uncited，不能进入正式 patch 结论。内部/调试场景仍可直接运行 `llmwiki ingest <source-id> --root .`。需要运行旧的规则化 ingest 时，可以在工作区 `config/config.toml` 中设置：
+LLM claims 必须带有效 source locator。Markdown/text source 使用合法 `line:N` locator；PDF source 使用合法 `page:N;block:<block_id>` locator。没有合法 locator 的 claim 会被标记为 weak/uncited，不能进入正式 patch 结论。内部/调试场景仍可直接运行 `llmwiki ingest <source-id> --root .`。需要运行旧的规则化 ingest 时，可以在工作区 `config/config.toml` 中设置：
 
 V2.5.1 禁用自动关键词/否定词矛盾检测。LLM 或人工提出的 conflict candidate 会保留在 triage/open questions 中，只有能够被验证为真实 source-backed claim disagreement 的内容才应成为正式 `contradicts` relationship。
 
@@ -273,6 +321,9 @@ LLM Wiki 是一个本地优先的个人研究库：用 Python CLI 管理资料�
 - `config/api-keys.toml`：本地 API key 配置，已被 `.gitignore` 忽略，不应提交。
 - `sources/raw/`：原始 Markdown、文本 PDF、纯文本和网页快照。
 - `sources/normalized/`：带行号、页码或段落锚点的规范化 Markdown。
+- `sources/metadata/`：V2.9.2 PDF metadata sidecars，本地生成态，不提交。
+- `sources/blocks/`：V2.9.2 PDF block JSONL sidecars，本地生成态，不提交。
+- `sources/chunks/`：V2.9.2 PDF chunk JSONL sidecars，本地生成态，不提交。
 - `state/catalog.sqlite`：可重建的索引和审计缓存，保存 source、claim、alias、page、link、relationship、ingest run。
 - `state/embeddings/`：V2.6 本地可重建 vector index 缓存，不提交。
 - `wiki/index.md`：wiki 入口索引。
@@ -388,7 +439,7 @@ V2.6 embedding 维护命令。`status` 只读本地配置和 `state/embeddings/`
 llmwiki lint --root .
 ```
 
-检查断链、孤页、重复 alias、无引用 claim、source hash drift 和缺 citation 状态。
+检查断链、孤页、重复 alias、无引用 claim、source hash drift、缺 citation 状态，以及 PDF parser sidecar/page-block locator 质量。
 
 lint 是独立维护动作，不属于 `add` 的默认流程。用户可以显式要求 LLM 运行 `llmwiki lint --root .`，或手动运行。lint 会报告已经记录的 `contradicts` relationships；这些记录是审计信息，不会自动让 lint 失败。V2.5.1 不再用 `not`、`不`、`不需要`、`不建议` 这类词面规则推断未处理矛盾。
 
@@ -407,6 +458,7 @@ llmwiki doctor --root .
 - Markdown 和纯文本资料导入。
 - 可访问 `http`/`https` URL 的网页快照导入。
 - 通过 `pypdf` 导入文本 PDF。
+- 文本 PDF 会生成 metadata/block/chunk sidecars，并以 page/block locator 追踪 claims。
 - 默认通过 OpenAI-compatible provider 调用 DeepSeek 真实 API。
 - `llmwiki add` 自动完成单个资料的导入、LLM ingest、staging 验证和 apply。
 - `llmwiki ask` 使用 LLM query planning 生成 subqueries，再基于本地 evidence 调用 LLM 生成带 citation 的回答。
@@ -427,5 +479,6 @@ llmwiki doctor --root .
 - 云同步。
 - 团队权限或多人审阅流程。
 - 扫描 PDF OCR。
+- MinerU、表格结构化抽取、图注抽取和公式对象抽取。
 - 自动裁决资料之间的冲突。
 - LLM 直接绕过 staging/apply 修改正式 wiki 页面。
