@@ -141,6 +141,22 @@ def test_retrieve_preserves_pdf_page_block_locator(capsys):
     assert context["citation_locator"] == "page:1;block:src_osworld_pdf_p001_b0004;section:Abstract"
 
 
+def test_retrieve_pdf_source_by_title_without_source_title_alias(capsys):
+    root = make_workspace()
+    assert main(["init", "--root", str(root)]) == 0
+    source_id = seed_pdf_claim_catalog(root)
+    capsys.readouterr()
+
+    with sqlite3.connect(root / "state" / "catalog.sqlite") as conn:
+        assert conn.execute("select count(*) from aliases where target_id = ?", (source_id,)).fetchone()[0] == 0
+
+    assert main(["retrieve", "OSWorld Benchmarking Multimodal Agents", "--root", str(root), "--json"]) == 0
+    data = json.loads(capsys.readouterr().out)
+
+    assert data["contexts"]
+    assert data["contexts"][0]["source_id"] == source_id
+
+
 def test_retrieve_does_not_call_llm_planner_or_provider(monkeypatch, capsys):
     root = make_workspace()
     assert main(["init", "--root", str(root)]) == 0

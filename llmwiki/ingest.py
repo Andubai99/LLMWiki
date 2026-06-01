@@ -373,6 +373,14 @@ def pdf_identity_warning_candidates(source: dict[str, str], proposal: LLMIngestP
     for alias in [proposal.concept_title or "", *(proposal.aliases or []), proposal.entity_title or "", *(proposal.entity_aliases or [])]:
         if alias and detect_parser_created_alias(alias):
             warnings.append(f"parser-created alias ignored: {alias}")
+        if alias and normalize_alias(alias) == normalize_alias(source.get("title", "")):
+            warnings.append(f"source title alias ignored: {alias}")
+    concept_values = [proposal.concept_title or "", *(proposal.aliases or [])]
+    entity_values = [proposal.entity_title or "", *(proposal.entity_aliases or [])]
+    concept_keys = {normalize_alias(value) for value in concept_values if normalize_alias(value)}
+    entity_keys = {normalize_alias(value) for value in entity_values if normalize_alias(value)}
+    for key in sorted(concept_keys & entity_keys):
+        warnings.append(f"concept/entity identity overlap: {key}")
     return list(dict.fromkeys(warnings))
 
 
@@ -452,7 +460,7 @@ def build_patches(
             "page_type": "source",
             "target_path": source_path,
             "title": source["title"],
-            "aliases": [source["title"], source["source_id"]],
+            "aliases": source_page_aliases(source),
             "claim_ids": claim_ids,
             "source_id": source["source_id"],
             "content": render_source_page(
@@ -543,6 +551,12 @@ def build_patches(
             }
         )
     return patches
+
+
+def source_page_aliases(source: dict[str, str]) -> list[str]:
+    if source.get("source_type") == "pdf":
+        return [source["source_id"]]
+    return [source["title"], source["source_id"]]
 
 
 def typed_page_id(page_type: str, slug: str) -> str:
