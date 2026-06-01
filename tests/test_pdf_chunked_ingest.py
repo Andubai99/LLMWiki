@@ -271,6 +271,128 @@ def test_pdf_chunked_ingest_drops_uncited_chunk_claims_when_cited_claims_exist(m
     assert proposal.claims[0]["confidence_status"] == "cited"
 
 
+def test_pdf_chunked_ingest_repairs_malformed_chunk_json(monkeypatch, capsys):
+    root = make_workspace()
+    assert main(["init", "--root", str(root)]) == 0
+    capsys.readouterr()
+
+    monkeypatch.setattr(
+        "llmwiki.pdf_blocks.read_pdf_pages",
+        lambda content: (
+            {"title": "Repairable Chunk PDF"},
+            ["Repairable Chunk PDF\n\nAbstract\nKnown repairable block text.\n"],
+        ),
+    )
+    pdf = root / "repairable.pdf"
+    pdf.write_bytes(b"%PDF fake")
+    result = import_source(root, str(pdf))
+    known_block_id = load_blocks_jsonl(root / "sources" / "blocks" / f"{result.source_id}.jsonl")[-1].block_id
+
+    class RepairableChunkProvider:
+        def __init__(self):
+            self.calls: list[list[dict[str, str]]] = []
+
+        def complete(self, messages: list[dict[str, str]], schema: dict[str, Any] | None = None) -> dict[str, Any]:
+            self.calls.append(messages)
+            if "Repair invalid JSON" in messages[0]["content"]:
+                payload = {
+                    "claims": [
+                        {
+                            "claim_text": "Repaired chunk claim.",
+                            "citation_locator": f"block:{known_block_id}",
+                            "confidence_status": "cited",
+                        }
+                    ],
+                    "chunk_summary": "Repaired summary.",
+                }
+                return {
+                    "provider": "fake",
+                    "model": "fake-pdf",
+                    "content": json.dumps(payload),
+                    "usage": {"prompt_tokens": 1, "completion_tokens": 2, "total_tokens": 3},
+                }
+            if "PDF consolidation" in messages[-1]["content"]:
+                payload = {
+                    "claims": [],
+                    "concept": {"title": "Repairable Chunk PDF", "aliases": []},
+                    "entity": None,
+                    "duplicate_candidates": [],
+                    "conflict_candidates": [],
+                    "source_summary": "Repairable chunk summary.",
+                    "concept_definition": "Repairable chunk concept.",
+                }
+                return {"provider": "fake", "model": "fake-pdf", "content": json.dumps(payload), "usage": {}}
+            return {
+                "provider": "fake",
+                "model": "fake-pdf",
+                "content": '{"claims": [], "chunk_summary": "broken"',
+                "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
+            }
+
+    provider = RepairableChunkProvider()
+    monkeypatch.setattr("llmwiki.llm_ingest.create_provider", lambda config, root=None: provider)
+    normalized_text = (root / result.normalized_path).read_text(encoding="utf-8")
+
+    proposal = create_llm_ingest_proposal(root, source_row(root, result.source_id), normalized_text)
+
+    assert [claim["claim_text"] for claim in proposal.claims] == ["Repaired chunk claim."]
+    assert proposal.usage["total_tokens"] == 18
+    raw_content = json.loads(proposal.raw_content)
+    assert raw_content["chunk_responses"][0]["raw_content"] == json.dumps(
+        {
+            "claims": [
+                {
+                    "claim_text": "Repaired chunk claim.",
+                    "citation_locator": f"block:{known_block_id}",
+                    "confidence_status": "cited",
+                }
+            ],
+            "chunk_summary": "Repaired summary.",
+        }
+    )
+    assert "broken" not in proposal.raw_content
+    assert len([call for call in provider.calls if "Repair invalid JSON" in call[0]["content"]]) == 1
+
+
+def test_pdf_chunked_ingest_failed_chunk_repair_is_safe(monkeypatch, capsys):
+    root = make_workspace()
+    assert main(["init", "--root", str(root)]) == 0
+    capsys.readouterr()
+
+    monkeypatch.setattr(
+        "llmwiki.pdf_blocks.read_pdf_pages",
+        lambda content: (
+            {"title": "Failed Repair PDF"},
+            ["Failed Repair PDF\n\nAbstract\nKnown block text.\n"],
+        ),
+    )
+    pdf = root / "failed-repair.pdf"
+    pdf.write_bytes(b"%PDF fake")
+    result = import_source(root, str(pdf))
+
+    class FailedRepairProvider:
+        def complete(self, messages: list[dict[str, str]], schema: dict[str, Any] | None = None) -> dict[str, Any]:
+            if "Repair invalid JSON" in messages[0]["content"]:
+                return {"provider": "fake", "model": "fake-pdf", "content": '{"still": "broken"', "usage": {}}
+            return {
+                "provider": "fake",
+                "model": "fake-pdf",
+                "content": '{"api_key": "sk-should-not-leak", "path": "config/api-keys.toml"',
+                "usage": {},
+            }
+
+    monkeypatch.setattr("llmwiki.llm_ingest.create_provider", lambda config, root=None: FailedRepairProvider())
+    normalized_text = (root / result.normalized_path).read_text(encoding="utf-8")
+
+    with pytest.raises(LLMProviderError) as exc:
+        create_llm_ingest_proposal(root, source_row(root, result.source_id), normalized_text)
+
+    message = str(exc.value)
+    assert "chunk" in message
+    assert "sk-should-not-leak" not in message
+    assert "config/api-keys.toml" not in message
+
+
 def test_pdf_add_exposes_parse_diagnostics_in_staging_and_source_page(monkeypatch, capsys):
     root = make_workspace()
     assert main(["init", "--root", str(root)]) == 0

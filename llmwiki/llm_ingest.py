@@ -118,10 +118,17 @@ def create_chunked_pdf_ingest_proposal(
         response_provider = str(response.get("provider") or response_provider)
         response_model = str(response.get("model") or response_model)
         content = str(response.get("content") or "")
-        payload = parse_json_object(content)
+        payload, content, _, repair_usage = parse_llm_json_with_repair(
+            content=content,
+            provider=provider,
+            schema=chunk_proposal_schema(),
+            response_kind="chunk",
+            chunk_id=chunk.chunk_id,
+        )
         chunk_proposal = normalize_payload({"claims": payload.get("claims") or []}, source_id, chunk_text)
         all_claims.extend(cited_claims_only(chunk_proposal.claims))
         add_usage(usage, dict(response.get("usage") or {}))
+        add_usage(usage, repair_usage)
         chunk_records.append(
             {
                 "chunk_id": chunk.chunk_id,
