@@ -43,6 +43,14 @@ class SourceMetadata:
     parser_backend_fallback_from: str | None = None
     parser_backend_fallback_reason: str = ""
     structured_block_counts: dict[str, int] = field(default_factory=dict)
+    parser_command_invoked: bool = False
+    parser_command: list[str] = field(default_factory=list)
+    parser_command_returncode: int | None = None
+    parser_command_duration_seconds: float | None = None
+    parser_command_stdout_snippet: str = ""
+    parser_command_stderr_snippet: str = ""
+    parser_content_list_path: str = ""
+    parser_content_list_discovery_count: int = 0
     schema_version: str = METADATA_SCHEMA_VERSION
     authors: list[str] = field(default_factory=list)
     abstract: str = ""
@@ -119,24 +127,36 @@ def parse_pdf_source(
     parser_backend: str | None = None,
     parser_output_dir: Path | None = None,
 ) -> PdfParseResult:
-    from .pdf_parser_backends import PdfParseRequest, select_pdf_parser_backend
+    from .pdf_parser_backends import PdfParseRequest, PdfParserBackendError, PypdfBackend, select_pdf_parser_backend
 
     selection = select_pdf_parser_backend(root or Path("."), requested_backend=parser_backend, output_dir=parser_output_dir)
-
-    result = selection.backend.parse(
-        PdfParseRequest(
-            root=root or Path("."),
-            source_id=source_id,
-            raw_path=Path(raw_path),
-            filename=filename,
-            normalized_path=normalized_path,
-            metadata_path=metadata_path,
-            blocks_path=blocks_path,
-            chunks_path=chunks_path,
-            content=content,
-            options={"parser_output_dir": str(parser_output_dir)} if parser_output_dir else {},
-        )
+    request = PdfParseRequest(
+        root=root or Path("."),
+        source_id=source_id,
+        raw_path=Path(raw_path),
+        filename=filename,
+        normalized_path=normalized_path,
+        metadata_path=metadata_path,
+        blocks_path=blocks_path,
+        chunks_path=chunks_path,
+        content=content,
+        options={"parser_output_dir": str(parser_output_dir)} if parser_output_dir else {},
     )
+    backend_name = (parser_backend or selection.config.default_backend).strip().casefold()
+    try:
+        result = selection.backend.parse(request)
+    except PdfParserBackendError as exc:
+        if backend_name != "auto":
+            raise
+        fallback_result = PypdfBackend().parse(request)
+        warning = f"MinerU parser failed; falling back to pypdf: {exc}"
+        metadata = replace(
+            fallback_result.metadata,
+            parser_backend_fallback_from="mineru",
+            parser_backend_fallback_reason=warning,
+            parser_backend_warnings=[*fallback_result.metadata.parser_backend_warnings, warning],
+        )
+        return PdfParseResult(metadata=metadata, blocks=fallback_result.blocks)
     metadata = result.metadata
     if selection.fallback_from or selection.warnings:
         metadata = replace(

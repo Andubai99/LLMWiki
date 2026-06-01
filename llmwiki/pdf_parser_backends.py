@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from .llm import main_config_path
+from . import mineru_runner
 
 
 @dataclass(frozen=True)
@@ -163,9 +164,31 @@ class MinerUBackend:
         from .pdf_blocks import SourceBlock, SourceMetadata
 
         output_dir = self.output_dir or _request_output_dir(request)
+        command_result = None
         if output_dir is None:
-            raise PdfParserBackendError("MinerU parser output directory is required for V2.9.4")
-        content_list_path = output_dir / "content_list.json"
+            config = load_pdf_parser_config(request.root)
+            output_dir = _mineru_output_root(request, config)
+            command_result = mineru_runner.run_mineru_command(
+                mineru_runner.MinerUCommandRequest(
+                    root=request.root,
+                    source_id=request.source_id,
+                    raw_path=request.root / request.raw_path,
+                    output_root=output_dir,
+                    config=config,
+                )
+            )
+            if command_result.returncode != 0 or command_result.timed_out:
+                reason = "; ".join(command_result.warnings) or f"MinerU command failed with code {command_result.returncode}"
+                raise PdfParserBackendError(reason)
+            try:
+                content_list_path = mineru_runner.select_mineru_content_list(
+                    command_result.content_list_candidates,
+                    pdf_stem=Path(request.filename).stem,
+                )
+            except mineru_runner.MinerUCommandError as exc:
+                raise PdfParserBackendError(str(exc)) from exc
+        else:
+            content_list_path = output_dir / "content_list.json"
         if not content_list_path.exists():
             raise PdfParserBackendError("MinerU content_list.json not found")
         try:
@@ -220,6 +243,7 @@ class MinerUBackend:
         page_count = max((block.page_start for block in blocks), default=0)
         structured_counts = Counter(block.content_role for block in blocks if block.content_role != "content")
         artifact_path = to_posix(content_list_path)
+        command_invoked = command_result is not None
         metadata = SourceMetadata(
             source_id=request.source_id,
             title=title,
@@ -236,6 +260,14 @@ class MinerUBackend:
             parser_backend_options={"parser_output_dir": to_posix(output_dir)},
             parser_artifact_paths=[artifact_path],
             structured_block_counts=dict(structured_counts),
+            parser_command_invoked=command_invoked,
+            parser_command=command_result.command if command_result else [],
+            parser_command_returncode=command_result.returncode if command_result else None,
+            parser_command_duration_seconds=command_result.duration_seconds if command_result else None,
+            parser_command_stdout_snippet=command_result.stdout_snippet if command_result else "",
+            parser_command_stderr_snippet=command_result.stderr_snippet if command_result else "",
+            parser_content_list_path=artifact_path,
+            parser_content_list_discovery_count=len(command_result.content_list_candidates) if command_result else 1,
             title_quality={"status": "selected", "selected_source": "mineru", "score": 1.0, "reasons": ["mineru_title"]},
             title_candidates=[{"text": title, "source": "mineru", "score": 1.0, "reasons": ["mineru_title"]}],
             paper_identity={"title": title, "authors": [], "venue_or_status": "", "canonical_names": [title], "warnings": []},
@@ -319,6 +351,10 @@ def select_pdf_parser_backend(
 
 def to_posix(path: str | Path) -> str:
     return Path(path).as_posix()
+
+
+def _mineru_output_root(request: PdfParseRequest, config: PdfParserConfig) -> Path:
+    return request.root / config.artifact_dir / request.source_id / "mineru" / "attempt-0001"
 
 
 def _request_output_dir(request: PdfParseRequest) -> Path | None:
