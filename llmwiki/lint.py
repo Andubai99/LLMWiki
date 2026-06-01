@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .db import catalog_path, connect, schema_status
+from .pdf_quality import evaluate_pdf_quality
 
 
 @dataclass(frozen=True)
@@ -92,6 +93,11 @@ def lint_workspace(root: Path) -> LintReport:
             + pdf_issues["missing_sidecars"]
             + pdf_issues["claims_missing_block_locator"]
             + pdf_issues["claims_invalid_block_locator"]
+            + pdf_issues["title_quality_issues"]
+            + pdf_issues["invalid_sidecar_schema"]
+            + pdf_issues["high_parser_warnings"]
+            + pdf_issues["low_content_block_ratio"]
+            + pdf_issues["parser_created_aliases"]
         )
         lines.append(f"- pdf parser issues: {pdf_issue_count}")
         lines.append(f"  - pdf marker titles: {pdf_issues['marker_titles']}")
@@ -99,6 +105,11 @@ def lint_workspace(root: Path) -> LintReport:
         lines.append(f"  - pdf claims missing page/block locator: {pdf_issues['claims_missing_block_locator']}")
         lines.append(f"  - pdf claims with invalid block locator: {pdf_issues['claims_invalid_block_locator']}")
         lines.append(f"  - pdf extraction warnings: {pdf_issues['extraction_warnings']}")
+        lines.append(f"  - pdf title quality issues: {pdf_issues['title_quality_issues']}")
+        lines.append(f"  - pdf invalid sidecar schema: {pdf_issues['invalid_sidecar_schema']}")
+        lines.append(f"  - pdf high parser warnings: {pdf_issues['high_parser_warnings']}")
+        lines.append(f"  - pdf low content block ratio: {pdf_issues['low_content_block_ratio']}")
+        lines.append(f"  - pdf parser-created aliases: {pdf_issues['parser_created_aliases']}")
         issue_count += pdf_issue_count
 
         recorded_contradicts = conn.execute(
@@ -224,12 +235,19 @@ def pdf_parser_quality_issues(root: Path, conn) -> dict[str, int]:
         if block_id not in known_blocks_by_source.get(claim["source_id"], set()):
             claims_invalid_block_locator += 1
 
+    summary = evaluate_pdf_quality(root)
+
     return {
         "marker_titles": marker_titles,
         "missing_sidecars": missing_sidecars,
         "claims_missing_block_locator": claims_missing_block_locator,
         "claims_invalid_block_locator": claims_invalid_block_locator,
         "extraction_warnings": extraction_warnings,
+        "title_quality_issues": summary.title_quality_issue_count,
+        "invalid_sidecar_schema": summary.invalid_sidecar_schema_count,
+        "high_parser_warnings": summary.high_parser_warning_source_count,
+        "low_content_block_ratio": summary.low_content_block_ratio_source_count,
+        "parser_created_aliases": summary.parser_created_duplicate_alias_count,
     }
 
 

@@ -77,6 +77,10 @@ class PdfQualitySummary:
     parser_created_duplicate_alias_count: int
     issues: list[str]
     warnings: list[str]
+    title_quality_issue_count: int = 0
+    invalid_sidecar_schema_count: int = 0
+    high_parser_warning_source_count: int = 0
+    low_content_block_ratio_source_count: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -197,6 +201,10 @@ def evaluate_pdf_quality(root: Path) -> PdfQualitySummary:
             block_locator_validity=1.0,
             content_block_ratio=1.0,
             parser_created_duplicate_alias_count=0,
+            title_quality_issue_count=0,
+            invalid_sidecar_schema_count=0,
+            high_parser_warning_source_count=0,
+            low_content_block_ratio_source_count=0,
             issues=[],
             warnings=["catalog not found"],
         )
@@ -217,12 +225,20 @@ def evaluate_pdf_quality(root: Path) -> PdfQualitySummary:
                 block_locator_validity=1.0,
                 content_block_ratio=1.0,
                 parser_created_duplicate_alias_count=0,
+                title_quality_issue_count=0,
+                invalid_sidecar_schema_count=0,
+                high_parser_warning_source_count=0,
+                low_content_block_ratio_source_count=0,
                 issues=[],
                 warnings=[],
             )
 
         complete = 0
         valid_titles = 0
+        title_quality_issues = 0
+        invalid_sidecar_schema_count = 0
+        high_parser_warning_source_count = 0
+        low_content_block_ratio_source_count = 0
         ratios: list[float] = []
         issues: list[str] = []
         warnings: list[str] = []
@@ -239,16 +255,32 @@ def evaluate_pdf_quality(root: Path) -> PdfQualitySummary:
             if not detect_parser_created_alias(title):
                 valid_titles += 1
             else:
+                title_quality_issues += 1
                 issues.append(f"{source['source_id']}: parser-created title")
 
             metadata_path = root / metadata_rel
             if metadata_path.exists():
                 try:
                     metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+                    schema_version = str(metadata.get("schema_version") or "")
+                    if schema_version not in {"source_metadata.v2.9.1", "source_metadata.v2.9.2"}:
+                        invalid_sidecar_schema_count += 1
+                        issues.append(f"{source['source_id']}: invalid metadata schema {schema_version}")
+                    warnings_value = metadata.get("warnings")
+                    warning_count = len(warnings_value) if isinstance(warnings_value, list) else 0
                     parser_quality = metadata.get("parser_quality") or {}
+                    warning_count = max(warning_count, int(parser_quality.get("warning_count") or 0))
+                    if warning_count >= 5:
+                        high_parser_warning_source_count += 1
+                        issues.append(f"{source['source_id']}: high parser warning count {warning_count}")
                     if "content_block_ratio" in parser_quality:
-                        ratios.append(float(parser_quality["content_block_ratio"]))
+                        ratio = float(parser_quality["content_block_ratio"])
+                        ratios.append(ratio)
+                        if ratio < 0.2:
+                            low_content_block_ratio_source_count += 1
+                            issues.append(f"{source['source_id']}: low content block ratio {ratio:.3f}")
                 except Exception as exc:  # pragma: no cover - defensive reporting
+                    invalid_sidecar_schema_count += 1
                     issues.append(f"{source['source_id']}: invalid metadata sidecar: {exc}")
 
         aliases = conn.execute("select alias from aliases").fetchall()
@@ -266,6 +298,10 @@ def evaluate_pdf_quality(root: Path) -> PdfQualitySummary:
             block_locator_validity=block_locator_validity,
             content_block_ratio=sum(ratios) / len(ratios) if ratios else 1.0,
             parser_created_duplicate_alias_count=parser_alias_count,
+            title_quality_issue_count=title_quality_issues,
+            invalid_sidecar_schema_count=invalid_sidecar_schema_count,
+            high_parser_warning_source_count=high_parser_warning_source_count,
+            low_content_block_ratio_source_count=low_content_block_ratio_source_count,
             issues=issues,
             warnings=warnings,
         )
@@ -282,6 +318,10 @@ def format_pdf_quality_report(summary: PdfQualitySummary) -> str:
         f"Block locator validity: {summary.block_locator_validity:.3f}",
         f"Content block ratio: {summary.content_block_ratio:.3f}",
         f"Parser-created aliases: {summary.parser_created_duplicate_alias_count}",
+        f"Title quality issues: {summary.title_quality_issue_count}",
+        f"Invalid sidecar schema: {summary.invalid_sidecar_schema_count}",
+        f"High parser warnings: {summary.high_parser_warning_source_count}",
+        f"Low content block ratio: {summary.low_content_block_ratio_source_count}",
     ]
     if summary.issues:
         lines.append("Issues:")

@@ -46,7 +46,7 @@ def write_pdf_sidecars(root: Path, source_id: str = "src_pdf") -> None:
     (root / "sources" / "metadata" / f"{source_id}.json").write_text(
         json.dumps(
             {
-                "schema_version": "source_metadata.v2.9.1",
+                "schema_version": "source_metadata.v2.9.2",
                 "source_id": source_id,
                 "title": "OSWorld",
                 "source_type": "pdf",
@@ -61,6 +61,10 @@ def write_pdf_sidecars(root: Path, source_id: str = "src_pdf") -> None:
                 "authors": [],
                 "abstract": "",
                 "warnings": [],
+                "title_quality": {"status": "selected", "selected_source": "metadata", "score": 50, "reasons": []},
+                "title_candidates": [],
+                "paper_identity": {"title": "OSWorld", "authors": [], "venue_or_status": "", "canonical_names": ["OSWorld"], "warnings": []},
+                "parser_quality": {"page_count": 1, "block_count": 1, "content_block_count": 1, "ignored_block_count": 0, "content_block_ratio": 1.0, "warning_count": 0},
             }
         ),
         encoding="utf-8",
@@ -68,7 +72,7 @@ def write_pdf_sidecars(root: Path, source_id: str = "src_pdf") -> None:
     (root / "sources" / "blocks" / f"{source_id}.jsonl").write_text(
         json.dumps(
             {
-                "schema_version": "source_block.v2.9.1",
+                "schema_version": "source_block.v2.9.2",
                 "source_id": source_id,
                 "block_id": "src_pdf_p001_b0001",
                 "block_type": "paragraph",
@@ -79,6 +83,9 @@ def write_pdf_sidecars(root: Path, source_id: str = "src_pdf") -> None:
                 "text_clean": "OSWorld evaluates agents.",
                 "section_path": [],
                 "warnings": [],
+                "content_role": "content",
+                "cleaning_operations": [],
+                "quality_flags": [],
             }
         )
         + "\n",
@@ -148,3 +155,47 @@ def test_lint_reports_unknown_pdf_block_locator(capsys):
     out = capsys.readouterr().out
 
     assert "pdf claims with invalid block locator: 1" in out
+
+
+def test_lint_reports_pdf_title_quality_and_parser_alias_issues(capsys):
+    root = make_workspace()
+    assert main(["init", "--root", str(root)]) == 0
+    source_id = seed_pdf_source(root, title="Alice Example, Bob Example, Carol Example, David Example")
+    write_pdf_sidecars(root, source_id)
+    with sqlite3.connect(root / "state" / "catalog.sqlite") as conn:
+        conn.execute(
+            """
+            insert into aliases (alias, target_type, target_id, normalized_alias)
+            values ('page1', 'source', ?, 'page1')
+            """,
+            (source_id,),
+        )
+    capsys.readouterr()
+
+    assert main(["lint", "--root", str(root)]) == 1
+    out = capsys.readouterr().out
+
+    assert "pdf title quality issues: 1" in out
+    assert "pdf parser-created aliases: 1" in out
+
+
+def test_lint_reports_invalid_sidecar_schema_and_parser_warning_threshold(capsys):
+    root = make_workspace()
+    assert main(["init", "--root", str(root)]) == 0
+    source_id = seed_pdf_source(root)
+    write_pdf_sidecars(root, source_id)
+    metadata_path = root / "sources" / "metadata" / f"{source_id}.json"
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    metadata["schema_version"] = "source_metadata.v0"
+    metadata["warnings"] = [f"warning {index}" for index in range(6)]
+    metadata["parser_quality"]["warning_count"] = 6
+    metadata["parser_quality"]["content_block_ratio"] = 0.1
+    metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+    capsys.readouterr()
+
+    assert main(["lint", "--root", str(root)]) == 1
+    out = capsys.readouterr().out
+
+    assert "pdf invalid sidecar schema: 1" in out
+    assert "pdf high parser warnings: 1" in out
+    assert "pdf low content block ratio: 1" in out
