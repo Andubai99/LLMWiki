@@ -99,6 +99,9 @@ def lint_workspace(root: Path) -> LintReport:
             + pdf_issues["low_content_block_ratio"]
             + pdf_issues["parser_created_aliases"]
             + pdf_issues["source_title_alias_collisions"]
+            + pdf_issues["unknown_parser_backends"]
+            + pdf_issues["missing_parser_artifacts"]
+            + pdf_issues["ignored_blocks_in_chunks"]
         )
         lines.append(f"- pdf parser issues: {pdf_issue_count}")
         lines.append(f"  - pdf marker titles: {pdf_issues['marker_titles']}")
@@ -112,6 +115,9 @@ def lint_workspace(root: Path) -> LintReport:
         lines.append(f"  - pdf low content block ratio: {pdf_issues['low_content_block_ratio']}")
         lines.append(f"  - pdf parser-created aliases: {pdf_issues['parser_created_aliases']}")
         lines.append(f"  - pdf source title alias collisions: {pdf_issues['source_title_alias_collisions']}")
+        lines.append(f"  - pdf unknown parser backends: {pdf_issues['unknown_parser_backends']}")
+        lines.append(f"  - pdf missing parser artifacts: {pdf_issues['missing_parser_artifacts']}")
+        lines.append(f"  - pdf ignored blocks in chunks: {pdf_issues['ignored_blocks_in_chunks']}")
         lines.append(f"  - pdf paper identity overlaps: {pdf_issues['paper_identity_overlaps']}")
         lines.append(f"  - pdf llm json repairs observed: {pdf_issues['llm_json_repairs_observed']}")
         issue_count += pdf_issue_count
@@ -201,6 +207,9 @@ def pdf_parser_quality_issues(root: Path, conn) -> dict[str, int]:
     marker_titles = 0
     missing_sidecars = 0
     extraction_warnings = 0
+    unknown_parser_backends = 0
+    missing_parser_artifacts = 0
+    ignored_blocks_in_chunks = 0
     known_blocks_by_source: dict[str, set[str]] = {}
 
     for source in pdf_sources:
@@ -215,11 +224,20 @@ def pdf_parser_quality_issues(root: Path, conn) -> dict[str, int]:
         if metadata_path.exists():
             try:
                 metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+                backend = str(metadata.get("parser_backend") or metadata.get("extraction_engine") or "pypdf")
+                if backend not in {"pypdf", "mineru"}:
+                    unknown_parser_backends += 1
+                artifact_paths = metadata.get("parser_artifact_paths")
+                if isinstance(artifact_paths, list):
+                    for artifact_path in artifact_paths:
+                        if not parser_artifact_exists(root, str(artifact_path)):
+                            missing_parser_artifacts += 1
                 warnings = metadata.get("warnings") if isinstance(metadata, dict) else []
                 extraction_warnings += len(warnings) if isinstance(warnings, list) else 0
             except (OSError, json.JSONDecodeError):
                 extraction_warnings += 1
         known_blocks_by_source[source_id] = load_known_block_ids(blocks_path)
+        ignored_blocks_in_chunks += count_ignored_blocks_in_chunks(blocks_path, chunks_path)
 
     claims_missing_block_locator = 0
     claims_invalid_block_locator = 0
@@ -253,6 +271,9 @@ def pdf_parser_quality_issues(root: Path, conn) -> dict[str, int]:
         "low_content_block_ratio": summary.low_content_block_ratio_source_count,
         "parser_created_aliases": summary.parser_created_duplicate_alias_count,
         "source_title_alias_collisions": summary.source_title_alias_collision_count,
+        "unknown_parser_backends": unknown_parser_backends,
+        "missing_parser_artifacts": missing_parser_artifacts,
+        "ignored_blocks_in_chunks": ignored_blocks_in_chunks,
         "paper_identity_overlaps": summary.paper_identity_overlap_count,
         "llm_json_repairs_observed": summary.llm_json_repair_observed_count,
     }
@@ -281,6 +302,36 @@ def is_pdf_page_block_locator(locator: str) -> bool:
 def block_id_from_locator(locator: str) -> str | None:
     match = re.search(r"(?:^|;)page:[1-9]\d*;block:([A-Za-z0-9_.-]+)(?:;|$)", locator)
     return match.group(1) if match else None
+
+
+def parser_artifact_exists(root: Path, artifact_path: str) -> bool:
+    path = Path(artifact_path)
+    if path.is_absolute():
+        return path.exists()
+    return (root / path).exists() or path.exists()
+
+
+def count_ignored_blocks_in_chunks(blocks_path: Path, chunks_path: Path) -> int:
+    if not blocks_path.exists() or not chunks_path.exists():
+        return 0
+    ignored: set[str] = set()
+    try:
+        for line in blocks_path.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            block = json.loads(line)
+            if block.get("content_role") == "ignored" and block.get("block_id"):
+                ignored.add(str(block["block_id"]))
+        count = 0
+        for line in chunks_path.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            chunk = json.loads(line)
+            block_ids = list(chunk.get("block_ids") or []) + list(chunk.get("context_block_ids") or [])
+            count += sum(1 for block_id in block_ids if str(block_id) in ignored)
+        return count
+    except (OSError, json.JSONDecodeError):
+        return 0
 
 
 def unresolved_potential_contradictions(conn) -> int:

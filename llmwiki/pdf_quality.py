@@ -5,7 +5,7 @@ import math
 import re
 import sqlite3
 from collections import Counter, defaultdict
-from dataclasses import asdict, dataclass, replace
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -84,6 +84,15 @@ class PdfQualitySummary:
     source_title_alias_collision_count: int = 0
     paper_identity_overlap_count: int = 0
     llm_json_repair_observed_count: int = 0
+    parser_backend_distribution: dict[str, int] = field(default_factory=dict)
+    mineru_source_count: int = 0
+    backend_artifact_completeness: float = 1.0
+    backend_fallback_count: int = 0
+    structured_block_count: int = 0
+    table_like_block_count: int = 0
+    equation_like_block_count: int = 0
+    image_or_caption_block_count: int = 0
+    block_locator_validity_by_backend: dict[str, float] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -246,6 +255,15 @@ def evaluate_pdf_quality(root: Path) -> PdfQualitySummary:
         issues: list[str] = []
         warnings: list[str] = []
         parser_alias_count = 0
+        parser_backend_distribution: Counter[str] = Counter()
+        mineru_source_count = 0
+        backend_artifact_expected = 0
+        backend_artifact_complete = 0
+        backend_fallback_count = 0
+        structured_block_count = 0
+        table_like_block_count = 0
+        equation_like_block_count = 0
+        image_or_caption_block_count = 0
         for source in sources:
             metadata_rel, blocks_rel, chunks_rel = pdf_sidecar_paths(source["source_id"])
             paths = [metadata_rel, blocks_rel, chunks_rel]
@@ -265,6 +283,38 @@ def evaluate_pdf_quality(root: Path) -> PdfQualitySummary:
             if metadata_path.exists():
                 try:
                     metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+                    backend = str(metadata.get("parser_backend") or metadata.get("extraction_engine") or "pypdf")
+                    parser_backend_distribution[backend] += 1
+                    if backend == "mineru":
+                        mineru_source_count += 1
+                    if metadata.get("parser_backend_fallback_from"):
+                        backend_fallback_count += 1
+                    artifact_paths = metadata.get("parser_artifact_paths")
+                    if backend == "mineru" or artifact_paths:
+                        backend_artifact_expected += 1
+                        if isinstance(artifact_paths, list) and artifact_paths and all(
+                            artifact_exists(root, str(path)) for path in artifact_paths
+                        ):
+                            backend_artifact_complete += 1
+                        else:
+                            issues.append(f"{source['source_id']}: missing parser artifacts")
+                    structured_counts = metadata.get("structured_block_counts") or {}
+                    if isinstance(structured_counts, dict):
+                        table_like = int(structured_counts.get("table_like", structured_counts.get("table_like_block_count", 0)) or 0)
+                        equation_like = int(
+                            structured_counts.get("equation_like", structured_counts.get("equation_like_block_count", 0)) or 0
+                        )
+                        image_caption = int(
+                            structured_counts.get(
+                                "caption",
+                                structured_counts.get("image", structured_counts.get("image_or_caption_block_count", 0)),
+                            )
+                            or 0
+                        )
+                        table_like_block_count += table_like
+                        equation_like_block_count += equation_like
+                        image_or_caption_block_count += image_caption
+                        structured_block_count += table_like + equation_like + image_caption
                     schema_version = str(metadata.get("schema_version") or "")
                     if schema_version not in {"source_metadata.v2.9.1", "source_metadata.v2.9.2"}:
                         invalid_sidecar_schema_count += 1
@@ -298,6 +348,7 @@ def evaluate_pdf_quality(root: Path) -> PdfQualitySummary:
             warnings.append(f"pdf paper identity overlaps: {paper_identity_overlap_count}")
         llm_json_repair_observed_count = count_llm_json_repairs(root)
         block_locator_validity = _pdf_block_locator_validity(conn, root)
+        block_locator_validity_by_backend = _pdf_block_locator_validity_by_backend(conn, root, parser_backend_distribution)
         if block_locator_validity < 1.0:
             issues.append("invalid pdf block locators")
         return PdfQualitySummary(
@@ -315,6 +366,17 @@ def evaluate_pdf_quality(root: Path) -> PdfQualitySummary:
             source_title_alias_collision_count=source_title_alias_collision_count,
             paper_identity_overlap_count=paper_identity_overlap_count,
             llm_json_repair_observed_count=llm_json_repair_observed_count,
+            parser_backend_distribution=dict(parser_backend_distribution),
+            mineru_source_count=mineru_source_count,
+            backend_artifact_completeness=(
+                backend_artifact_complete / backend_artifact_expected if backend_artifact_expected else 1.0
+            ),
+            backend_fallback_count=backend_fallback_count,
+            structured_block_count=structured_block_count,
+            table_like_block_count=table_like_block_count,
+            equation_like_block_count=equation_like_block_count,
+            image_or_caption_block_count=image_or_caption_block_count,
+            block_locator_validity_by_backend=block_locator_validity_by_backend,
             issues=issues,
             warnings=warnings,
         )
@@ -338,6 +400,12 @@ def format_pdf_quality_report(summary: PdfQualitySummary) -> str:
         f"Source title alias collisions: {summary.source_title_alias_collision_count}",
         f"Paper identity overlaps: {summary.paper_identity_overlap_count}",
         f"LLM JSON repairs observed: {summary.llm_json_repair_observed_count}",
+        f"Parser backend distribution: {json.dumps(summary.parser_backend_distribution, ensure_ascii=False, sort_keys=True)}",
+        f"Backend artifact completeness: {summary.backend_artifact_completeness:.3f}",
+        f"Structured blocks: {summary.structured_block_count}",
+        f"Table-like blocks: {summary.table_like_block_count}",
+        f"Equation-like blocks: {summary.equation_like_block_count}",
+        f"Image/caption blocks: {summary.image_or_caption_block_count}",
     ]
     if summary.issues:
         lines.append("Issues:")
@@ -476,6 +544,78 @@ def _pdf_block_locator_validity(conn: sqlite3.Connection, root: Path) -> float:
         if match and match.group(1) in blocks_by_source[row["source_id"]]:
             valid += 1
     return valid / len(rows)
+
+
+def _pdf_block_locator_validity_by_backend(
+    conn: sqlite3.Connection,
+    root: Path,
+    backend_distribution: Counter[str],
+) -> dict[str, float]:
+    result = {backend: 1.0 for backend in backend_distribution}
+    rows = conn.execute(
+        """
+        select c.source_id, c.citation_locator
+        from claims c
+        join sources s on s.source_id = c.source_id
+        where s.source_type = 'pdf'
+        """
+    ).fetchall()
+    if not rows:
+        return result
+    backend_by_source = pdf_backend_by_source(root, [row["source_id"] for row in rows])
+    block_ids_by_source: dict[str, set[str]] = {}
+    totals: Counter[str] = Counter()
+    valid: Counter[str] = Counter()
+    for row in rows:
+        source_id = row["source_id"]
+        backend = backend_by_source.get(source_id, "pypdf")
+        totals[backend] += 1
+        if source_id not in block_ids_by_source:
+            _, blocks_rel, _ = pdf_sidecar_paths(source_id)
+            block_ids_by_source[source_id] = load_block_ids(root / blocks_rel)
+        match = re.search(r"block:([A-Za-z0-9_.:-]+)", row["citation_locator"] or "")
+        if match and match.group(1) in block_ids_by_source[source_id]:
+            valid[backend] += 1
+    for backend, total in totals.items():
+        result[backend] = valid[backend] / total if total else 1.0
+    return result
+
+
+def artifact_exists(root: Path, artifact_path: str) -> bool:
+    path = Path(artifact_path)
+    if path.is_absolute():
+        return path.exists()
+    return (root / path).exists() or path.exists()
+
+
+def pdf_backend_by_source(root: Path, source_ids: Iterable[str]) -> dict[str, str]:
+    result: dict[str, str] = {}
+    for source_id in set(source_ids):
+        metadata_rel, _, _ = pdf_sidecar_paths(source_id)
+        metadata_path = root / metadata_rel
+        if not metadata_path.exists():
+            continue
+        try:
+            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        result[source_id] = str(metadata.get("parser_backend") or metadata.get("extraction_engine") or "pypdf")
+    return result
+
+
+def load_block_ids(path: Path) -> set[str]:
+    ids: set[str] = set()
+    if not path.exists():
+        return ids
+    try:
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                data = json.loads(line)
+                if isinstance(data, dict) and data.get("block_id"):
+                    ids.add(str(data["block_id"]))
+    except (OSError, json.JSONDecodeError):
+        return set()
+    return ids
 
 
 def count_source_title_alias_collisions(conn: sqlite3.Connection) -> int:

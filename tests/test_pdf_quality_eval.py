@@ -49,6 +49,9 @@ def test_evaluate_pdf_quality_summarizes_pdf_sidecars(monkeypatch, capsys):
     assert summary.title_pass_rate == 1.0
     assert summary.sidecar_completeness == 1.0
     assert summary.block_locator_validity == 1.0
+    assert summary.parser_backend_distribution == {"pypdf": 1}
+    assert summary.backend_artifact_completeness == 1.0
+    assert summary.block_locator_validity_by_backend == {"pypdf": 1.0}
     assert "PDF quality evaluation" in report
     assert "PDF sources: 1" in report
 
@@ -71,7 +74,28 @@ def test_cli_eval_pdf_quality_outputs_json_and_is_read_only(monkeypatch, capsys)
     payload = json.loads(out)
     assert payload["schema_version"] == "eval.pdf_quality.v2.9.2"
     assert payload["pdf_source_count"] == 1
+    assert payload["parser_backend_distribution"] == {"pypdf": 1}
+    assert "backend_artifact_completeness" in payload
     assert before == after
+
+
+def test_evaluate_pdf_quality_reports_parser_backend_structured_counts(capsys):
+    root = make_workspace()
+    assert main(["init", "--root", str(root)]) == 0
+    capsys.readouterr()
+    pdf = root / "mineru.pdf"
+    pdf.write_bytes(b"%PDF fake")
+    import_source(root, str(pdf), parser_backend="mineru", parser_output_dir=Path("tests/fixtures/mineru"))
+
+    payload = evaluate_pdf_quality(root).to_dict()
+
+    assert payload["parser_backend_distribution"] == {"mineru": 1}
+    assert payload["mineru_source_count"] == 1
+    assert payload["structured_block_count"] >= 3
+    assert payload["table_like_block_count"] == 1
+    assert payload["equation_like_block_count"] == 1
+    assert payload["image_or_caption_block_count"] == 1
+    assert payload["block_locator_validity_by_backend"] == {"mineru": 1.0}
 
 
 def test_evaluate_pdf_quality_reports_identity_and_repair_counters(monkeypatch, capsys):
