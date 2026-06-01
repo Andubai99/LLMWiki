@@ -48,6 +48,9 @@ class SourceBlock:
     text_clean: str
     section_path: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    content_role: str = "content"
+    cleaning_operations: list[str] = field(default_factory=list)
+    quality_flags: list[str] = field(default_factory=list)
     schema_version: str = BLOCK_SCHEMA_VERSION
 
     def to_dict(self) -> dict[str, Any]:
