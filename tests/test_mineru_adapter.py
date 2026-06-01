@@ -73,3 +73,15 @@ def test_mineru_adapter_rejects_malformed_content_list(tmp_path):
 
     with pytest.raises(PdfParserBackendError, match="content_list.json must contain a list"):
         MinerUBackend(output_dir=tmp_path).parse(request_for(tmp_path))
+
+
+def test_precomputed_output_dir_does_not_invoke_mineru_runner(monkeypatch):
+    fixture = Path("tests/fixtures/mineru")
+    monkeypatch.setattr(
+        "llmwiki.mineru_runner.run_mineru_command",
+        lambda request: (_ for _ in ()).throw(AssertionError("precomputed output must not invoke MinerU")),
+    )
+
+    result = MinerUBackend(output_dir=fixture).parse(request_for(fixture))
+
+    assert result.metadata.parser_backend == "mineru"
