@@ -13,10 +13,16 @@ from .llm import main_config_path
 
 @dataclass(frozen=True)
 class PdfParserConfig:
-    default_backend: str = "pypdf"
+    default_backend: str = "auto"
     fallback_backend: str = "pypdf"
-    mineru_enabled: bool = False
+    mineru_enabled: bool = True
     mineru_command: str = "mineru"
+    mineru_method: str = ""
+    mineru_backend: str = ""
+    mineru_api_url: str = ""
+    mineru_timeout_seconds: int = 1800
+    mineru_max_log_chars: int = 4000
+    mineru_extra_args: tuple[str, ...] = ()
     artifact_dir: str = "sources/parser-artifacts"
 
 
@@ -261,11 +267,20 @@ def load_pdf_parser_config(root: Path) -> PdfParserConfig:
     if config_path.exists():
         data = tomllib.loads(config_path.read_text(encoding="utf-8"))
     section = data.get("pdf_parser", {})
+    extra_args = section.get("mineru_extra_args", [])
+    if not isinstance(extra_args, list):
+        extra_args = []
     return PdfParserConfig(
-        default_backend=str(section.get("default_backend", "pypdf")),
+        default_backend=str(section.get("default_backend", "auto")),
         fallback_backend=str(section.get("fallback_backend", "pypdf")),
-        mineru_enabled=bool(section.get("mineru_enabled", False)),
+        mineru_enabled=bool(section.get("mineru_enabled", True)),
         mineru_command=str(section.get("mineru_command", "mineru")),
+        mineru_method=str(section.get("mineru_method", "")),
+        mineru_backend=str(section.get("mineru_backend", "")),
+        mineru_api_url=str(section.get("mineru_api_url", "")),
+        mineru_timeout_seconds=int(section.get("mineru_timeout_seconds", 1800)),
+        mineru_max_log_chars=int(section.get("mineru_max_log_chars", 4000)),
+        mineru_extra_args=tuple(str(item) for item in extra_args if isinstance(item, str)),
         artifact_dir=str(section.get("artifact_dir", "sources/parser-artifacts")),
     )
 

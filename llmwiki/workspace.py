@@ -41,10 +41,16 @@ blocks_dir = "sources/blocks"
 chunks_dir = "sources/chunks"
 
 [pdf_parser]
-default_backend = "pypdf"
+default_backend = "auto"
 fallback_backend = "pypdf"
-mineru_enabled = false
+mineru_enabled = true
 mineru_command = "mineru"
+mineru_method = ""
+mineru_backend = ""
+mineru_api_url = ""
+mineru_timeout_seconds = 1800
+mineru_max_log_chars = 4000
+mineru_extra_args = []
 artifact_dir = "sources/parser-artifacts"
 
 [wiki]

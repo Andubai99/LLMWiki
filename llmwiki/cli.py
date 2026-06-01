@@ -4,6 +4,7 @@ import argparse
 import importlib.util
 import json
 import os
+import shutil
 import sys
 import tomllib
 from pathlib import Path
@@ -16,6 +17,7 @@ from .lint import lint_workspace
 from .llm import create_provider, load_llm_config, override_llm_config
 from .pipeline import AddPipelineError, add_and_process_source
 from .pdf_quality import evaluate_pdf_quality, format_pdf_quality_report
+from .pdf_parser_backends import load_pdf_parser_config
 from .providers.base import LLMProviderError
 from .query import query_context
 from .retrieval_eval import evaluate_retrieval, format_eval_report, sanitize_error
@@ -42,6 +44,7 @@ COMMANDS = (
     "ask",
     "eval",
     "embeddings",
+    "parsers",
     "llm-test",
     "doctor",
 )
@@ -265,6 +268,36 @@ def cmd_eval_pdf_quality(args: argparse.Namespace) -> int:
         print(json.dumps(summary.to_dict(), ensure_ascii=False, indent=2))
     else:
         print(format_pdf_quality_report(summary))
+    return 0
+
+
+def cmd_parsers_status(args: argparse.Namespace) -> int:
+    root = Path(args.root).resolve()
+    config = load_pdf_parser_config(root)
+    mineru_path = shutil.which(config.mineru_command)
+    data = {
+        "schema_version": "parser_status.v2.9.5",
+        "default_backend": config.default_backend,
+        "fallback_backend": config.fallback_backend,
+        "mineru_enabled": config.mineru_enabled,
+        "mineru_command": config.mineru_command,
+        "mineru_command_path": mineru_path or "",
+        "mineru_available": bool(config.mineru_enabled and mineru_path),
+        "pypdf_available": True,
+        "artifact_dir": config.artifact_dir,
+    }
+    if args.json:
+        print(json.dumps(data, ensure_ascii=False, indent=2))
+        return 0
+    print(f"default_backend={data['default_backend']}")
+    print(f"fallback_backend={data['fallback_backend']}")
+    print(f"mineru_enabled={bool_text(bool(data['mineru_enabled']))}")
+    print(f"mineru_available={bool_text(bool(data['mineru_available']))}")
+    print(f"mineru_command={data['mineru_command']}")
+    if data["mineru_command_path"]:
+        print(f"mineru_command_path={data['mineru_command_path']}")
+    print(f"pypdf_available={bool_text(bool(data['pypdf_available']))}")
+    print(f"artifact_dir={data['artifact_dir']}")
     return 0
 
 
@@ -572,6 +605,16 @@ def build_parser() -> argparse.ArgumentParser:
     pdf_quality_eval_parser.add_argument("--root", default=".")
     pdf_quality_eval_parser.add_argument("--json", action="store_true", help="Output stable machine-readable JSON.")
     pdf_quality_eval_parser.set_defaults(func=cmd_eval_pdf_quality)
+
+    parsers_parser = subparsers.add_parser("parsers", help="Inspect local parser backend availability.")
+    parsers_subparsers = parsers_parser.add_subparsers(dest="parsers_command", required=True)
+    parsers_status_parser = parsers_subparsers.add_parser(
+        "status",
+        help="Show parser backend status without parsing documents.",
+    )
+    parsers_status_parser.add_argument("--root", default=".")
+    parsers_status_parser.add_argument("--json", action="store_true", help="Output stable machine-readable JSON.")
+    parsers_status_parser.set_defaults(func=cmd_parsers_status)
 
     embeddings_parser = subparsers.add_parser(
         "embeddings",

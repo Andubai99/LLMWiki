@@ -57,6 +57,12 @@ def test_unknown_pdf_parser_backend_is_rejected():
 def test_explicit_mineru_backend_requires_enabled_config():
     root = make_workspace()
     assert main(["init", "--root", str(root)]) == 0
+    config_path = root / "config" / "config.toml"
+    config_path.write_text(
+        config_path.read_text(encoding="utf-8").replace("mineru_enabled = true", "mineru_enabled = false"),
+        encoding="utf-8",
+        newline="\n",
+    )
 
     from llmwiki.pdf_parser_backends import PdfParserBackendError, select_pdf_parser_backend
 
