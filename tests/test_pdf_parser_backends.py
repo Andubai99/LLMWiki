@@ -16,25 +16,32 @@ def test_load_pdf_parser_config_reads_workspace_defaults():
 
     config = load_pdf_parser_config(root)
 
-    assert config.default_backend == "pypdf"
+    assert config.default_backend == "auto"
     assert config.fallback_backend == "pypdf"
-    assert config.mineru_enabled is False
+    assert config.mineru_enabled is True
     assert config.mineru_command == "mineru"
+    assert config.mineru_method == ""
+    assert config.mineru_backend == ""
+    assert config.mineru_api_url == ""
+    assert config.mineru_timeout_seconds == 1800
+    assert config.mineru_max_log_chars == 4000
+    assert config.mineru_extra_args == ()
     assert config.artifact_dir == "sources/parser-artifacts"
 
 
-def test_select_pypdf_backend_is_available_by_default():
+def test_select_default_auto_backend_falls_back_to_pypdf_when_mineru_unavailable(monkeypatch):
     root = make_workspace()
     assert main(["init", "--root", str(root)]) == 0
 
     from llmwiki.pdf_parser_backends import PypdfBackend, select_pdf_parser_backend
 
+    monkeypatch.setattr("shutil.which", lambda command: None)
     selection = select_pdf_parser_backend(root)
 
     assert isinstance(selection.backend, PypdfBackend)
     assert selection.backend.name == "pypdf"
-    assert selection.fallback_from is None
-    assert selection.warnings == []
+    assert selection.fallback_from == "mineru"
+    assert any("falling back to pypdf" in warning for warning in selection.warnings)
 
 
 def test_unknown_pdf_parser_backend_is_rejected():
@@ -62,7 +69,7 @@ def test_auto_backend_falls_back_to_pypdf_when_mineru_disabled():
     assert main(["init", "--root", str(root)]) == 0
     config_path = root / "config" / "config.toml"
     config_path.write_text(
-        config_path.read_text(encoding="utf-8").replace('default_backend = "pypdf"', 'default_backend = "auto"'),
+        config_path.read_text(encoding="utf-8").replace("mineru_enabled = true", "mineru_enabled = false"),
         encoding="utf-8",
         newline="\n",
     )
