@@ -29,6 +29,22 @@ class LLMIngestProposal:
     usage: dict[str, Any]
 
 
+@dataclass(frozen=True)
+class LLMJsonRepairEvent:
+    response_kind: str
+    chunk_id: str | None
+    status: str
+    error: str
+
+    def to_dict(self) -> dict[str, str | None]:
+        return {
+            "response_kind": self.response_kind,
+            "chunk_id": self.chunk_id,
+            "status": self.status,
+            "error": self.error,
+        }
+
+
 def create_llm_ingest_proposal(
     root: Path,
     source: dict[str, str],
@@ -317,6 +333,97 @@ def proposal_schema() -> dict[str, Any]:
     }
 
 
+def parse_llm_json_with_repair(
+    *,
+    content: str,
+    provider: Any,
+    schema: dict[str, Any] | None,
+    response_kind: str,
+    chunk_id: str | None = None,
+) -> tuple[dict[str, Any], str, list[LLMJsonRepairEvent], dict[str, Any]]:
+    try:
+        return parse_json_object(content), content, [], {}
+    except (json.JSONDecodeError, LLMProviderError) as first_error:
+        sanitized_error = sanitize_llm_parse_error(str(first_error))
+
+    repair_messages = build_json_repair_messages(
+        malformed_content=content,
+        parse_error=sanitized_error,
+        schema=schema,
+        response_kind=response_kind,
+        chunk_id=chunk_id,
+    )
+    repair_response = provider.complete(repair_messages, schema=schema)
+    repaired_content = str(repair_response.get("content") or "")
+    try:
+        payload = parse_json_object(repaired_content)
+    except (json.JSONDecodeError, LLMProviderError) as repair_error:
+        safe_error = sanitize_llm_parse_error(str(repair_error))
+        location = f" chunk {chunk_id}" if chunk_id else ""
+        raise LLMProviderError(f"LLM {response_kind}{location} JSON repair failed: {safe_error}") from repair_error
+
+    usage: dict[str, Any] = {}
+    add_usage(usage, dict(repair_response.get("usage") or {}))
+    event = LLMJsonRepairEvent(
+        response_kind=response_kind,
+        chunk_id=chunk_id,
+        status="repaired",
+        error=sanitized_error,
+    )
+    return payload, repaired_content, [event], usage
+
+
+def build_json_repair_messages(
+    *,
+    malformed_content: str,
+    parse_error: str,
+    schema: dict[str, Any] | None,
+    response_kind: str,
+    chunk_id: str | None = None,
+) -> list[dict[str, str]]:
+    location = f"\nchunk_id: {chunk_id}" if chunk_id else ""
+    return [
+        {
+            "role": "system",
+            "content": (
+                "Repair invalid JSON from a previous LLM response. "
+                "Return repaired JSON only, with no markdown fences or commentary. "
+                "Do not add facts, claims, sources, citations, block ids, or fields not present in the original response."
+            ),
+        },
+        {
+            "role": "user",
+            "content": (
+                f"response_kind: {response_kind}{location}\n"
+                f"parse_error: {sanitize_llm_parse_error(parse_error)}\n"
+                f"expected_schema: {json.dumps(schema or {}, ensure_ascii=False)}\n\n"
+                "Malformed response:\n"
+                f"{sanitize_malformed_llm_content(malformed_content)}"
+            ),
+        },
+    ]
+
+
+def sanitize_llm_parse_error(text: str) -> str:
+    cleaned = sanitize_malformed_llm_content(text)
+    cleaned = re.sub(r"\bapi[_-]?key\b", "[redacted-key-field]", cleaned, flags=re.I)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    return cleaned[:240] if cleaned else "invalid JSON"
+
+
+def sanitize_malformed_llm_content(text: str) -> str:
+    cleaned = text.replace("config/api-keys.toml", "[redacted-config]")
+    cleaned = cleaned.replace("config\\api-keys.toml", "[redacted-config]")
+    cleaned = re.sub(r"sk-[A-Za-z0-9._-]+", "[redacted-api-key]", cleaned)
+    cleaned = re.sub(
+        r'(["\']?\bapi[_-]?key\b["\']?\s*[:=]\s*)(["\'])[^"\']*\2',
+        r"\1\2[redacted]\2",
+        cleaned,
+        flags=re.I,
+    )
+    return cleaned
+
+
 def parse_json_object(content: str) -> dict[str, Any]:
     stripped = content.strip()
     if stripped.startswith("```"):
@@ -324,12 +431,17 @@ def parse_json_object(content: str) -> dict[str, Any]:
         stripped = re.sub(r"\s*```$", "", stripped)
     try:
         parsed = loads_json_object_text(stripped)
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as first_error:
         start = stripped.find("{")
         end = stripped.rfind("}")
-        if start == -1 or end == -1 or end <= start:
+        if start == -1:
             raise LLMProviderError("LLM ingest response did not contain a JSON object")
-        parsed = loads_json_object_text(stripped[start : end + 1])
+        if end == -1 or end <= start:
+            raise LLMProviderError(f"LLM ingest response JSON parse failed: {first_error}") from first_error
+        try:
+            parsed = loads_json_object_text(stripped[start : end + 1])
+        except json.JSONDecodeError as second_error:
+            raise LLMProviderError(f"LLM ingest response JSON parse failed: {second_error}") from second_error
     if not isinstance(parsed, dict):
         raise LLMProviderError("LLM ingest response JSON root must be an object")
     return parsed
