@@ -93,7 +93,7 @@ class PypdfBackend:
 
         pdf_metadata, pages = read_pdf_pages(request.content)
         if not pages:
-            raise PdfParserBackendError("No text pages extracted from PDF")
+            raise ValueError("No text pages extracted from PDF")
 
         blocks, warnings = parse_pdf_blocks(request.source_id, pages, parser_backend=self.name)
         title_candidates = score_title_candidates(metadata=pdf_metadata, blocks=blocks, filename=request.filename)
