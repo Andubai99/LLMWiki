@@ -101,6 +101,8 @@ def lint_workspace(root: Path) -> LintReport:
             + pdf_issues["source_title_alias_collisions"]
             + pdf_issues["unknown_parser_backends"]
             + pdf_issues["missing_parser_artifacts"]
+            + pdf_issues["missing_parser_content_lists"]
+            + pdf_issues["parser_secret_snippets"]
             + pdf_issues["ignored_blocks_in_chunks"]
         )
         lines.append(f"- pdf parser issues: {pdf_issue_count}")
@@ -117,6 +119,8 @@ def lint_workspace(root: Path) -> LintReport:
         lines.append(f"  - pdf source title alias collisions: {pdf_issues['source_title_alias_collisions']}")
         lines.append(f"  - pdf unknown parser backends: {pdf_issues['unknown_parser_backends']}")
         lines.append(f"  - pdf missing parser artifacts: {pdf_issues['missing_parser_artifacts']}")
+        lines.append(f"  - pdf missing parser content lists: {pdf_issues['missing_parser_content_lists']}")
+        lines.append(f"  - pdf parser secret snippets: {pdf_issues['parser_secret_snippets']}")
         lines.append(f"  - pdf ignored blocks in chunks: {pdf_issues['ignored_blocks_in_chunks']}")
         lines.append(f"  - pdf paper identity overlaps: {pdf_issues['paper_identity_overlaps']}")
         lines.append(f"  - pdf llm json repairs observed: {pdf_issues['llm_json_repairs_observed']}")
@@ -209,6 +213,8 @@ def pdf_parser_quality_issues(root: Path, conn) -> dict[str, int]:
     extraction_warnings = 0
     unknown_parser_backends = 0
     missing_parser_artifacts = 0
+    missing_parser_content_lists = 0
+    parser_secret_snippets = 0
     ignored_blocks_in_chunks = 0
     known_blocks_by_source: dict[str, set[str]] = {}
 
@@ -232,6 +238,15 @@ def pdf_parser_quality_issues(root: Path, conn) -> dict[str, int]:
                     for artifact_path in artifact_paths:
                         if not parser_artifact_exists(root, str(artifact_path)):
                             missing_parser_artifacts += 1
+                content_list_path = str(metadata.get("parser_content_list_path") or "")
+                if backend == "mineru" and content_list_path and not parser_artifact_exists(root, content_list_path):
+                    missing_parser_content_lists += 1
+                snippets = [
+                    str(metadata.get("parser_command_stdout_snippet") or ""),
+                    str(metadata.get("parser_command_stderr_snippet") or ""),
+                ]
+                if any(contains_secret_pattern(snippet) for snippet in snippets):
+                    parser_secret_snippets += 1
                 warnings = metadata.get("warnings") if isinstance(metadata, dict) else []
                 extraction_warnings += len(warnings) if isinstance(warnings, list) else 0
             except (OSError, json.JSONDecodeError):
@@ -273,6 +288,8 @@ def pdf_parser_quality_issues(root: Path, conn) -> dict[str, int]:
         "source_title_alias_collisions": summary.source_title_alias_collision_count,
         "unknown_parser_backends": unknown_parser_backends,
         "missing_parser_artifacts": missing_parser_artifacts,
+        "missing_parser_content_lists": missing_parser_content_lists,
+        "parser_secret_snippets": parser_secret_snippets,
         "ignored_blocks_in_chunks": ignored_blocks_in_chunks,
         "paper_identity_overlaps": summary.paper_identity_overlap_count,
         "llm_json_repairs_observed": summary.llm_json_repair_observed_count,
@@ -309,6 +326,10 @@ def parser_artifact_exists(root: Path, artifact_path: str) -> bool:
     if path.is_absolute():
         return path.exists()
     return (root / path).exists() or path.exists()
+
+
+def contains_secret_pattern(text: str) -> bool:
+    return bool(re.search(r"sk-[A-Za-z0-9_-]{6,}", text)) or "config/api-keys.toml" in text or "config\\api-keys.toml" in text
 
 
 def count_ignored_blocks_in_chunks(blocks_path: Path, chunks_path: Path) -> int:

@@ -86,8 +86,14 @@ class PdfQualitySummary:
     llm_json_repair_observed_count: int = 0
     parser_backend_distribution: dict[str, int] = field(default_factory=dict)
     mineru_source_count: int = 0
+    pypdf_source_count: int = 0
     backend_artifact_completeness: float = 1.0
     backend_fallback_count: int = 0
+    auto_fallback_count: int = 0
+    mineru_command_invoked_count: int = 0
+    mineru_command_failure_count: int = 0
+    mineru_timeout_count: int = 0
+    mineru_content_list_missing_count: int = 0
     structured_block_count: int = 0
     table_like_block_count: int = 0
     equation_like_block_count: int = 0
@@ -257,9 +263,15 @@ def evaluate_pdf_quality(root: Path) -> PdfQualitySummary:
         parser_alias_count = 0
         parser_backend_distribution: Counter[str] = Counter()
         mineru_source_count = 0
+        pypdf_source_count = 0
         backend_artifact_expected = 0
         backend_artifact_complete = 0
         backend_fallback_count = 0
+        auto_fallback_count = 0
+        mineru_command_invoked_count = 0
+        mineru_command_failure_count = 0
+        mineru_timeout_count = 0
+        mineru_content_list_missing_count = 0
         structured_block_count = 0
         table_like_block_count = 0
         equation_like_block_count = 0
@@ -287,8 +299,23 @@ def evaluate_pdf_quality(root: Path) -> PdfQualitySummary:
                     parser_backend_distribution[backend] += 1
                     if backend == "mineru":
                         mineru_source_count += 1
+                    if backend == "pypdf":
+                        pypdf_source_count += 1
                     if metadata.get("parser_backend_fallback_from"):
                         backend_fallback_count += 1
+                        auto_fallback_count += 1
+                    if metadata.get("parser_command_invoked"):
+                        mineru_command_invoked_count += 1
+                    returncode = metadata.get("parser_command_returncode")
+                    if metadata.get("parser_command_invoked") and returncode not in {0, None}:
+                        mineru_command_failure_count += 1
+                    fallback_reason = str(metadata.get("parser_backend_fallback_reason") or "")
+                    if "timed out" in fallback_reason.casefold():
+                        mineru_timeout_count += 1
+                    content_list_path = str(metadata.get("parser_content_list_path") or "")
+                    if backend == "mineru" and content_list_path and not artifact_exists(root, content_list_path):
+                        mineru_content_list_missing_count += 1
+                        issues.append(f"{source['source_id']}: missing MinerU content-list")
                     artifact_paths = metadata.get("parser_artifact_paths")
                     if backend == "mineru" or artifact_paths:
                         backend_artifact_expected += 1
@@ -368,10 +395,16 @@ def evaluate_pdf_quality(root: Path) -> PdfQualitySummary:
             llm_json_repair_observed_count=llm_json_repair_observed_count,
             parser_backend_distribution=dict(parser_backend_distribution),
             mineru_source_count=mineru_source_count,
+            pypdf_source_count=pypdf_source_count,
             backend_artifact_completeness=(
                 backend_artifact_complete / backend_artifact_expected if backend_artifact_expected else 1.0
             ),
             backend_fallback_count=backend_fallback_count,
+            auto_fallback_count=auto_fallback_count,
+            mineru_command_invoked_count=mineru_command_invoked_count,
+            mineru_command_failure_count=mineru_command_failure_count,
+            mineru_timeout_count=mineru_timeout_count,
+            mineru_content_list_missing_count=mineru_content_list_missing_count,
             structured_block_count=structured_block_count,
             table_like_block_count=table_like_block_count,
             equation_like_block_count=equation_like_block_count,
@@ -401,6 +434,13 @@ def format_pdf_quality_report(summary: PdfQualitySummary) -> str:
         f"Paper identity overlaps: {summary.paper_identity_overlap_count}",
         f"LLM JSON repairs observed: {summary.llm_json_repair_observed_count}",
         f"Parser backend distribution: {json.dumps(summary.parser_backend_distribution, ensure_ascii=False, sort_keys=True)}",
+        f"MinerU sources: {summary.mineru_source_count}",
+        f"pypdf sources: {summary.pypdf_source_count}",
+        f"Auto fallbacks: {summary.auto_fallback_count}",
+        f"MinerU command invocations: {summary.mineru_command_invoked_count}",
+        f"MinerU command failures: {summary.mineru_command_failure_count}",
+        f"MinerU timeouts: {summary.mineru_timeout_count}",
+        f"MinerU missing content lists: {summary.mineru_content_list_missing_count}",
         f"Backend artifact completeness: {summary.backend_artifact_completeness:.3f}",
         f"Structured blocks: {summary.structured_block_count}",
         f"Table-like blocks: {summary.table_like_block_count}",
