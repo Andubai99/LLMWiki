@@ -194,6 +194,14 @@ def source_parse_diagnostics(root: Path, source: dict[str, str]) -> dict[str, ob
         "parser_backend_fallback_from": metadata.parser_backend_fallback_from if metadata else None,
         "parser_backend_fallback_reason": metadata.parser_backend_fallback_reason if metadata else "",
         "structured_block_counts": metadata.structured_block_counts if metadata else {},
+        "parser_command_invoked": metadata.parser_command_invoked if metadata else False,
+        "parser_command": metadata.parser_command if metadata else [],
+        "parser_command_returncode": metadata.parser_command_returncode if metadata else None,
+        "parser_command_duration_seconds": metadata.parser_command_duration_seconds if metadata else None,
+        "parser_command_stdout_snippet": metadata.parser_command_stdout_snippet if metadata else "",
+        "parser_command_stderr_snippet": metadata.parser_command_stderr_snippet if metadata else "",
+        "parser_content_list_path": metadata.parser_content_list_path if metadata else "",
+        "parser_content_list_discovery_count": metadata.parser_content_list_discovery_count if metadata else 0,
         "title_quality": metadata.title_quality if metadata else {},
         "title_candidates": metadata.title_candidates if metadata else [],
         "paper_identity": metadata.paper_identity if metadata else {},
@@ -669,6 +677,13 @@ def pdf_source_metadata_lines(source_diagnostics: dict[str, object]) -> list[str
     return [
         f"- parser_backend: `{source_diagnostics.get('parser_backend', '')}`",
         f"- parser_backend_version: `{source_diagnostics.get('parser_backend_version') or ''}`",
+        f"- parser_command_invoked: `{bool_value(source_diagnostics.get('parser_command_invoked'))}`",
+        f"- parser_command_returncode: `{source_diagnostics.get('parser_command_returncode') if source_diagnostics.get('parser_command_returncode') is not None else ''}`",
+        f"- parser_command_duration_seconds: `{source_diagnostics.get('parser_command_duration_seconds') if source_diagnostics.get('parser_command_duration_seconds') is not None else ''}`",
+        f"- parser_content_list_path: `{source_diagnostics.get('parser_content_list_path', '')}`",
+        f"- parser_content_list_discovery_count: `{source_diagnostics.get('parser_content_list_discovery_count', 0)}`",
+        f"- parser_command_stdout_snippet: `{source_diagnostics.get('parser_command_stdout_snippet', '')}`",
+        f"- parser_command_stderr_snippet: `{source_diagnostics.get('parser_command_stderr_snippet', '')}`",
         f"- page_count: `{source_diagnostics.get('page_count', 0)}`",
         f"- block_count: `{source_diagnostics.get('block_count', 0)}`",
         f"- chunk_count: `{source_diagnostics.get('chunk_count', 0)}`",
@@ -901,6 +916,13 @@ def pdf_parse_diagnostics_section(source_diagnostics: dict[str, object]) -> list
         f"- parser_artifact_count: {source_diagnostics.get('parser_artifact_count', 0)}",
         f"- parser_backend_fallback_from: `{source_diagnostics.get('parser_backend_fallback_from') or ''}`",
         f"- parser_backend_fallback_reason: `{source_diagnostics.get('parser_backend_fallback_reason', '')}`",
+        f"- parser_command_invoked: `{bool_value(source_diagnostics.get('parser_command_invoked'))}`",
+        f"- parser_command_returncode: `{source_diagnostics.get('parser_command_returncode') if source_diagnostics.get('parser_command_returncode') is not None else ''}`",
+        f"- parser_command_duration_seconds: `{source_diagnostics.get('parser_command_duration_seconds') if source_diagnostics.get('parser_command_duration_seconds') is not None else ''}`",
+        f"- parser_content_list_path: `{source_diagnostics.get('parser_content_list_path', '')}`",
+        f"- parser_content_list_discovery_count: `{source_diagnostics.get('parser_content_list_discovery_count', 0)}`",
+        f"- parser_command_stdout_snippet: `{source_diagnostics.get('parser_command_stdout_snippet', '')}`",
+        f"- parser_command_stderr_snippet: `{source_diagnostics.get('parser_command_stderr_snippet', '')}`",
         f"- metadata_path: `{source_diagnostics.get('metadata_path', '')}`",
         f"- blocks_path: `{source_diagnostics.get('blocks_path', '')}`",
         f"- chunks_path: `{source_diagnostics.get('chunks_path', '')}`",
@@ -924,6 +946,10 @@ def write_jsonl(path: Path, rows: list[dict[str, str]]) -> None:
         encoding="utf-8",
         newline="\n",
     )
+
+
+def bool_value(value: object) -> str:
+    return "true" if bool(value) else "false"
 
 
 def llm_proposal_lines(proposal: LLMIngestProposal | None) -> list[str]:
