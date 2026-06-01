@@ -393,6 +393,94 @@ def test_pdf_chunked_ingest_failed_chunk_repair_is_safe(monkeypatch, capsys):
     assert "config/api-keys.toml" not in message
 
 
+def test_pdf_add_records_chunk_and_consolidation_repair_diagnostics(monkeypatch, capsys):
+    root = make_workspace()
+    assert main(["init", "--root", str(root)]) == 0
+    capsys.readouterr()
+
+    monkeypatch.setattr(
+        "llmwiki.pdf_blocks.read_pdf_pages",
+        lambda content: (
+            {"title": "Repair Diagnostics PDF"},
+            ["Repair Diagnostics PDF\n\nAbstract\nKnown diagnostic block text.\n"],
+        ),
+    )
+    pdf = root / "repair-diagnostics.pdf"
+    pdf.write_bytes(b"%PDF fake")
+    imported = import_source(root, str(pdf))
+    known_block_id = load_blocks_jsonl(root / "sources" / "blocks" / f"{imported.source_id}.jsonl")[-1].block_id
+
+    class RepairDiagnosticsProvider:
+        def complete(self, messages: list[dict[str, str]], schema: dict[str, Any] | None = None) -> dict[str, Any]:
+            user = messages[-1]["content"]
+            if "Repair invalid JSON" in messages[0]["content"]:
+                if "response_kind: consolidation" in user:
+                    payload = {
+                        "claims": [
+                            {
+                                "claim_text": "Repaired consolidation claim must be ignored.",
+                                "citation_locator": f"block:{known_block_id}",
+                                "confidence_status": "cited",
+                            }
+                        ],
+                        "concept": {"title": "Repair Diagnostics PDF", "aliases": []},
+                        "entity": None,
+                        "duplicate_candidates": [],
+                        "conflict_candidates": [],
+                        "source_summary": "Repaired consolidation summary.",
+                        "concept_definition": "Repaired consolidation concept.",
+                    }
+                else:
+                    payload = {
+                        "claims": [
+                            {
+                                "claim_text": "Repaired chunk diagnostic claim.",
+                                "citation_locator": f"block:{known_block_id}",
+                                "confidence_status": "cited",
+                            }
+                        ],
+                        "chunk_summary": "Repaired chunk diagnostic summary.",
+                    }
+                return {
+                    "provider": "fake",
+                    "model": "fake-pdf",
+                    "content": json.dumps(payload),
+                    "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+                }
+            if "PDF consolidation" in user:
+                return {"provider": "fake", "model": "fake-pdf", "content": '{"claims": [], "source_summary": "broken"', "usage": {}}
+            return {"provider": "fake", "model": "fake-pdf", "content": '{"claims": [], "chunk_summary": "broken"', "usage": {}}
+
+    monkeypatch.setattr("llmwiki.llm_ingest.create_provider", lambda config, root=None: RepairDiagnosticsProvider())
+
+    assert main(["add", str(pdf), "--root", str(root)]) == 0
+    capsys.readouterr()
+
+    with sqlite3.connect(root / "state" / "catalog.sqlite") as conn:
+        conn.row_factory = sqlite3.Row
+        run = conn.execute("select run_id from ingest_runs where source_id = ?", (imported.source_id,)).fetchone()
+    run_dir = root / "staging" / run["run_id"]
+    manifest = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
+    assert manifest["llm_json_repair_count"] >= 2
+    assert manifest["llm_json_repair_failed_count"] == 0
+    assert {event["response_kind"] for event in manifest["llm_json_repair_events"]} == {"chunk", "consolidation"}
+
+    proposal_json = json.loads((run_dir / "llm-proposal.json").read_text(encoding="utf-8"))
+    assert proposal_json["llm_json_repair_count"] == manifest["llm_json_repair_count"]
+    assert "broken" not in proposal_json["content"]
+    assert "Repaired consolidation claim must be ignored." not in (run_dir / "claims.jsonl").read_text(encoding="utf-8")
+
+    triage = (run_dir / "triage.md").read_text(encoding="utf-8")
+    assert "llm_json_repair_count" in triage
+    assert "consolidation" in triage
+
+    assert main(["review", run["run_id"], "--detail", "--root", str(root)]) == 0
+    review = capsys.readouterr().out
+    assert "llm_json_repair_count" in review
+    assert "config/api-keys.toml" not in review
+    assert "sk-" not in review
+
+
 def test_pdf_add_exposes_parse_diagnostics_in_staging_and_source_page(monkeypatch, capsys):
     root = make_workspace()
     assert main(["init", "--root", str(root)]) == 0

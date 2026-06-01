@@ -98,6 +98,9 @@ def ingest_source(
                 {
                     "llm_provider": llm_proposal.provider,
                     "llm_model": llm_proposal.model,
+                    "llm_json_repair_count": llm_json_repair_count(llm_proposal),
+                    "llm_json_repair_failed_count": llm_json_repair_failed_count(llm_proposal),
+                    "llm_json_repair_events": llm_json_repair_events(llm_proposal),
                 }
                 if llm_proposal
                 else {}
@@ -895,12 +898,34 @@ def write_jsonl(path: Path, rows: list[dict[str, str]]) -> None:
 def llm_proposal_lines(proposal: LLMIngestProposal | None) -> list[str]:
     if not proposal:
         return ["- proposal_engine: `heuristic`", "- LLM provider was not called."]
-    return [
+    lines = [
         "- proposal_engine: `llm`",
         f"- provider: `{proposal.provider}`",
         f"- model: `{proposal.model}`",
         f"- usage: `{json.dumps(proposal.usage, ensure_ascii=False)}`",
+        f"- llm_json_repair_count: `{llm_json_repair_count(proposal)}`",
+        f"- llm_json_repair_failed_count: `{llm_json_repair_failed_count(proposal)}`",
     ]
+    for event in proposal.repair_events:
+        details = event.to_dict()
+        chunk = f", chunk_id={details['chunk_id']}" if details.get("chunk_id") else ""
+        lines.append(
+            "- llm_json_repair_event: "
+            f"`{details['response_kind']}` status=`{details['status']}`{chunk} error=`{details['error']}`"
+        )
+    return lines
+
+
+def llm_json_repair_events(proposal: LLMIngestProposal) -> list[dict[str, str | None]]:
+    return [event.to_dict() for event in proposal.repair_events]
+
+
+def llm_json_repair_count(proposal: LLMIngestProposal) -> int:
+    return len(proposal.repair_events)
+
+
+def llm_json_repair_failed_count(proposal: LLMIngestProposal) -> int:
+    return sum(1 for event in proposal.repair_events if event.status != "repaired")
 
 
 def write_run_manifest(
@@ -932,6 +957,9 @@ def write_llm_proposal(path: Path, proposal: LLMIngestProposal) -> None:
         "provider": proposal.provider,
         "model": proposal.model,
         "usage": proposal.usage,
+        "llm_json_repair_count": llm_json_repair_count(proposal),
+        "llm_json_repair_failed_count": llm_json_repair_failed_count(proposal),
+        "llm_json_repair_events": llm_json_repair_events(proposal),
         "content": proposal.raw_content,
         "claims": proposal.claims,
         "concept_title": proposal.concept_title,

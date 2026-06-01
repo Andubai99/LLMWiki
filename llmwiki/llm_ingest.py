@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 import json
@@ -27,6 +27,7 @@ class LLMIngestProposal:
     model: str
     raw_content: str
     usage: dict[str, Any]
+    repair_events: list[LLMJsonRepairEvent] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -108,6 +109,7 @@ def create_chunked_pdf_ingest_proposal(
 
     all_claims: list[dict[str, str]] = []
     chunk_records: list[dict[str, Any]] = []
+    repair_events: list[LLMJsonRepairEvent] = []
     usage = empty_usage()
     response_provider = "openai"
     response_model = str(getattr(config, "model", "") or "")
@@ -118,13 +120,14 @@ def create_chunked_pdf_ingest_proposal(
         response_provider = str(response.get("provider") or response_provider)
         response_model = str(response.get("model") or response_model)
         content = str(response.get("content") or "")
-        payload, content, _, repair_usage = parse_llm_json_with_repair(
+        payload, content, events, repair_usage = parse_llm_json_with_repair(
             content=content,
             provider=provider,
             schema=chunk_proposal_schema(),
             response_kind="chunk",
             chunk_id=chunk.chunk_id,
         )
+        repair_events.extend(events)
         chunk_proposal = normalize_payload({"claims": payload.get("claims") or []}, source_id, chunk_text)
         all_claims.extend(cited_claims_only(chunk_proposal.claims))
         add_usage(usage, dict(response.get("usage") or {}))
@@ -146,9 +149,16 @@ def create_chunked_pdf_ingest_proposal(
     response_provider = str(consolidation_response.get("provider") or response_provider)
     response_model = str(consolidation_response.get("model") or response_model)
     consolidation_content = str(consolidation_response.get("content") or "")
-    consolidation_payload = parse_json_object(consolidation_content)
+    consolidation_payload, consolidation_content, events, repair_usage = parse_llm_json_with_repair(
+        content=consolidation_content,
+        provider=provider,
+        schema=proposal_schema(),
+        response_kind="consolidation",
+    )
+    repair_events.extend(events)
     consolidation = normalize_payload({**consolidation_payload, "claims": []}, source_id, normalized_text)
     add_usage(usage, dict(consolidation_response.get("usage") or {}))
+    add_usage(usage, repair_usage)
 
     claims = dedupe_exact_claims(all_claims, source_id)
     if not any(claim["confidence_status"] == "cited" for claim in claims):
@@ -161,6 +171,7 @@ def create_chunked_pdf_ingest_proposal(
             "block_count": len(blocks),
             "chunk_responses": chunk_records,
             "consolidation": consolidation_content,
+            "llm_json_repair_events": [event.to_dict() for event in repair_events],
         },
         ensure_ascii=False,
     )
@@ -178,6 +189,7 @@ def create_chunked_pdf_ingest_proposal(
         model=response_model,
         raw_content=raw_content,
         usage=usage,
+        repair_events=repair_events,
     )
 
 
