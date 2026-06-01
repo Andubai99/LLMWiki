@@ -9,7 +9,7 @@ from llmwiki.retrieval import retrieve_context
 from tests.helpers import make_workspace
 from tests.test_hybrid_retrieval import setup_seeded_workspace
 from tests.test_query_lint_doctor import add_ingest_apply, fixture
-from tests.test_retrieval import seed_pdf_claim_catalog
+from tests.test_retrieval import seed_mineru_claim_catalog, seed_pdf_claim_catalog
 from tests.test_vector_retrieval import FakeEmbeddingProvider, seed_vector_workspace, write_fake_index
 
 
@@ -223,6 +223,25 @@ def test_ask_accepts_pdf_page_block_citations(monkeypatch, capsys):
     assert data["citations"][0]["citation_locator"] == "page:1;block:src_osworld_pdf_p001_b0004;section:Abstract"
     assert data["citations"][0]["claim_id"] == context["claim_id"]
     assert synthesis_pages(root) == []
+
+
+def test_ask_accepts_mineru_catalog_claim_without_artifact_citations(monkeypatch, capsys):
+    root = make_workspace()
+    assert main(["init", "--root", str(root)]) == 0
+    seed_mineru_claim_catalog(root)
+    context = retrieve_context(root, "MinerU Structured Parsing Paper Web task accuracy", limit=1)["contexts"][0]
+    patch_planner_provider(monkeypatch, planner_payload("MinerU Structured Parsing Paper Web task accuracy"))
+    calls = patch_answer_provider(monkeypatch, answer_payload(context, title="MinerU Table Evidence"))
+    capsys.readouterr()
+
+    assert main(["ask", "MinerU Structured Parsing Paper Web task accuracy", "--root", str(root), "--no-writeback", "--json"]) == 0
+    data = json.loads(capsys.readouterr().out)
+
+    assert calls
+    assert data["status"] == "answered"
+    assert data["citations"][0]["claim_id"] == "clm_mineru_table"
+    assert data["citations"][0]["citation_locator"].startswith("page:2;block:")
+    assert "parser-artifacts" not in json.dumps(data["citations"])
 
 
 def test_ask_answers_natural_chinese_question_from_hybrid_retrieval(monkeypatch, capsys):

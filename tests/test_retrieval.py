@@ -5,6 +5,7 @@ import sqlite3
 from pathlib import Path
 
 from llmwiki.cli import main
+from llmwiki.sources import import_source
 from tests.helpers import make_workspace, seed_contradicts_relationship
 from tests.test_query_lint_doctor import add_ingest_apply, fixture
 
@@ -73,6 +74,53 @@ def seed_pdf_claim_catalog(root: Path) -> str:
             ),
         )
     return source_id
+
+
+def seed_mineru_claim_catalog(root: Path) -> str:
+    pdf = root / "mineru.pdf"
+    pdf.write_bytes(b"%PDF fake")
+    result = import_source(root, str(pdf), parser_backend="mineru", parser_output_dir=Path("tests/fixtures/mineru"))
+    blocks_path = root / "sources" / "blocks" / f"{result.source_id}.jsonl"
+    table_block = None
+    for line in blocks_path.read_text(encoding="utf-8").splitlines():
+        block = json.loads(line)
+        if block.get("content_role") == "table_like":
+            table_block = block
+            break
+    assert table_block is not None
+    locator = f"page:{table_block['page_start']};block:{table_block['block_id']}"
+    claim_id = "clm_mineru_table"
+    claim_text = "MinerU table reports Web task accuracy of 72%."
+    with sqlite3.connect(root / "state" / "catalog.sqlite") as conn:
+        conn.execute(
+            """
+            insert into claims (claim_id, source_id, claim_text, citation_locator, confidence_status, created_at)
+            values (?, ?, ?, ?, ?, ?)
+            """,
+            (claim_id, result.source_id, claim_text, locator, "cited", "2026-06-01T00:00:00+00:00"),
+        )
+        conn.execute(
+            """
+            insert into claims_fts (claim_id, claim_text, source_id, citation_locator)
+            values (?, ?, ?, ?)
+            """,
+            (claim_id, claim_text, result.source_id, locator),
+        )
+        conn.execute(
+            """
+            insert into pages (page_id, path, page_type, title, aliases, updated_at)
+            values (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                result.source_id,
+                f"wiki/sources/{result.source_id}.md",
+                "source",
+                result.title,
+                json.dumps([]),
+                "2026-06-01T00:00:00+00:00",
+            ),
+        )
+    return result.source_id
 
 
 def test_retrieve_json_schema_and_python_api(capsys):
@@ -155,6 +203,23 @@ def test_retrieve_pdf_source_by_title_without_source_title_alias(capsys):
 
     assert data["contexts"]
     assert data["contexts"][0]["source_id"] == source_id
+
+
+def test_retrieve_mineru_derived_claim_uses_catalog_evidence_not_artifacts(capsys):
+    root = make_workspace()
+    assert main(["init", "--root", str(root)]) == 0
+    source_id = seed_mineru_claim_catalog(root)
+    capsys.readouterr()
+
+    assert main(["retrieve", "MinerU Structured Parsing Paper Web task accuracy", "--root", str(root), "--json"]) == 0
+    data = json.loads(capsys.readouterr().out)
+
+    assert data["contexts"]
+    context = data["contexts"][0]
+    assert context["source_id"] == source_id
+    assert context["claim_id"] == "clm_mineru_table"
+    assert context["citation_locator"].startswith("page:2;block:")
+    assert "parser-artifacts" not in json.dumps(context)
 
 
 def test_retrieve_does_not_call_llm_planner_or_provider(monkeypatch, capsys):
