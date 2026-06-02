@@ -9,13 +9,13 @@ import tomllib
 from pathlib import Path
 
 from .answer import AskOptions, AskResult, answer_question
-from .apply import UnsafePatchError, apply_run
+from .ingestion.apply import UnsafePatchError, apply_run
 from .db import catalog_path, schema_status
-from .ingest import ingest_source, review_run
+from .ingestion.ingest import ingest_source, review_run
 from .lint import lint_workspace
 from .maintenance.clean import clean_workspace, format_clean_report
 from .llm import create_provider, load_llm_config, override_llm_config
-from .pipeline import AddPipelineError, add_and_process_source
+from .ingestion.pipeline import AddPipelineError, add_and_process_source
 from .pdf.quality import evaluate_pdf_quality, format_pdf_quality_report
 from .pdf.parser_backends import load_pdf_parser_config
 from .pdf.mineru_runner import probe_mineru_status

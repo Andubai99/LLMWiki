@@ -9,7 +9,7 @@ from typing import Any
 from ..answer import AskResult
 from ..db import RELATIONSHIP_TYPES, catalog_path, connect
 from ..llm import create_provider, load_llm_config
-from ..pipeline import sanitize_error
+from ..ingestion.pipeline import sanitize_error
 
 
 SYNTHESIS_PLAN_SCHEMA_VERSION = "synthesis_plan.v2.8"

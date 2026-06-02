@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from ..answer import AskResult
-from ..ingest import yaml_quote
+from ..ingestion.ingest import yaml_quote
 from ..workspace import utc_now
 from .planner import SynthesisEvidenceItem, SynthesisPlan
 

@@ -7,8 +7,8 @@ from pathlib import Path
 from typing import Any
 
 from ..answer import AskResult
-from ..apply import apply_run
-from ..pipeline import sanitize_error
+from ..ingestion.apply import apply_run
+from ..ingestion.pipeline import sanitize_error
 from .pages import (
     SynthesisPageModel,
     merge_synthesis_page,

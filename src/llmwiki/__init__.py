@@ -4,6 +4,11 @@ from __future__ import annotations
 
 import sys as _sys
 
+from .ingestion import apply as _ingestion_apply
+from .ingestion import ingest as _ingestion_ingest
+from .ingestion import llm_ingest as _ingestion_llm_ingest
+from .ingestion import pipeline as _ingestion_pipeline
+from .ingestion import sources as _ingestion_sources
 from .pdf import blocks as _pdf_blocks
 from .pdf import chunks as _pdf_chunks
 from .pdf import mineru_runner as _pdf_mineru_runner
@@ -24,6 +29,11 @@ _sys.modules.setdefault(f"{__name__}.pdf_quality", _pdf_quality)
 _sys.modules.setdefault(f"{__name__}.pdf_parser_backends", _pdf_parser_backends)
 _sys.modules.setdefault(f"{__name__}.source_chunks", _pdf_chunks)
 _sys.modules.setdefault(f"{__name__}.mineru_runner", _pdf_mineru_runner)
+_sys.modules.setdefault(f"{__name__}.sources", _ingestion_sources)
+_sys.modules.setdefault(f"{__name__}.pipeline", _ingestion_pipeline)
+_sys.modules.setdefault(f"{__name__}.ingest", _ingestion_ingest)
+_sys.modules.setdefault(f"{__name__}.llm_ingest", _ingestion_llm_ingest)
+_sys.modules.setdefault(f"{__name__}.apply", _ingestion_apply)
 _sys.modules.setdefault(f"{__name__}.query_analysis", _retrieval_query_analysis)
 _sys.modules.setdefault(f"{__name__}.retrievers", _retrieval_retrievers)
 _sys.modules.setdefault(f"{__name__}.rerankers", _retrieval_rerankers)
@@ -39,6 +49,11 @@ pdf_quality = _pdf_quality
 pdf_parser_backends = _pdf_parser_backends
 source_chunks = _pdf_chunks
 mineru_runner = _pdf_mineru_runner
+sources = _ingestion_sources
+pipeline = _ingestion_pipeline
+ingest = _ingestion_ingest
+llm_ingest = _ingestion_llm_ingest
+apply = _ingestion_apply
 query_analysis = _retrieval_query_analysis
 retrievers = _retrieval_retrievers
 rerankers = _retrieval_rerankers
