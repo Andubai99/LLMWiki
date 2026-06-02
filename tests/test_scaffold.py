@@ -25,6 +25,7 @@ class ScaffoldTests(unittest.TestCase):
                 "clean",
                 "embeddings",
                 "parsers",
+                "ui",
                 "llm-test",
                 "doctor",
             },

@@ -30,6 +30,7 @@ from .synthesis.planner import (
     SynthesisPlanningOptions,
     plan_synthesis_writeback,
 )
+from .ui.server import serve_ui
 from .workspace import check_workspace, init_workspace
 
 
@@ -47,6 +48,7 @@ COMMANDS = (
     "clean",
     "embeddings",
     "parsers",
+    "ui",
     "llm-test",
     "doctor",
 )
@@ -316,6 +318,12 @@ def cmd_parsers_status(args: argparse.Namespace) -> int:
         print(f"warning={warning}")
     print(f"pypdf_available={bool_text(bool(data['pypdf_available']))}")
     print(f"artifact_dir={data['artifact_dir']}")
+    return 0
+
+
+def cmd_ui(args: argparse.Namespace) -> int:
+    root = Path(args.root).resolve()
+    serve_ui(root, args.host, args.port, open_browser=not args.no_open)
     return 0
 
 
@@ -647,6 +655,13 @@ def build_parser() -> argparse.ArgumentParser:
     parsers_status_parser.add_argument("--root", default=".")
     parsers_status_parser.add_argument("--json", action="store_true", help="Output stable machine-readable JSON.")
     parsers_status_parser.set_defaults(func=cmd_parsers_status)
+
+    ui_parser = subparsers.add_parser("ui", help="Start the local dashboard UI.")
+    ui_parser.add_argument("--root", default=".")
+    ui_parser.add_argument("--host", default="127.0.0.1")
+    ui_parser.add_argument("--port", type=int, default=8765)
+    ui_parser.add_argument("--no-open", action="store_true", help="Do not open a browser automatically.")
+    ui_parser.set_defaults(func=cmd_ui)
 
     embeddings_parser = subparsers.add_parser(
         "embeddings",
