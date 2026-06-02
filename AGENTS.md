@@ -141,6 +141,16 @@
 
 每次运行测试、验收、批量导入实验或真实 PDF acceptance 后，必须及时清理生成态和缓存，除非用户明确要求保留用于检查。
 
+优先使用项目命令清理，而不是手写临时删除脚本：
+
+```bash
+llmwiki clean --root .
+llmwiki clean --root . --scope generated
+llmwiki clean --root . --scope all
+```
+
+默认 `llmwiki clean --root .` 只清理测试缓存和临时验收工作区；`--scope generated` 清理生成态 source/wiki/staging/state/vector cache；`--scope all` 同时清理两类内容。需要确认删除范围时先加 `--dry-run`。
+
 优先清理：
 
 - `.test-workspaces/`

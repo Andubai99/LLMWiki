@@ -197,7 +197,7 @@ def test_docs_describe_v1_commands_and_constraints():
     readme = (root / "README.md").read_text(encoding="utf-8")
     agents = (root / "AGENTS.md").read_text(encoding="utf-8")
 
-    for command in ("init", "add", "ingest", "review", "apply", "query", "retrieve", "ask", "lint", "doctor"):
+    for command in ("init", "add", "ingest", "review", "apply", "query", "retrieve", "ask", "lint", "doctor", "clean"):
         assert f"llmwiki {command}" in readme
     assert "--json" in readme
     assert "--format prompt" in readme
@@ -282,6 +282,8 @@ def test_docs_describe_v1_commands_and_constraints():
     assert "workspace `.venv`" in agents
     assert "parser_backend_attempts" in agents
     assert "Parser attempt diagnostics are not evidence" in agents
+    assert "llmwiki clean --root ." in agents
+    assert "--scope generated" in agents
     assert "PDF source aliases must not include parser-created aliases or paper title aliases" in agents
     assert "LLM repair may only repair JSON syntax" in agents
     assert "content_role=\"ignored\"" in agents

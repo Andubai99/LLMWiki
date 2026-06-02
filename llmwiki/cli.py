@@ -10,6 +10,7 @@ from pathlib import Path
 
 from .answer import AskOptions, AskResult, answer_question
 from .apply import UnsafePatchError, apply_run
+from .clean import clean_workspace, format_clean_report
 from .db import catalog_path, schema_status
 from .ingest import ingest_source, review_run
 from .lint import lint_workspace
@@ -43,6 +44,7 @@ COMMANDS = (
     "retrieve",
     "ask",
     "eval",
+    "clean",
     "embeddings",
     "parsers",
     "llm-test",
@@ -268,6 +270,17 @@ def cmd_eval_pdf_quality(args: argparse.Namespace) -> int:
         print(json.dumps(summary.to_dict(), ensure_ascii=False, indent=2))
     else:
         print(format_pdf_quality_report(summary))
+    return 0
+
+
+def cmd_clean(args: argparse.Namespace) -> int:
+    root = Path(args.root).resolve()
+    try:
+        result = clean_workspace(root, scope=args.scope, dry_run=args.dry_run)
+    except (OSError, ValueError) as exc:
+        print(f"Clean failed: {exc}")
+        return 1
+    print(format_clean_report(result))
     return 0
 
 
@@ -610,6 +623,20 @@ def build_parser() -> argparse.ArgumentParser:
     pdf_quality_eval_parser.add_argument("--root", default=".")
     pdf_quality_eval_parser.add_argument("--json", action="store_true", help="Output stable machine-readable JSON.")
     pdf_quality_eval_parser.set_defaults(func=cmd_eval_pdf_quality)
+
+    clean_parser = subparsers.add_parser(
+        "clean",
+        help="Remove generated workspace caches and run artifacts.",
+    )
+    clean_parser.add_argument("--root", default=".")
+    clean_parser.add_argument(
+        "--scope",
+        choices=("cache", "generated", "all"),
+        default="cache",
+        help="What to clean. Default only removes caches and test workspaces.",
+    )
+    clean_parser.add_argument("--dry-run", action="store_true", help="List removals without deleting files.")
+    clean_parser.set_defaults(func=cmd_clean)
 
     parsers_parser = subparsers.add_parser("parsers", help="Inspect local parser backend availability.")
     parsers_subparsers = parsers_parser.add_subparsers(dest="parsers_command", required=True)

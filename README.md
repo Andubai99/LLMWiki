@@ -91,6 +91,8 @@ llmwiki query "retrieval citation anchors" --root .
 ```bash
 llmwiki lint --root .
 llmwiki doctor --root .
+llmwiki clean --root .
+llmwiki clean --root . --scope all
 ```
 
 ## 工作区结构
@@ -144,11 +146,14 @@ llmwiki retrieve "问题" --root . --json
 llmwiki query "问题" --root .
 llmwiki lint --root .
 llmwiki doctor --root .
+llmwiki clean --root .
 ```
 
 `llmwiki ask` 会先调用 LLM query planning，再使用本地 retrieve 从 wiki/catalog 检索证据，最后只基于 retrieved evidence 生成 grounded answer。默认不写回 wiki。
 
 `llmwiki retrieve` 是外部 RAG 系统、Agent 和 LLM prompt 的标准 evidence API。`llmwiki query` 是同一路径的人类可读输出，不维护另一套弱检索。
+
+`llmwiki clean --root .` 默认只清理测试缓存和临时验收工作区；`llmwiki clean --root . --scope generated` 清理生成态 source/wiki/staging/state/vector cache；`--scope all` 同时清理两类内容。`--dry-run` 可先预览将删除的路径。该命令会保留 `.gitkeep`、`config/api-keys.toml`、`docs/papers/`、`.venv/` 和用户资料。
 
 ### Internal/debug 命令
 

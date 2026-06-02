@@ -22,6 +22,7 @@ class ScaffoldTests(unittest.TestCase):
                 "retrieve",
                 "ask",
                 "eval",
+                "clean",
                 "embeddings",
                 "parsers",
                 "llm-test",
