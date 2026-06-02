@@ -8,7 +8,7 @@ import tomllib
 
 from ..llm import main_config_path
 from .retrievers import RetrievalCandidate
-from ..vector_index import cosine_similarity, load_vector_index, vector_index_status
+from ..vector.index import cosine_similarity, load_vector_index, vector_index_status
 
 
 FORBIDDEN_LLM_EVIDENCE_FIELDS = {
@@ -139,7 +139,7 @@ class EmbeddingReranker:
         if not candidates:
             return RerankResult(method=self.method, candidates=[])
 
-        from .. import embeddings
+        from ..vector import embeddings
 
         config = embeddings.load_embedding_config(self.root)
         status = vector_index_status(self.root)

@@ -6,7 +6,7 @@ import re
 from typing import Protocol
 
 from .query_analysis import RetrievalQuery
-from ..vector_index import cosine_similarity, load_vector_index, vector_index_status
+from ..vector.index import cosine_similarity, load_vector_index, vector_index_status
 
 
 @dataclass(frozen=True)
@@ -323,7 +323,7 @@ class VectorRetriever:
             diagnostics["failure_stage"] = "no_root"
             return RetrieverResult(self.name, [], diagnostics=diagnostics)
 
-        from .. import embeddings
+        from ..vector import embeddings
 
         config = embeddings.load_embedding_config(self.root)
         diagnostics.update(

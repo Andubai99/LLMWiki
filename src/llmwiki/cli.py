@@ -320,8 +320,8 @@ def cmd_parsers_status(args: argparse.Namespace) -> int:
 
 
 def cmd_embeddings_status(args: argparse.Namespace) -> int:
-    from .embeddings import load_embedding_config
-    from .vector_index import vector_index_status
+    from .vector.embeddings import load_embedding_config
+    from .vector.index import vector_index_status
 
     root = Path(args.root).resolve()
     config = load_embedding_config(root)
@@ -341,7 +341,7 @@ def cmd_embeddings_status(args: argparse.Namespace) -> int:
 
 
 def cmd_embeddings_test(args: argparse.Namespace) -> int:
-    from . import embeddings
+    from .vector import embeddings
 
     root = Path(args.root).resolve()
     config = embeddings.load_embedding_config(root)
@@ -364,8 +364,8 @@ def cmd_embeddings_test(args: argparse.Namespace) -> int:
 
 
 def cmd_embeddings_rebuild(args: argparse.Namespace) -> int:
-    from . import embeddings
-    from .vector_index import (
+    from .vector import embeddings
+    from .vector.index import (
         build_embedding_chunks,
         catalog_fingerprint,
         new_manifest,

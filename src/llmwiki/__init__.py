@@ -25,6 +25,8 @@ from .retrieval import rerankers as _retrieval_rerankers
 from .retrieval import retrievers as _retrieval_retrievers
 from .synthesis import pages as _synthesis_pages
 from .synthesis import planner as _synthesis_planner
+from .vector import embeddings as _vector_embeddings
+from .vector import index as _vector_index
 
 _sys.modules.setdefault(f"{__name__}.pdf_blocks", _pdf_blocks)
 _sys.modules.setdefault(f"{__name__}.pdf_quality", _pdf_quality)
@@ -47,6 +49,8 @@ _sys.modules.setdefault(f"{__name__}.query", _retrieval_query)
 _sys.modules.setdefault(f"{__name__}.planned_retrieval", _retrieval_planned)
 _sys.modules.setdefault(f"{__name__}.synthesis_pages", _synthesis_pages)
 _sys.modules.setdefault(f"{__name__}.synthesis_planner", _synthesis_planner)
+_sys.modules.setdefault(f"{__name__}.embeddings", _vector_embeddings)
+_sys.modules.setdefault(f"{__name__}.vector_index", _vector_index)
 
 pdf_blocks = _pdf_blocks
 pdf_quality = _pdf_quality
@@ -69,5 +73,7 @@ query = _retrieval_query
 planned_retrieval = _retrieval_planned
 synthesis_pages = _synthesis_pages
 synthesis_planner = _synthesis_planner
+embeddings = _vector_embeddings
+vector_index = _vector_index
 
 __version__ = "0.1.0"
