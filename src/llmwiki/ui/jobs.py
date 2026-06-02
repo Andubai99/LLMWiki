@@ -5,6 +5,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 import json
 import secrets
+import threading
+from collections.abc import Callable
 
 from .models import UiWarning, sanitize_ui_text
 
@@ -72,6 +74,57 @@ class UiJobStore:
         return update_job(self.root, job, **updates)
 
 
+class UiJobManager:
+    def __init__(
+        self,
+        root: Path,
+        *,
+        worker: Callable[[UiJob], UiJob] | None = None,
+        poll_interval_seconds: float = 0.5,
+    ) -> None:
+        self.root = root.resolve()
+        self.worker = worker
+        self.poll_interval_seconds = poll_interval_seconds
+        self._lock = threading.Lock()
+        self._stop_event = threading.Event()
+        self._thread: threading.Thread | None = None
+
+    def start(self) -> None:
+        if self._thread and self._thread.is_alive():
+            return
+        self._stop_event.clear()
+        self._thread = threading.Thread(target=self._run_loop, name="llmwiki-ui-job-worker", daemon=True)
+        self._thread.start()
+
+    def stop(self) -> None:
+        self._stop_event.set()
+        if self._thread and self._thread.is_alive():
+            self._thread.join(timeout=5)
+
+    def enqueue(self, job: UiJob) -> UiJob:
+        return save_job(self.root, job)
+
+    def run_pending_once(self) -> bool:
+        if self.worker is None:
+            raise RuntimeError("UiJobManager requires a worker before running jobs.")
+        if not self._lock.acquire(blocking=False):
+            return False
+        try:
+            job = next_pending_job(self.root)
+            if job is None:
+                return False
+            self.worker(job)
+            return True
+        finally:
+            self._lock.release()
+
+    def _run_loop(self) -> None:
+        while not self._stop_event.is_set():
+            ran = self.run_pending_once()
+            if not ran:
+                self._stop_event.wait(self.poll_interval_seconds)
+
+
 def create_add_source_job(root: Path, source_input: str, parser: str | None = None) -> UiJob:
     job = UiJob(
         job_id=new_job_id(),
@@ -84,6 +137,14 @@ def create_add_source_job(root: Path, source_input: str, parser: str | None = No
         stage="queued",
     )
     return save_job(root, job)
+
+
+def next_pending_job(root: Path) -> UiJob | None:
+    pending = [job for job in load_jobs(root).jobs if job.status == "pending"]
+    if not pending:
+        return None
+    pending.sort(key=lambda job: (job.created_at, job.job_id))
+    return pending[0]
 
 
 def load_jobs(root: Path) -> JobLoadResult:
@@ -220,7 +281,7 @@ def new_job_id() -> str:
 
 
 def now_iso() -> str:
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+    return datetime.now(timezone.utc).isoformat()
 
 
 def sanitize_job_payload(value: object) -> object:

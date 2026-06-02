@@ -4,7 +4,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .jobs import UiJob, create_add_source_job
+from llmwiki.ingestion.pipeline import AddPipelineError, AddPipelineResult, add_and_process_source
+
+from .jobs import UiJob, create_add_source_job, now_iso, update_job
 from .models import UI_SCHEMA_VERSION, sanitize_ui_text
 
 
@@ -61,6 +63,72 @@ def enqueue_add_source_job(root: Path, payload: object, job_manager: Any) -> UiJ
     request = validate_add_source_request(root, payload)
     job = create_add_source_job(root, request.source, parser=request.parser)
     return job_manager.enqueue(job)
+
+
+def run_add_source_job(root: Path, job: UiJob) -> UiJob:
+    root = root.resolve()
+    job = update_job(root, job, status="running", stage="running", started_at=now_iso())
+    try:
+        result = add_and_process_source(root, job.source_input, parser_backend=job.requested_parser)
+    except AddPipelineError as exc:
+        return update_job(
+            root,
+            job,
+            status="failed",
+            stage=exc.stage,
+            finished_at=now_iso(),
+            source_id=exc.source_id or job.source_id,
+            run_id=exc.run_id or job.run_id,
+            failure_stage=exc.stage,
+            failure_reason=sanitize_ui_text(exc.reason),
+            result=_pipeline_error_result(exc),
+        )
+    except Exception as exc:  # pragma: no cover - exercised by tests through RuntimeError
+        reason = sanitize_ui_text(str(exc) or exc.__class__.__name__)
+        return update_job(
+            root,
+            job,
+            status="failed",
+            stage="worker",
+            finished_at=now_iso(),
+            failure_stage="worker",
+            failure_reason=reason,
+            result={"error": reason},
+        )
+
+    return update_job(
+        root,
+        job,
+        status="applied",
+        stage="applied",
+        finished_at=now_iso(),
+        source_id=result.source_id,
+        run_id=result.run_id,
+        result=_pipeline_result_payload(result),
+    )
+
+
+def _pipeline_result_payload(result: AddPipelineResult) -> dict[str, object]:
+    return {
+        "pipeline_status": sanitize_ui_text(result.status, max_chars=80),
+        "title": sanitize_ui_text(result.title),
+        "source_duplicate": result.source_duplicate,
+        "proposal_engine": sanitize_ui_text(result.proposal_engine, max_chars=80),
+        "claim_count": result.claim_count,
+        "patch_count": result.patch_count,
+        "applied_pages": [sanitize_ui_text(page) for page in result.applied_pages],
+        "warnings": [sanitize_ui_text(warning) for warning in result.warnings],
+    }
+
+
+def _pipeline_error_result(error: AddPipelineError) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "stage": sanitize_ui_text(error.stage, max_chars=80),
+        "reason": sanitize_ui_text(error.reason),
+    }
+    if error.debug_command:
+        payload["debug_command"] = sanitize_ui_text(error.debug_command)
+    return payload
 
 
 def _normalize_parser(value: object) -> str | None:
