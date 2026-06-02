@@ -36,6 +36,8 @@
 
 ## 3. Operating Rules
 
+- Production Python package code lives under `src/llmwiki/`. Do not add new runtime modules under a root-level `llmwiki/` directory.
+- Tests live under `tests/`; committed documentation/specs/plans live under `docs/`.
 - Do not modify files under `sources/raw/`.
 - Do not write final wiki pages directly during ingest. Write candidate changes under `staging/<run-id>/`.
 - Codex/LLM must not bypass staging; proposed knowledge changes must be inspectable before apply.

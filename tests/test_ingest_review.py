@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -135,6 +136,9 @@ def test_review_subprocess_stdout_is_utf8_for_unicode_claims(capsys):
     source_id = import_source(root, str(source)).source_id
     assert main(["ingest", source_id, "--root", str(root)]) == 0
     run_id = capsys.readouterr().out.split("run_id=", 1)[1].splitlines()[0].strip()
+    repo_root = Path(__file__).resolve().parents[1]
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(repo_root / "src")
 
     result = subprocess.run(
         [
@@ -147,7 +151,8 @@ def test_review_subprocess_stdout_is_utf8_for_unicode_claims(capsys):
             "--root",
             str(root),
         ],
-        cwd=Path(__file__).resolve().parents[1],
+        cwd=repo_root,
+        env=env,
         check=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
