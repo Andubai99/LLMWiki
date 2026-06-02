@@ -20,8 +20,8 @@ from .pdf.quality import evaluate_pdf_quality, format_pdf_quality_report
 from .pdf.parser_backends import load_pdf_parser_config
 from .pdf.mineru_runner import probe_mineru_status
 from .providers.base import LLMProviderError
-from .query import query_context
-from .retrieval_eval import evaluate_retrieval, format_eval_report, sanitize_error
+from .retrieval.eval import evaluate_retrieval, format_eval_report, sanitize_error
+from .retrieval.query import query_context
 from .retrieval import format_retrieval_prompt, retrieve_context
 from .synthesis import SynthesisWritebackError, SynthesisWritebackResult, create_synthesis_run
 from .synthesis_planner import (

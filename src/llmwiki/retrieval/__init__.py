@@ -4,7 +4,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from .db import catalog_path, connect
+from ..db import catalog_path, connect
 from .evidence_selection import EvidenceSelectionOptions, SelectedEvidence, select_evidence
 from .query_analysis import analyze_query
 from .rerankers import load_reranking_options, rerank_candidates

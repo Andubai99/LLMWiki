@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from .llm import create_provider, load_llm_config
-from .planned_retrieval import PlannedRetrievalResult, execute_query_plan
+from .retrieval.planned import PlannedRetrievalResult, execute_query_plan
 from .planner import PlanningOptions, PlanningResult, plan_question
 from .providers.base import LLMProviderError
 
