@@ -22,6 +22,7 @@ GENERATED_CLEAR_DIRECTORIES = (
     "sources/parser-artifacts",
     "staging",
     "state/embeddings",
+    "state/ui-jobs",
     "wiki/sources",
     "wiki/concepts",
     "wiki/entities",
@@ -173,4 +174,3 @@ def display_path(root: Path, path: Path) -> str:
         return str(path.relative_to(root)).replace("\\", "/")
     except ValueError:
         return str(path)
-

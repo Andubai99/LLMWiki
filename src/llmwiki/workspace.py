@@ -19,6 +19,7 @@ REQUIRED_PATHS = (
     "sources/chunks",
     "sources/parser-artifacts",
     "state/catalog.sqlite",
+    "state/ui-jobs",
     "wiki/index.md",
     "wiki/log.md",
     "wiki/sources",
@@ -206,6 +207,7 @@ def init_workspace(root: Path) -> None:
         "wiki/syntheses",
         "staging",
         "state",
+        "state/ui-jobs",
     ):
         (root / directory).mkdir(parents=True, exist_ok=True)
 

@@ -326,6 +326,7 @@ def test_gitignore_excludes_generated_workspace_content():
         "staging/*",
         "!staging/.gitkeep",
         "state/*.sqlite",
+        "state/ui-jobs/",
         "wiki/sources/*.md",
         "wiki/concepts/*.md",
         "wiki/entities/*.md",
