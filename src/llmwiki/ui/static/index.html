@@ -8,8 +8,125 @@
   </head>
   <body>
     <main id="dashboard-root">
-      <h1>LLMWiki Dashboard</h1>
-      <p id="status-line">Loading workspace status...</p>
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Local Workspace</p>
+          <h1>LLMWiki Dashboard</h1>
+          <p id="workspace-root" class="muted">Loading workspace...</p>
+        </div>
+        <button id="refresh-button" type="button" title="Refresh dashboard data">Refresh</button>
+      </header>
+
+      <section class="status-strip" aria-label="Workspace summary">
+        <article class="metric">
+          <span class="label">Status</span>
+          <strong id="status-value">Loading</strong>
+        </article>
+        <article class="metric">
+          <span class="label">Sources</span>
+          <strong id="sources-count">0</strong>
+        </article>
+        <article class="metric">
+          <span class="label">Claims</span>
+          <strong id="claims-count">0</strong>
+        </article>
+        <article class="metric">
+          <span class="label">Pages</span>
+          <strong id="pages-count">0</strong>
+        </article>
+        <article class="metric">
+          <span class="label">Latest Run</span>
+          <strong id="latest-run">None</strong>
+        </article>
+      </section>
+
+      <section class="config-grid" aria-label="Configuration status">
+        <article>
+          <h2>LLM</h2>
+          <p id="llm-status">Loading</p>
+        </article>
+        <article>
+          <h2>Embedding</h2>
+          <p id="embedding-status">Loading</p>
+        </article>
+        <article>
+          <h2>Parser</h2>
+          <p id="parser-status">Loading</p>
+        </article>
+        <article>
+          <h2>Vector Index</h2>
+          <p id="vector-status">Loading</p>
+        </article>
+      </section>
+
+      <section class="warnings-panel" aria-label="Warnings">
+        <h2>Warnings</h2>
+        <ul id="warnings-list">
+          <li class="muted">No warnings loaded yet.</li>
+        </ul>
+      </section>
+
+      <section class="data-section">
+        <div class="section-heading">
+          <h2>Sources</h2>
+          <span id="sources-table-count" class="muted">0 rows</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Source</th>
+                <th>Type</th>
+                <th>Status</th>
+                <th>Parser</th>
+                <th>Latest Run</th>
+              </tr>
+            </thead>
+            <tbody id="sources-table"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="data-section">
+        <div class="section-heading">
+          <h2>Recent Runs</h2>
+          <span id="runs-table-count" class="muted">0 rows</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Run</th>
+                <th>Source</th>
+                <th>Status</th>
+                <th>Stage</th>
+                <th>Claims</th>
+              </tr>
+            </thead>
+            <tbody id="runs-table"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="data-section">
+        <div class="section-heading">
+          <h2>Wiki Pages</h2>
+          <span id="pages-table-count" class="muted">0 rows</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Page</th>
+                <th>Type</th>
+                <th>Path</th>
+                <th>Claims</th>
+              </tr>
+            </thead>
+            <tbody id="pages-table"></tbody>
+          </table>
+        </div>
+      </section>
     </main>
     <script src="/static/app.js"></script>
   </body>
