@@ -8,9 +8,9 @@ from pathlib import Path
 
 from .db import catalog_path, connect
 from .llm_ingest import LLMIngestProposal, create_llm_ingest_proposal, normalize_claim_confidence
-from .pdf_blocks import BLOCK_SCHEMA_VERSION, load_blocks_jsonl, load_metadata_json
-from .pdf_quality import detect_parser_created_alias
-from .source_chunks import CHUNK_SCHEMA_VERSION, load_chunks_jsonl
+from .pdf.blocks import BLOCK_SCHEMA_VERSION, load_blocks_jsonl, load_metadata_json
+from .pdf.quality import detect_parser_created_alias
+from .pdf.chunks import CHUNK_SCHEMA_VERSION, load_chunks_jsonl
 from .workspace import utc_now
 
 

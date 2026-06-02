@@ -16,9 +16,9 @@ from .lint import lint_workspace
 from .maintenance.clean import clean_workspace, format_clean_report
 from .llm import create_provider, load_llm_config, override_llm_config
 from .pipeline import AddPipelineError, add_and_process_source
-from .pdf_quality import evaluate_pdf_quality, format_pdf_quality_report
-from .pdf_parser_backends import load_pdf_parser_config
-from .mineru_runner import probe_mineru_status
+from .pdf.quality import evaluate_pdf_quality, format_pdf_quality_report
+from .pdf.parser_backends import load_pdf_parser_config
+from .pdf.mineru_runner import probe_mineru_status
 from .providers.base import LLMProviderError
 from .query import query_context
 from .retrieval_eval import evaluate_retrieval, format_eval_report, sanitize_error

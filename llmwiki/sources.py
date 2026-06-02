@@ -9,13 +9,13 @@ from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 from .db import catalog_path, connect
-from .pdf_blocks import (
+from .pdf.blocks import (
     parse_pdf_source,
     render_normalized_markdown_from_blocks,
     write_blocks_jsonl,
     write_metadata_json,
 )
-from .source_chunks import build_source_chunks, write_chunks_jsonl
+from .pdf.chunks import build_source_chunks, write_chunks_jsonl
 from .workspace import utc_now
 
 

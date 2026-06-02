@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .db import catalog_path, connect, schema_status
-from .pdf_quality import evaluate_pdf_quality
+from .pdf.quality import evaluate_pdf_quality
 
 
 @dataclass(frozen=True)

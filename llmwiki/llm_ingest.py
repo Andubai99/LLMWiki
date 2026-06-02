@@ -7,9 +7,9 @@ import json
 import re
 
 from .llm import create_provider, load_llm_config
-from .pdf_blocks import SourceBlock, block_comment, block_evidence_text, load_blocks_jsonl, load_metadata_json
+from .pdf.blocks import SourceBlock, block_comment, block_evidence_text, load_blocks_jsonl, load_metadata_json
 from .providers.base import LLMProviderError
-from .source_chunks import SourceChunk, load_chunks_jsonl
+from .pdf.chunks import SourceChunk, load_chunks_jsonl
 
 
 @dataclass(frozen=True)
