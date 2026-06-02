@@ -87,6 +87,76 @@ def test_run_mineru_command_uses_shell_false_and_discovers_output(tmp_path):
     assert result.content_list_candidates[0].name == "content_list.json"
 
 
+def test_discover_mineru_command_prefers_configured_absolute_path(monkeypatch, tmp_path):
+    from llmwiki.mineru_runner import discover_mineru_command
+
+    configured = tmp_path / "tools" / "mineru.exe"
+    configured.parent.mkdir()
+    configured.write_text("mineru", encoding="utf-8")
+    monkeypatch.setattr("shutil.which", lambda command: str(tmp_path / "wrong.exe"))
+
+    result = discover_mineru_command(tmp_path, make_config(mineru_command=str(configured)))
+
+    assert result.available is True
+    assert result.command == str(configured)
+    assert result.command_source == "configured_path"
+
+
+def test_discover_mineru_command_uses_path_when_available(monkeypatch, tmp_path):
+    from llmwiki.mineru_runner import discover_mineru_command
+
+    monkeypatch.setattr("shutil.which", lambda command: "C:/Tools/mineru.exe" if command == "mineru" else None)
+
+    result = discover_mineru_command(tmp_path, make_config())
+
+    assert result.available is True
+    assert result.command == "C:/Tools/mineru.exe"
+    assert result.command_source == "PATH"
+
+
+def test_discover_mineru_command_finds_workspace_windows_venv(monkeypatch, tmp_path):
+    from llmwiki.mineru_runner import discover_mineru_command
+
+    mineru = tmp_path / ".venv" / "Scripts" / "mineru.exe"
+    mineru.parent.mkdir(parents=True)
+    mineru.write_text("mineru", encoding="utf-8")
+    monkeypatch.setattr("shutil.which", lambda command: None)
+
+    result = discover_mineru_command(tmp_path, make_config())
+
+    assert result.available is True
+    assert result.command == str(mineru)
+    assert result.command_source == "workspace_venv"
+
+
+def test_discover_mineru_command_finds_workspace_posix_venv(monkeypatch, tmp_path):
+    from llmwiki.mineru_runner import discover_mineru_command
+
+    mineru = tmp_path / ".venv" / "bin" / "mineru"
+    mineru.parent.mkdir(parents=True)
+    mineru.write_text("mineru", encoding="utf-8")
+    monkeypatch.setattr("shutil.which", lambda command: None)
+
+    result = discover_mineru_command(tmp_path, make_config())
+
+    assert result.available is True
+    assert result.command == str(mineru)
+    assert result.command_source == "workspace_venv"
+
+
+def test_discover_mineru_command_not_found(monkeypatch, tmp_path):
+    from llmwiki.mineru_runner import discover_mineru_command
+
+    monkeypatch.setattr("shutil.which", lambda command: None)
+
+    result = discover_mineru_command(tmp_path, make_config())
+
+    assert result.available is False
+    assert result.command == "mineru"
+    assert result.command_source == "not_found"
+    assert result.warnings
+
+
 def test_sanitize_parser_log_redacts_secrets_and_truncates():
     from llmwiki.mineru_runner import sanitize_parser_log
 
