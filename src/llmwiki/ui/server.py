@@ -21,7 +21,7 @@ from .api import (
     list_sources,
     list_ui_jobs,
 )
-from .ask_actions import AskUiActionError, enqueue_ask_job
+from .ask_actions import AskUiActionError, enqueue_ask_job, enqueue_synthesis_preview_job
 from .jobs import UiJobManager, mark_stale_running_jobs_interrupted
 from .models import UI_SCHEMA_VERSION, sanitize_ui_text
 
@@ -202,7 +202,7 @@ def write_api(handler: BaseHTTPRequestHandler, path: str) -> None:
 
 
 def write_post_api(handler: BaseHTTPRequestHandler, path: str) -> None:
-    if path not in {"/api/sources/add", "/api/ask"}:
+    if path not in {"/api/sources/add", "/api/ask"} and not is_synthesis_preview_path(path):
         write_json(handler, 404, {"schema_version": UI_SCHEMA_VERSION, "error": "not_found"})
         return
     server = ui_server(handler)
@@ -213,8 +213,15 @@ def write_post_api(handler: BaseHTTPRequestHandler, path: str) -> None:
         payload = read_json_body(handler)
         if path == "/api/sources/add":
             job = enqueue_add_source_job(server.root, payload, server.job_manager)
-        else:
+        elif path == "/api/ask":
             job = enqueue_ask_job(server.root, payload, server.job_manager)
+        else:
+            job = enqueue_synthesis_preview_job(
+                server.root,
+                ask_job_id_from_synthesis_path(path, suffix="/synthesis/preview"),
+                payload,
+                server.job_manager,
+            )
     except (UiActionError, AskUiActionError) as exc:
         data = exc.to_dict()
         write_json(
@@ -239,6 +246,14 @@ def write_post_api(handler: BaseHTTPRequestHandler, path: str) -> None:
         )
         return
     write_json(handler, 202, {"schema_version": UI_SCHEMA_VERSION, "job": job.to_dict()})
+
+
+def is_synthesis_preview_path(path: str) -> bool:
+    return path.startswith("/api/ask/") and path.endswith("/synthesis/preview")
+
+
+def ask_job_id_from_synthesis_path(path: str, *, suffix: str) -> str:
+    return path.removeprefix("/api/ask/").removesuffix(suffix)
 
 
 def read_json_body(handler: BaseHTTPRequestHandler, max_bytes: int = 65536) -> object:
