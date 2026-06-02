@@ -168,6 +168,9 @@ class MinerUBackend:
         if output_dir is None:
             config = load_pdf_parser_config(request.root)
             output_dir = _mineru_output_root(request, config)
+            discovery = mineru_runner.discover_mineru_command(request.root, config)
+            if not discovery.available:
+                raise PdfParserBackendError("MinerU parser backend is unavailable")
             command_result = mineru_runner.run_mineru_command(
                 mineru_runner.MinerUCommandRequest(
                     root=request.root,
@@ -175,6 +178,8 @@ class MinerUBackend:
                     raw_path=request.root / request.raw_path,
                     output_root=output_dir,
                     config=config,
+                    resolved_command=discovery.command_path,
+                    command_source=discovery.command_source,
                 )
             )
             if command_result.returncode != 0 or command_result.timed_out:

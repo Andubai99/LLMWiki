@@ -214,6 +214,10 @@ def test_explicit_pypdf_does_not_invoke_mineru(monkeypatch):
     assert main(["init", "--root", str(root)]) == 0
     monkeypatch.setattr("shutil.which", lambda command: "C:/Tools/mineru.exe")
     monkeypatch.setattr(
+        "llmwiki.mineru_runner.discover_mineru_command",
+        lambda root, config: (_ for _ in ()).throw(AssertionError("explicit pypdf must not discover MinerU")),
+    )
+    monkeypatch.setattr(
         "llmwiki.mineru_runner.run_mineru_command",
         lambda request: (_ for _ in ()).throw(AssertionError("explicit pypdf must not run MinerU")),
     )

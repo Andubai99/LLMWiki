@@ -15,6 +15,15 @@ def fetch_rows(db_path: Path, sql: str) -> list[sqlite3.Row]:
         return conn.execute(sql).fetchall()
 
 
+def force_missing_mineru(root: Path) -> None:
+    config_path = root / "config" / "config.toml"
+    config_path.write_text(
+        config_path.read_text(encoding="utf-8").replace('mineru_command = "mineru"', 'mineru_command = "missing-mineru"'),
+        encoding="utf-8",
+        newline="\n",
+    )
+
+
 def test_import_source_markdown_writes_raw_normalized_and_deduplicates(capsys):
     root = make_workspace()
     assert main(["init", "--root", str(root)]) == 0
@@ -62,6 +71,7 @@ def test_import_source_markdown_writes_raw_normalized_and_deduplicates(capsys):
 def test_import_pdf_writes_metadata_blocks_and_block_normalized_source(monkeypatch, capsys):
     root = make_workspace()
     assert main(["init", "--root", str(root)]) == 0
+    force_missing_mineru(root)
     capsys.readouterr()
 
     def fake_read_pdf_pages(content: bytes):
@@ -116,6 +126,7 @@ def test_import_pdf_writes_metadata_blocks_and_block_normalized_source(monkeypat
 def test_import_pdf_records_auto_fallback_pypdf_backend(monkeypatch, capsys):
     root = make_workspace()
     assert main(["init", "--root", str(root)]) == 0
+    force_missing_mineru(root)
     capsys.readouterr()
     monkeypatch.setattr("shutil.which", lambda command: None)
 
@@ -200,6 +211,7 @@ def test_import_pdf_can_use_mineru_fixture_backend(capsys):
 def test_import_pdf_explicit_mineru_without_output_or_config_fails(capsys):
     root = make_workspace()
     assert main(["init", "--root", str(root)]) == 0
+    force_missing_mineru(root)
     capsys.readouterr()
     source = root / "mineru.pdf"
     source.write_bytes(b"%PDF fake")
@@ -213,6 +225,7 @@ def test_import_pdf_explicit_mineru_without_output_or_config_fails(capsys):
 def test_import_pdf_auto_backend_records_fallback_warning(monkeypatch, capsys):
     root = make_workspace()
     assert main(["init", "--root", str(root)]) == 0
+    force_missing_mineru(root)
     monkeypatch.setattr("shutil.which", lambda command: None)
     monkeypatch.setattr(
         "llmwiki.pdf_blocks.read_pdf_pages",

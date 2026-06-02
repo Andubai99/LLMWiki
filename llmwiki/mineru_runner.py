@@ -20,6 +20,8 @@ class MinerUCommandRequest:
     raw_path: Path
     output_root: Path
     config: Any
+    resolved_command: str = ""
+    command_source: str = ""
 
 
 @dataclass(frozen=True)
@@ -42,6 +44,7 @@ class MinerUCommandResult:
     content_list_candidates: list[Path] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     timed_out: bool = False
+    command_source: str = ""
 
 
 def discover_mineru_command(root: Path, config: Any) -> MinerUDiscoveryResult:
@@ -116,7 +119,7 @@ def discover_mineru_command(root: Path, config: Any) -> MinerUDiscoveryResult:
 def build_mineru_command(request: MinerUCommandRequest) -> list[str]:
     config = request.config
     command = [
-        str(config.mineru_command),
+        str(request.resolved_command or config.mineru_command),
         "-p",
         str(request.raw_path),
         "-o",
@@ -162,6 +165,7 @@ def run_mineru_command(
             stderr_snippet=sanitize_parser_log(_safe_text(exc.stderr), max_chars=max_chars),
             warnings=[f"MinerU command timed out after {exc.timeout} seconds"],
             timed_out=True,
+            command_source=request.command_source,
         )
 
     duration = time.monotonic() - started
@@ -181,6 +185,7 @@ def run_mineru_command(
         content_list_candidates=candidates,
         warnings=warnings,
         timed_out=False,
+        command_source=request.command_source,
     )
 
 

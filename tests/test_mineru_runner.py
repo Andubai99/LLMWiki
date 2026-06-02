@@ -57,6 +57,25 @@ def test_build_mineru_command_uses_safe_argument_list(tmp_path):
     ]
 
 
+def test_build_mineru_command_uses_resolved_command(tmp_path):
+    from llmwiki.mineru_runner import MinerUCommandRequest, build_mineru_command
+
+    resolved = tmp_path / ".venv" / "Scripts" / "mineru.exe"
+    request = MinerUCommandRequest(
+        root=tmp_path,
+        source_id="src_pdf",
+        raw_path=tmp_path / "paper.pdf",
+        output_root=tmp_path / "out",
+        config=make_config(mineru_command="mineru"),
+        resolved_command=str(resolved),
+        command_source="workspace_venv",
+    )
+
+    command = build_mineru_command(request)
+
+    assert command[0] == str(resolved)
+
+
 def test_run_mineru_command_uses_shell_false_and_discovers_output(tmp_path):
     from llmwiki.mineru_runner import MinerUCommandRequest, run_mineru_command
 
@@ -77,11 +96,14 @@ def test_run_mineru_command_uses_shell_false_and_discovers_output(tmp_path):
             raw_path=tmp_path / "paper.pdf",
             output_root=output_root,
             config=make_config(),
+            resolved_command=str(tmp_path / ".venv" / "Scripts" / "mineru.exe"),
+            command_source="workspace_venv",
         ),
         runner=fake_run,
     )
 
     assert result.returncode == 0
+    assert result.command_source == "workspace_venv"
     assert result.timed_out is False
     assert len(result.content_list_candidates) == 1
     assert result.content_list_candidates[0].name == "content_list.json"
