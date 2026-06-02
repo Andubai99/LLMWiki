@@ -41,6 +41,7 @@ def fingerprint_path(path: Path) -> tuple:
 def workspace_fingerprint(root: Path) -> dict[str, tuple]:
     targets = {
         "catalog": root / "state" / "catalog.sqlite",
+        "ui_jobs": root / "state" / "ui-jobs",
         "wiki_index": root / "wiki" / "index.md",
         "wiki_log": root / "wiki" / "log.md",
         "staging": root / "staging",
@@ -74,11 +75,13 @@ def start_test_server(root: Path):
 
 
 def test_ui_api_functions_do_not_mutate_workspace(monkeypatch) -> None:
-    from llmwiki.ui.api import get_config_status, get_workspace_status, list_pages, list_runs, list_sources
+    from llmwiki.ui.api import get_config_status, get_ui_job, get_workspace_status, list_pages, list_runs, list_sources, list_ui_jobs
+    from llmwiki.ui.jobs import create_add_source_job
 
     forbid_runtime_work(monkeypatch)
     root = make_workspace()
     assert main(["init", "--root", str(root)]) == 0
+    job = create_add_source_job(root, "paper.pdf")
     before = workspace_fingerprint(root)
 
     get_workspace_status(root)
@@ -86,19 +89,33 @@ def test_ui_api_functions_do_not_mutate_workspace(monkeypatch) -> None:
     list_runs(root)
     list_pages(root)
     get_config_status(root)
+    list_ui_jobs(root)
+    get_ui_job(root, job.job_id)
 
     assert workspace_fingerprint(root) == before
 
 
 def test_ui_http_api_routes_do_not_mutate_workspace(monkeypatch) -> None:
+    from llmwiki.ui.jobs import create_add_source_job
+
     forbid_runtime_work(monkeypatch)
     root = make_workspace()
     assert main(["init", "--root", str(root)]) == 0
+    job = create_add_source_job(root, "paper.pdf")
     before = workspace_fingerprint(root)
     server, thread = start_test_server(root)
     host, port = server.server_address
     try:
-        for route in ["/api/status", "/api/sources", "/api/runs", "/api/pages", "/api/config"]:
+        for route in [
+            "/api/session",
+            "/api/status",
+            "/api/sources",
+            "/api/runs",
+            "/api/pages",
+            "/api/config",
+            "/api/jobs",
+            f"/api/jobs/{job.job_id}",
+        ]:
             with urlopen(f"http://{host}:{port}{route}", timeout=5) as response:
                 assert response.status == 200
                 response.read()
