@@ -10,14 +10,24 @@ from llmwiki.synthesis.planner import (
     SynthesisPlanningOptions,
     format_synthesis_preview,
     plan_synthesis_writeback,
+    parse_synthesis_plan,
 )
+from llmwiki.synthesis import SynthesisWritebackError, SynthesisWritebackResult, create_synthesis_run
 
 from .ask_models import AskUiRequest
-from .jobs import UiJob, create_synthesis_preview_job, load_jobs, now_iso, update_job
+from .jobs import (
+    UiJob,
+    create_synthesis_preview_job,
+    create_synthesis_writeback_job,
+    load_jobs,
+    now_iso,
+    update_job,
+)
 from .models import UI_SCHEMA_VERSION, sanitize_ui_text
 
 
 ALLOWED_CONFIDENCE_FILTERS = {"cited", "weak"}
+ALLOWED_WRITEBACK_MODES = {"auto", "create", "update"}
 
 
 class AskUiActionError(Exception):
@@ -74,6 +84,15 @@ def enqueue_synthesis_preview_job(root: Path, ask_job_id: str, payload: object, 
     _ = payload
     ask_job = _require_answered_ask_job(root, ask_job_id)
     job = create_synthesis_preview_job(root, ask_job.job_id)
+    return job_manager.enqueue(job)
+
+
+def enqueue_synthesis_writeback_job(root: Path, ask_job_id: str, payload: object, job_manager: Any) -> UiJob:
+    ask_job = _require_answered_ask_job(root, ask_job_id)
+    writeback_mode = _writeback_mode_from_payload(payload)
+    preview_job = _require_writeback_preview_job(root, ask_job.job_id)
+    job = create_synthesis_writeback_job(root, ask_job.job_id, writeback_mode=writeback_mode)
+    job = update_job(root, job, result={"preview_job_id": preview_job.job_id})
     return job_manager.enqueue(job)
 
 
@@ -165,6 +184,75 @@ def run_synthesis_preview_job(root: Path, job: UiJob) -> UiJob:
     )
 
 
+def run_synthesis_writeback_job(root: Path, job: UiJob) -> UiJob:
+    root = root.resolve()
+    job = update_job(root, job, status="running", stage="running", started_at=now_iso())
+    try:
+        ask_job = _require_answered_ask_job(root, job.parent_job_id)
+        preview_job = _preview_job_for_writeback(root, job)
+        ask_result = _ask_result_from_job(ask_job)
+        plan = _synthesis_plan_from_preview_job(preview_job)
+        result = create_synthesis_run(
+            root,
+            ask_result,
+            plan=plan,
+            planning_options=SynthesisPlanningOptions(writeback_mode=job.writeback_mode or "auto"),
+        )
+    except SynthesisWritebackError as exc:
+        reason = sanitize_ui_text(exc.reason)
+        return update_job(
+            root,
+            job,
+            status="failed",
+            stage=exc.stage,
+            finished_at=now_iso(),
+            run_id=exc.run_id or job.run_id,
+            failure_stage=exc.stage,
+            failure_reason=reason,
+            result={
+                "writeback_status": "failed",
+                "run_id": exc.run_id or "",
+                "failure_stage": exc.stage,
+                "failure_reason": reason,
+            },
+        )
+    except AskUiActionError as exc:
+        data = exc.to_dict()
+        return update_job(
+            root,
+            job,
+            status="failed",
+            stage="synthesis_writeback",
+            finished_at=now_iso(),
+            failure_stage="synthesis_writeback",
+            failure_reason=str(data["message"]),
+            result={"writeback_status": "failed", "failure_reason": data["message"]},
+        )
+    except Exception as exc:  # pragma: no cover - defensive
+        reason = sanitize_ui_text(str(exc) or exc.__class__.__name__)
+        return update_job(
+            root,
+            job,
+            status="failed",
+            stage="synthesis_writeback",
+            finished_at=now_iso(),
+            failure_stage="synthesis_writeback",
+            failure_reason=reason,
+            result={"writeback_status": "failed", "failure_reason": reason},
+        )
+
+    payload = _synthesis_writeback_payload(result, preview_job)
+    return update_job(
+        root,
+        job,
+        status="applied",
+        stage=str(payload.get("writeback_status") or "applied"),
+        finished_at=now_iso(),
+        run_id=result.run_id,
+        result=payload,
+    )
+
+
 def _normalize_limit(value: object) -> int:
     if isinstance(value, bool):
         raise AskUiActionError("invalid_limit", "Limit must be an integer from 1 to 20.")
@@ -190,6 +278,20 @@ def _normalize_confidence(value: object) -> str | None:
     if confidence not in ALLOWED_CONFIDENCE_FILTERS:
         raise AskUiActionError("invalid_confidence", "Confidence must be cited, weak, or empty.")
     return confidence
+
+
+def _writeback_mode_from_payload(payload: object) -> str:
+    if not isinstance(payload, dict):
+        raise AskUiActionError("invalid_payload", "Request body must be a JSON object.")
+    value = payload.get("writeback_mode", "auto")
+    if value is None:
+        return "auto"
+    if not isinstance(value, str):
+        raise AskUiActionError("invalid_writeback_mode", "writeback_mode must be auto, create, or update.")
+    mode = value.strip().lower() or "auto"
+    if mode not in ALLOWED_WRITEBACK_MODES:
+        raise AskUiActionError("invalid_writeback_mode", "writeback_mode must be auto, create, or update.")
+    return mode
 
 
 def _optional_clean_string(value: object, *, field_name: str) -> str | None:
@@ -232,6 +334,40 @@ def _require_answered_ask_job(root: Path, ask_job_id: str) -> UiJob:
             raise AskUiActionError("ask_job_not_answered", "Synthesis preview requires an answered ask job.")
         return job
     raise AskUiActionError("ask_job_not_found", "Ask job was not found.", status_code=404)
+
+
+def _require_writeback_preview_job(root: Path, ask_job_id: str) -> UiJob:
+    preview_job = _latest_preview_job(root, ask_job_id)
+    if preview_job is None:
+        raise AskUiActionError("synthesis_preview_required", "Synthesis writeback requires a planned preview.")
+    preview_status = str(preview_job.result.get("preview_status") or "") if isinstance(preview_job.result, dict) else ""
+    action = str(preview_job.result.get("action") or "") if isinstance(preview_job.result, dict) else ""
+    if preview_status == "needs_review" or action == "needs_review":
+        raise AskUiActionError("synthesis_needs_review", "Synthesis preview needs review before writeback.")
+    return preview_job
+
+
+def _latest_preview_job(root: Path, ask_job_id: str) -> UiJob | None:
+    for job in load_jobs(root).jobs:
+        if job.job_type != "synthesis_preview" or job.parent_job_id != ask_job_id:
+            continue
+        if job.status != "applied" or not isinstance(job.result, dict):
+            continue
+        if str(job.result.get("preview_status") or "") in {"planned", "needs_review"}:
+            return job
+    return None
+
+
+def _preview_job_for_writeback(root: Path, job: UiJob) -> UiJob:
+    preview_job_id = ""
+    if isinstance(job.result, dict):
+        preview_job_id = str(job.result.get("preview_job_id") or "")
+    if preview_job_id:
+        for candidate in load_jobs(root).jobs:
+            if candidate.job_id == preview_job_id:
+                return candidate
+        raise AskUiActionError("synthesis_preview_required", "Synthesis preview job was not found.")
+    return _require_writeback_preview_job(root, job.parent_job_id)
 
 
 def _ask_result_from_job(job: UiJob) -> AskResult:
@@ -296,6 +432,29 @@ def _synthesis_preview_payload(plan: SynthesisPlan) -> dict[str, object]:
     }
 
 
+def _synthesis_plan_from_preview_job(job: UiJob) -> SynthesisPlan:
+    if not isinstance(job.result, dict) or not isinstance(job.result.get("synthesis_plan"), dict):
+        raise AskUiActionError("synthesis_preview_required", "Synthesis preview does not contain a plan.")
+    plan_payload = job.result["synthesis_plan"]
+    plan = parse_synthesis_plan(json_dumps(plan_payload))
+    if plan.action == "needs_review" or plan.status == "needs_review":
+        raise AskUiActionError("synthesis_needs_review", "Synthesis preview needs review before writeback.")
+    return plan
+
+
+def _synthesis_writeback_payload(result: SynthesisWritebackResult, preview_job: UiJob) -> dict[str, object]:
+    return {
+        "writeback_status": sanitize_ui_text(result.status, max_chars=80),
+        "run_id": sanitize_ui_text(result.run_id),
+        "pages": [sanitize_ui_text(page) for page in result.pages],
+        "action": sanitize_ui_text(result.action, max_chars=80),
+        "synthesis_plan": sanitize_job_like_payload(result.synthesis_plan),
+        "preview_job_id": sanitize_ui_text(preview_job.job_id),
+        "failure_stage": "",
+        "failure_reason": "",
+    }
+
+
 def _bounded_payload(value: object, *, max_items: int) -> object:
     if isinstance(value, list):
         return [sanitize_job_like_payload(item) for item in value[:max_items]]
@@ -334,3 +493,9 @@ def _none_or_str(value: object) -> str | None:
 
 def _list_value(value: object) -> list[object]:
     return value if isinstance(value, list) else []
+
+
+def json_dumps(value: object) -> str:
+    import json
+
+    return json.dumps(value, ensure_ascii=False)
