@@ -6,23 +6,23 @@ import json
 from pathlib import Path
 from typing import Any
 
-from .answer import AskResult
-from .apply import apply_run
-from .pipeline import sanitize_error
-from .synthesis_pages import (
+from ..answer import AskResult
+from ..apply import apply_run
+from ..pipeline import sanitize_error
+from .pages import (
     SynthesisPageModel,
     merge_synthesis_page,
     parse_synthesis_page,
     render_synthesis_page_v2_8,
 )
-from .synthesis_planner import (
+from .planner import (
     SynthesisPlan,
     SynthesisPlanningOptions,
     format_synthesis_preview,
     plan_synthesis_writeback,
     validate_synthesis_plan,
 )
-from .workspace import utc_now
+from ..workspace import utc_now
 
 
 @dataclass(frozen=True)

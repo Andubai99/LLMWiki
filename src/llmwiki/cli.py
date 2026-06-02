@@ -24,7 +24,7 @@ from .retrieval.eval import evaluate_retrieval, format_eval_report, sanitize_err
 from .retrieval.query import query_context
 from .retrieval import format_retrieval_prompt, retrieve_context
 from .synthesis import SynthesisWritebackError, SynthesisWritebackResult, create_synthesis_run
-from .synthesis_planner import (
+from .synthesis.planner import (
     SynthesisPlan,
     SynthesisPlanningError,
     SynthesisPlanningOptions,

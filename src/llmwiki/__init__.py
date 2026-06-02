@@ -16,6 +16,8 @@ from .retrieval import query as _retrieval_query
 from .retrieval import query_analysis as _retrieval_query_analysis
 from .retrieval import rerankers as _retrieval_rerankers
 from .retrieval import retrievers as _retrieval_retrievers
+from .synthesis import pages as _synthesis_pages
+from .synthesis import planner as _synthesis_planner
 
 _sys.modules.setdefault(f"{__name__}.pdf_blocks", _pdf_blocks)
 _sys.modules.setdefault(f"{__name__}.pdf_quality", _pdf_quality)
@@ -29,6 +31,8 @@ _sys.modules.setdefault(f"{__name__}.evidence_selection", _retrieval_evidence_se
 _sys.modules.setdefault(f"{__name__}.retrieval_eval", _retrieval_eval)
 _sys.modules.setdefault(f"{__name__}.query", _retrieval_query)
 _sys.modules.setdefault(f"{__name__}.planned_retrieval", _retrieval_planned)
+_sys.modules.setdefault(f"{__name__}.synthesis_pages", _synthesis_pages)
+_sys.modules.setdefault(f"{__name__}.synthesis_planner", _synthesis_planner)
 
 pdf_blocks = _pdf_blocks
 pdf_quality = _pdf_quality
@@ -42,5 +46,7 @@ evidence_selection = _retrieval_evidence_selection
 retrieval_eval = _retrieval_eval
 query = _retrieval_query
 planned_retrieval = _retrieval_planned
+synthesis_pages = _synthesis_pages
+synthesis_planner = _synthesis_planner
 
 __version__ = "0.1.0"
