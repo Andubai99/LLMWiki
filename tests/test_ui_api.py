@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import json
 import sqlite3
 
 from llmwiki.cli import main
@@ -160,3 +161,169 @@ def test_workspace_status_does_not_call_mutating_or_provider_functions(monkeypat
     payload = get_workspace_status(root).to_dict()
 
     assert payload["initialized"] is True
+
+
+def seed_ui_catalog(root: Path) -> None:
+    with sqlite3.connect(root / "state" / "catalog.sqlite") as conn:
+        conn.execute(
+            """
+            insert into sources (
+                source_id, title, source_type, raw_path, normalized_path,
+                sha256, url, imported_at, status
+            )
+            values (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "src_ui",
+                "UI Source",
+                "pdf",
+                "sources/raw/src_ui.pdf",
+                "sources/normalized/src_ui.md",
+                "sha-ui-api",
+                "",
+                "2026-06-02T00:00:00Z",
+                "imported",
+            ),
+        )
+        conn.execute(
+            """
+            insert into claims (claim_id, source_id, claim_text, citation_locator, confidence_status, created_at)
+            values (?, ?, ?, ?, ?, ?)
+            """,
+            ("clm_ui", "src_ui", "UI evidence", "page:1;block:src_ui_p001_b0001", "cited", "now"),
+        )
+        conn.execute(
+            """
+            insert into pages (page_id, path, page_type, title, aliases, updated_at)
+            values (?, ?, ?, ?, ?, ?)
+            """,
+            ("page_ui", "wiki/sources/src_ui.md", "source", "UI Source", "[]", "now"),
+        )
+        conn.execute(
+            """
+            insert into ingest_runs (run_id, source_id, status, created_at, applied_at)
+            values (?, ?, ?, ?, ?)
+            """,
+            ("run_ui", "src_ui", "applied", "2026-06-02T00:00:00Z", "2026-06-02T00:01:00Z"),
+        )
+
+
+def test_list_sources_includes_latest_run_and_sidecar_summary() -> None:
+    from llmwiki.ui.api import list_sources
+
+    root = make_workspace()
+    assert main(["init", "--root", str(root)]) == 0
+    seed_ui_catalog(root)
+    metadata_path = root / "sources" / "metadata" / "src_ui.json"
+    metadata_path.write_text(
+        json.dumps(
+            {
+                "source_id": "src_ui",
+                "parser_backend": "mineru",
+                "parser_backend_fallback_from": "pypdf",
+                "metadata_path": "sources/metadata/src_ui.json",
+                "blocks_path": "sources/blocks/src_ui.jsonl",
+                "chunks_path": "sources/chunks/src_ui.jsonl",
+            }
+        ),
+        encoding="utf-8",
+    )
+    (root / "sources" / "blocks" / "src_ui.jsonl").write_text("{}", encoding="utf-8")
+
+    payload = [source.to_dict() for source in list_sources(root)]
+
+    assert payload[0]["source_id"] == "src_ui"
+    assert payload[0]["latest_run_id"] == "run_ui"
+    assert payload[0]["latest_run_status"] == "applied"
+    assert payload[0]["parser_backend"] == "mineru"
+    assert payload[0]["parser_fallback"] == "pypdf"
+    assert payload[0]["sidecars"] == {"metadata": True, "blocks": True, "chunks": False}
+
+
+def test_list_sources_malformed_sidecar_warns_without_crashing() -> None:
+    from llmwiki.ui.api import list_sources
+
+    root = make_workspace()
+    assert main(["init", "--root", str(root)]) == 0
+    seed_ui_catalog(root)
+    (root / "sources" / "metadata" / "src_ui.json").write_text("{bad json", encoding="utf-8")
+
+    source = list_sources(root)[0].to_dict()
+
+    assert source["source_id"] == "src_ui"
+    assert source["warnings"]
+    assert "bad json" not in repr(source)
+
+
+def test_list_runs_merges_catalog_and_staging_metadata() -> None:
+    from llmwiki.ui.api import list_runs
+
+    root = make_workspace()
+    assert main(["init", "--root", str(root)]) == 0
+    seed_ui_catalog(root)
+    run_dir = root / "staging" / "run_ui"
+    (run_dir / "patches").mkdir(parents=True)
+    (run_dir / "patches" / "001.json").write_text("{}", encoding="utf-8")
+    (run_dir / "run.json").write_text(
+        json.dumps(
+            {
+                "run_id": "run_ui",
+                "source_id": "src_ui",
+                "status": "failed",
+                "run_type": "ingest",
+                "trigger": "add",
+                "failed_stage": "apply",
+                "failure_reason": "sk-secret config/api-keys.toml",
+            }
+        ),
+        encoding="utf-8",
+    )
+    (run_dir / "claims.jsonl").write_text('{"claim_id":"clm_ui"}\n', encoding="utf-8")
+
+    payload = [run.to_dict() for run in list_runs(root)]
+
+    assert payload[0]["run_id"] == "run_ui"
+    assert payload[0]["run_type"] == "ingest"
+    assert payload[0]["trigger"] == "add"
+    assert payload[0]["failed_stage"] == "apply"
+    assert payload[0]["claim_count"] == 1
+    assert payload[0]["patch_count"] == 1
+    assert "sk-" not in payload[0]["failure_reason"]
+    assert "api-keys.toml" not in payload[0]["failure_reason"]
+
+
+def test_list_pages_includes_claim_count() -> None:
+    from llmwiki.ui.api import list_pages
+
+    root = make_workspace()
+    assert main(["init", "--root", str(root)]) == 0
+    seed_ui_catalog(root)
+
+    payload = [page.to_dict() for page in list_pages(root)]
+
+    assert payload[0]["page_id"] == "page_ui"
+    assert payload[0]["claim_count"] == 1
+
+
+def test_get_config_status_reports_key_presence_without_values(monkeypatch) -> None:
+    from llmwiki.ui.api import get_config_status
+
+    root = make_workspace()
+    assert main(["init", "--root", str(root)]) == 0
+    (root / "config" / "api-keys.toml").write_text(
+        "[llm]\napi_key = \"sk-test-secret\"\n\n[embedding]\napi_key = \"embed-secret\"\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "llmwiki.ui.api.probe_mineru_status",
+        lambda config: {"available": False, "command_source": "not_found", "warnings": ["missing"]},
+    )
+
+    payload = get_config_status(root).to_dict()
+
+    assert payload["llm"]["api_key_present"] is True
+    assert payload["embedding"]["api_key_present"] is True
+    assert payload["parser"]["default_backend"] == "auto"
+    assert payload["parser"]["mineru_available"] is False
+    assert "sk-test-secret" not in repr(payload)
+    assert "embed-secret" not in repr(payload)
