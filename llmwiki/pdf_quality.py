@@ -94,6 +94,14 @@ class PdfQualitySummary:
     mineru_command_failure_count: int = 0
     mineru_timeout_count: int = 0
     mineru_content_list_missing_count: int = 0
+    mineru_command_discovered_count: int = 0
+    mineru_command_source_distribution: dict[str, int] = field(default_factory=dict)
+    mineru_attempt_count: int = 0
+    mineru_attempt_failure_count: int = 0
+    mineru_attempt_timeout_count: int = 0
+    mineru_attempt_missing_content_list_count: int = 0
+    auto_fallback_with_attempt_diagnostics_count: int = 0
+    auto_fallback_missing_attempt_diagnostics_count: int = 0
     structured_block_count: int = 0
     table_like_block_count: int = 0
     equation_like_block_count: int = 0
@@ -272,6 +280,14 @@ def evaluate_pdf_quality(root: Path) -> PdfQualitySummary:
         mineru_command_failure_count = 0
         mineru_timeout_count = 0
         mineru_content_list_missing_count = 0
+        mineru_command_discovered_count = 0
+        mineru_command_source_distribution: Counter[str] = Counter()
+        mineru_attempt_count = 0
+        mineru_attempt_failure_count = 0
+        mineru_attempt_timeout_count = 0
+        mineru_attempt_missing_content_list_count = 0
+        auto_fallback_with_attempt_diagnostics_count = 0
+        auto_fallback_missing_attempt_diagnostics_count = 0
         structured_block_count = 0
         table_like_block_count = 0
         equation_like_block_count = 0
@@ -304,6 +320,21 @@ def evaluate_pdf_quality(root: Path) -> PdfQualitySummary:
                     if metadata.get("parser_backend_fallback_from"):
                         backend_fallback_count += 1
                         auto_fallback_count += 1
+                        attempts = metadata.get("parser_backend_attempts")
+                        mineru_failed_attempts: list[dict[str, Any]] = []
+                        if isinstance(attempts, list):
+                            mineru_failed_attempts = [
+                                attempt
+                                for attempt in attempts
+                                if isinstance(attempt, dict)
+                                and attempt.get("backend") == "mineru"
+                                and attempt.get("status") == "failed"
+                            ]
+                        if mineru_failed_attempts:
+                            auto_fallback_with_attempt_diagnostics_count += 1
+                        else:
+                            auto_fallback_missing_attempt_diagnostics_count += 1
+                            issues.append(f"{source['source_id']}: auto fallback missing MinerU attempt diagnostics")
                     if metadata.get("parser_command_invoked"):
                         mineru_command_invoked_count += 1
                     returncode = metadata.get("parser_command_returncode")
@@ -316,6 +347,28 @@ def evaluate_pdf_quality(root: Path) -> PdfQualitySummary:
                     if backend == "mineru" and content_list_path and not artifact_exists(root, content_list_path):
                         mineru_content_list_missing_count += 1
                         issues.append(f"{source['source_id']}: missing MinerU content-list")
+                    attempts = metadata.get("parser_backend_attempts")
+                    if isinstance(attempts, list):
+                        for attempt in attempts:
+                            if not isinstance(attempt, dict) or attempt.get("backend") != "mineru":
+                                continue
+                            mineru_attempt_count += 1
+                            command_source = str(attempt.get("command_source") or "")
+                            if command_source:
+                                mineru_command_source_distribution[command_source] += 1
+                            if command_source and command_source not in {"not_found", "precomputed_output"}:
+                                mineru_command_discovered_count += 1
+                            if attempt.get("status") != "succeeded":
+                                mineru_attempt_failure_count += 1
+                            if bool(attempt.get("timed_out")):
+                                mineru_attempt_timeout_count += 1
+                            warnings_text = " ".join(str(item) for item in attempt.get("warnings") or [])
+                            if (
+                                attempt.get("failure_stage") == "content_list_discovery"
+                                or "content-list" in str(attempt.get("failure_reason") or "").casefold()
+                                or "content-list" in warnings_text.casefold()
+                            ):
+                                mineru_attempt_missing_content_list_count += 1
                     artifact_paths = metadata.get("parser_artifact_paths")
                     if backend == "mineru" or artifact_paths:
                         backend_artifact_expected += 1
@@ -405,6 +458,14 @@ def evaluate_pdf_quality(root: Path) -> PdfQualitySummary:
             mineru_command_failure_count=mineru_command_failure_count,
             mineru_timeout_count=mineru_timeout_count,
             mineru_content_list_missing_count=mineru_content_list_missing_count,
+            mineru_command_discovered_count=mineru_command_discovered_count,
+            mineru_command_source_distribution=dict(mineru_command_source_distribution),
+            mineru_attempt_count=mineru_attempt_count,
+            mineru_attempt_failure_count=mineru_attempt_failure_count,
+            mineru_attempt_timeout_count=mineru_attempt_timeout_count,
+            mineru_attempt_missing_content_list_count=mineru_attempt_missing_content_list_count,
+            auto_fallback_with_attempt_diagnostics_count=auto_fallback_with_attempt_diagnostics_count,
+            auto_fallback_missing_attempt_diagnostics_count=auto_fallback_missing_attempt_diagnostics_count,
             structured_block_count=structured_block_count,
             table_like_block_count=table_like_block_count,
             equation_like_block_count=equation_like_block_count,
@@ -441,6 +502,14 @@ def format_pdf_quality_report(summary: PdfQualitySummary) -> str:
         f"MinerU command failures: {summary.mineru_command_failure_count}",
         f"MinerU timeouts: {summary.mineru_timeout_count}",
         f"MinerU missing content lists: {summary.mineru_content_list_missing_count}",
+        f"MinerU command discovered: {summary.mineru_command_discovered_count}",
+        f"MinerU command source distribution: {json.dumps(summary.mineru_command_source_distribution, ensure_ascii=False, sort_keys=True)}",
+        f"MinerU attempts: {summary.mineru_attempt_count}",
+        f"MinerU attempt failures: {summary.mineru_attempt_failure_count}",
+        f"MinerU attempt timeouts: {summary.mineru_attempt_timeout_count}",
+        f"MinerU attempt missing content lists: {summary.mineru_attempt_missing_content_list_count}",
+        f"Auto fallback with attempt diagnostics: {summary.auto_fallback_with_attempt_diagnostics_count}",
+        f"Auto fallback missing attempt diagnostics: {summary.auto_fallback_missing_attempt_diagnostics_count}",
         f"Backend artifact completeness: {summary.backend_artifact_completeness:.3f}",
         f"Structured blocks: {summary.structured_block_count}",
         f"Table-like blocks: {summary.table_like_block_count}",
