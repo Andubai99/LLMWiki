@@ -23,6 +23,15 @@ class MinerUCommandRequest:
 
 
 @dataclass(frozen=True)
+class MinerUDiscoveryResult:
+    command: str
+    command_path: str
+    command_source: str
+    available: bool
+    warnings: list[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
 class MinerUCommandResult:
     command: list[str]
     output_root: Path
@@ -33,6 +42,75 @@ class MinerUCommandResult:
     content_list_candidates: list[Path] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     timed_out: bool = False
+
+
+def discover_mineru_command(root: Path, config: Any) -> MinerUDiscoveryResult:
+    configured = str(getattr(config, "mineru_command", "mineru") or "mineru")
+    configured_path = Path(configured)
+    warnings: list[str] = []
+    if configured_path.is_absolute() and configured_path.exists():
+        return MinerUDiscoveryResult(
+            command=configured,
+            command_path=str(configured_path),
+            command_source="configured_path",
+            available=True,
+        )
+    if configured_path.is_absolute() and not configured_path.exists():
+        warnings.append(f"Configured MinerU command was not found: {configured}")
+
+    path_result = shutil.which(configured)
+    if path_result:
+        return MinerUDiscoveryResult(
+            command=path_result,
+            command_path=path_result,
+            command_source="PATH",
+            available=True,
+            warnings=warnings,
+        )
+
+    command_name = configured_path.name or "mineru"
+    candidate_names = [command_name]
+    if not command_name.endswith(".exe"):
+        candidate_names.insert(0, f"{command_name}.exe")
+
+    root = root.resolve()
+    workspace_candidates = [
+        *(root / ".venv" / "Scripts" / name for name in candidate_names),
+        *(root / ".venv" / "bin" / name for name in candidate_names),
+    ]
+    for candidate in workspace_candidates:
+        if candidate.exists():
+            return MinerUDiscoveryResult(
+                command=str(candidate),
+                command_path=str(candidate),
+                command_source="workspace_venv",
+                available=True,
+                warnings=warnings,
+            )
+
+    repo_root = Path(__file__).resolve().parents[1]
+    repo_candidates = [
+        *(repo_root / ".venv" / "Scripts" / name for name in candidate_names),
+        *(repo_root / ".venv" / "bin" / name for name in candidate_names),
+    ]
+    for candidate in repo_candidates:
+        if candidate.exists():
+            return MinerUDiscoveryResult(
+                command=str(candidate),
+                command_path=str(candidate),
+                command_source="repo_venv",
+                available=True,
+                warnings=warnings,
+            )
+
+    warnings.append("MinerU command was not found in configured path, PATH, workspace .venv, or repo .venv")
+    return MinerUDiscoveryResult(
+        command=configured,
+        command_path="",
+        command_source="not_found",
+        available=False,
+        warnings=warnings,
+    )
 
 
 def build_mineru_command(request: MinerUCommandRequest) -> list[str]:
@@ -137,13 +215,15 @@ def select_mineru_content_list(candidates: list[Path], *, pdf_stem: str = "") ->
     return best
 
 
-def probe_mineru_status(config: Any) -> dict[str, object]:
-    command_path = shutil.which(str(config.mineru_command))
+def probe_mineru_status(config: Any, root: Path | None = None) -> dict[str, object]:
+    discovery = discover_mineru_command(root or Path.cwd(), config)
     return {
         "mineru_command": str(config.mineru_command),
-        "mineru_command_path": command_path or "",
+        "mineru_command_path": discovery.command_path,
+        "mineru_command_source": discovery.command_source,
         "mineru_enabled": bool(config.mineru_enabled),
-        "mineru_available": bool(config.mineru_enabled and command_path),
+        "mineru_available": bool(config.mineru_enabled and discovery.available),
+        "warnings": list(discovery.warnings),
     }
 
 

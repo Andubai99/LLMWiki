@@ -149,10 +149,10 @@ def test_discover_mineru_command_not_found(monkeypatch, tmp_path):
 
     monkeypatch.setattr("shutil.which", lambda command: None)
 
-    result = discover_mineru_command(tmp_path, make_config())
+    result = discover_mineru_command(tmp_path, make_config(mineru_command="missing-mineru"))
 
     assert result.available is False
-    assert result.command == "mineru"
+    assert result.command == "missing-mineru"
     assert result.command_source == "not_found"
     assert result.warnings
 

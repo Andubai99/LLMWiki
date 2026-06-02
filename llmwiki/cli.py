@@ -4,7 +4,6 @@ import argparse
 import importlib.util
 import json
 import os
-import shutil
 import sys
 import tomllib
 from pathlib import Path
@@ -18,6 +17,7 @@ from .llm import create_provider, load_llm_config, override_llm_config
 from .pipeline import AddPipelineError, add_and_process_source
 from .pdf_quality import evaluate_pdf_quality, format_pdf_quality_report
 from .pdf_parser_backends import load_pdf_parser_config
+from .mineru_runner import probe_mineru_status
 from .providers.base import LLMProviderError
 from .query import query_context
 from .retrieval_eval import evaluate_retrieval, format_eval_report, sanitize_error
@@ -274,15 +274,17 @@ def cmd_eval_pdf_quality(args: argparse.Namespace) -> int:
 def cmd_parsers_status(args: argparse.Namespace) -> int:
     root = Path(args.root).resolve()
     config = load_pdf_parser_config(root)
-    mineru_path = shutil.which(config.mineru_command)
+    mineru = probe_mineru_status(config, root)
     data = {
-        "schema_version": "parser_status.v2.9.5",
+        "schema_version": "parser_status.v2.9.6",
         "default_backend": config.default_backend,
         "fallback_backend": config.fallback_backend,
         "mineru_enabled": config.mineru_enabled,
         "mineru_command": config.mineru_command,
-        "mineru_command_path": mineru_path or "",
-        "mineru_available": bool(config.mineru_enabled and mineru_path),
+        "mineru_command_path": mineru["mineru_command_path"],
+        "mineru_command_source": mineru["mineru_command_source"],
+        "mineru_available": bool(mineru["mineru_available"]),
+        "warnings": list(mineru.get("warnings", [])),
         "pypdf_available": True,
         "artifact_dir": config.artifact_dir,
     }
@@ -294,8 +296,11 @@ def cmd_parsers_status(args: argparse.Namespace) -> int:
     print(f"mineru_enabled={bool_text(bool(data['mineru_enabled']))}")
     print(f"mineru_available={bool_text(bool(data['mineru_available']))}")
     print(f"mineru_command={data['mineru_command']}")
+    print(f"mineru_command_source={data['mineru_command_source']}")
     if data["mineru_command_path"]:
         print(f"mineru_command_path={data['mineru_command_path']}")
+    for warning in data["warnings"]:
+        print(f"warning={warning}")
     print(f"pypdf_available={bool_text(bool(data['pypdf_available']))}")
     print(f"artifact_dir={data['artifact_dir']}")
     return 0

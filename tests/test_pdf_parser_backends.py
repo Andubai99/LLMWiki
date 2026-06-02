@@ -33,6 +33,12 @@ def test_load_pdf_parser_config_reads_workspace_defaults():
 def test_select_default_auto_backend_falls_back_to_pypdf_when_mineru_unavailable(monkeypatch):
     root = make_workspace()
     assert main(["init", "--root", str(root)]) == 0
+    config_path = root / "config" / "config.toml"
+    config_path.write_text(
+        config_path.read_text(encoding="utf-8").replace('mineru_command = "mineru"', 'mineru_command = "missing-mineru"'),
+        encoding="utf-8",
+        newline="\n",
+    )
 
     from llmwiki.pdf_parser_backends import PypdfBackend, select_pdf_parser_backend
 

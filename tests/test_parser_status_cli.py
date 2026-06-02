@@ -47,6 +47,12 @@ def test_parsers_status_discovers_workspace_local_mineru(monkeypatch, capsys):
 def test_parsers_status_json_is_stable_and_read_only(monkeypatch, capsys):
     root = make_workspace()
     init_workspace(root)
+    config_path = root / "config" / "config.toml"
+    config_path.write_text(
+        config_path.read_text(encoding="utf-8").replace('mineru_command = "mineru"', 'mineru_command = "missing-mineru"'),
+        encoding="utf-8",
+        newline="\n",
+    )
     before = sorted(path.relative_to(root).as_posix() for path in root.rglob("*"))
 
     def forbidden(*args, **kwargs):
@@ -66,6 +72,7 @@ def test_parsers_status_json_is_stable_and_read_only(monkeypatch, capsys):
     assert data["fallback_backend"] == "pypdf"
     assert data["mineru_enabled"] is True
     assert data["mineru_available"] is False
+    assert data["mineru_command"] == "missing-mineru"
     assert data["mineru_command_source"] == "not_found"
     assert data["warnings"]
     assert data["pypdf_available"] is True

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import shutil
 import tomllib
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
@@ -150,15 +149,16 @@ class PypdfBackend:
 class MinerUBackend:
     name = "mineru"
 
-    def __init__(self, *, output_dir: Path | None = None) -> None:
+    def __init__(self, *, output_dir: Path | None = None, root: Path | None = None) -> None:
         self.output_dir = output_dir
+        self.root = root
 
     def available(self, config: PdfParserConfig) -> bool:
         if not config.mineru_enabled and self.output_dir is None:
             return False
         if self.output_dir is not None:
             return self.output_dir.exists()
-        return shutil.which(config.mineru_command) is not None
+        return mineru_runner.discover_mineru_command(self.root or Path.cwd(), config).available
 
     def parse(self, request: PdfParseRequest) -> PdfParseResult:
         from .pdf_blocks import SourceBlock, SourceMetadata
@@ -328,14 +328,14 @@ def select_pdf_parser_backend(
     if backend_name == "pypdf":
         return PdfParserSelection(backend=PypdfBackend(), config=config)
     if backend_name == "mineru":
-        backend = MinerUBackend(output_dir=output_dir)
+        backend = MinerUBackend(output_dir=output_dir, root=root)
         if not config.mineru_enabled and output_dir is None:
             raise PdfParserBackendError("MinerU parser backend is disabled in config")
         if not backend.available(config):
             raise PdfParserBackendError("MinerU parser backend is unavailable")
         return PdfParserSelection(backend=backend, config=config)
     if backend_name == "auto":
-        mineru = MinerUBackend(output_dir=output_dir)
+        mineru = MinerUBackend(output_dir=output_dir, root=root)
         if mineru.available(config):
             return PdfParserSelection(backend=mineru, config=config)
         if config.fallback_backend != "pypdf":
