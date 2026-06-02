@@ -173,3 +173,4 @@ def display_path(root: Path, path: Path) -> str:
         return str(path.relative_to(root)).replace("\\", "/")
     except ValueError:
         return str(path)
+

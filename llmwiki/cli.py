@@ -10,10 +10,10 @@ from pathlib import Path
 
 from .answer import AskOptions, AskResult, answer_question
 from .apply import UnsafePatchError, apply_run
-from .clean import clean_workspace, format_clean_report
 from .db import catalog_path, schema_status
 from .ingest import ingest_source, review_run
 from .lint import lint_workspace
+from .maintenance.clean import clean_workspace, format_clean_report
 from .llm import create_provider, load_llm_config, override_llm_config
 from .pipeline import AddPipelineError, add_and_process_source
 from .pdf_quality import evaluate_pdf_quality, format_pdf_quality_report

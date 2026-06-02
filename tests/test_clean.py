@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from llmwiki.cli import main
+from llmwiki.maintenance.clean import clean_workspace
 
 
 @pytest.fixture
@@ -196,3 +197,14 @@ def test_clean_dry_run_does_not_delete(temp_workspace, capsys):
     assert "Would remove:" in out
     for path in paths.values():
         assert path.exists()
+
+
+def test_clean_logic_lives_in_maintenance_domain(temp_workspace):
+    root = temp_workspace
+    paths = seed_dirty_workspace(root)
+
+    result = clean_workspace(root, scope="cache")
+
+    assert result.scope == "cache"
+    assert not paths["test_workspace"].exists()
+    assert paths["raw"].exists()
