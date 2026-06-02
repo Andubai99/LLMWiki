@@ -11,7 +11,7 @@ from collections.abc import Callable
 from .models import UiWarning, sanitize_ui_text
 
 
-UI_JOB_SCHEMA_VERSION = "ui_job.v3.2"
+UI_JOB_SCHEMA_VERSION = "ui_job.v3.3"
 JOB_STATE_DIR = Path("state") / "ui-jobs"
 
 
@@ -28,6 +28,10 @@ class UiJob:
     finished_at: str | None = None
     source_id: str = ""
     run_id: str = ""
+    question: str = ""
+    ask_options: dict[str, object] = field(default_factory=dict)
+    parent_job_id: str = ""
+    writeback_mode: str = ""
     stage: str = "queued"
     result: dict[str, object] = field(default_factory=dict)
     failure_stage: str = ""
@@ -60,6 +64,15 @@ class UiJobStore:
 
     def create_add_source_job(self, source_input: str, parser: str | None = None) -> UiJob:
         return create_add_source_job(self.root, source_input, parser=parser)
+
+    def create_ask_job(self, request: object) -> UiJob:
+        return create_ask_job(self.root, request)
+
+    def create_synthesis_preview_job(self, ask_job_id: str) -> UiJob:
+        return create_synthesis_preview_job(self.root, ask_job_id)
+
+    def create_synthesis_writeback_job(self, ask_job_id: str, *, writeback_mode: str = "auto") -> UiJob:
+        return create_synthesis_writeback_job(self.root, ask_job_id, writeback_mode=writeback_mode)
 
     def load_jobs(self, *, limit: int | None = None) -> JobLoadResult:
         result = load_jobs(self.root)
@@ -134,6 +147,51 @@ def create_add_source_job(root: Path, source_input: str, parser: str | None = No
         source_kind=source_kind(source_input),
         requested_parser=parser or None,
         created_at=now_iso(),
+        stage="queued",
+    )
+    return save_job(root, job)
+
+
+def create_ask_job(root: Path, request: object) -> UiJob:
+    question = str(getattr(request, "question", ""))
+    ask_options = {
+        "limit": getattr(request, "limit", 8),
+        "source_id": getattr(request, "source_id", None),
+        "page_type": getattr(request, "page_type", None),
+        "confidence": getattr(request, "confidence", None),
+    }
+    job = UiJob(
+        job_id=new_job_id(),
+        job_type="ask_question",
+        status="pending",
+        created_at=now_iso(),
+        question=question,
+        ask_options=ask_options,
+        stage="queued",
+    )
+    return save_job(root, job)
+
+
+def create_synthesis_preview_job(root: Path, ask_job_id: str) -> UiJob:
+    job = UiJob(
+        job_id=new_job_id(),
+        job_type="synthesis_preview",
+        status="pending",
+        created_at=now_iso(),
+        parent_job_id=ask_job_id,
+        stage="queued",
+    )
+    return save_job(root, job)
+
+
+def create_synthesis_writeback_job(root: Path, ask_job_id: str, *, writeback_mode: str = "auto") -> UiJob:
+    job = UiJob(
+        job_id=new_job_id(),
+        job_type="synthesis_writeback",
+        status="pending",
+        created_at=now_iso(),
+        parent_job_id=ask_job_id,
+        writeback_mode=writeback_mode,
         stage="queued",
     )
     return save_job(root, job)
@@ -245,6 +303,10 @@ def job_from_dict(payload: dict[str, object]) -> UiJob:
         finished_at=optional_str(payload.get("finished_at")),
         source_id=str(payload.get("source_id", "")),
         run_id=str(payload.get("run_id", "")),
+        question=str(payload.get("question", "")),
+        ask_options=payload.get("ask_options", {}) if isinstance(payload.get("ask_options", {}), dict) else {},
+        parent_job_id=str(payload.get("parent_job_id", "")),
+        writeback_mode=str(payload.get("writeback_mode", "")),
         stage=str(payload.get("stage", "queued")),
         result=payload.get("result", {}) if isinstance(payload.get("result", {}), dict) else {},
         failure_stage=str(payload.get("failure_stage", "")),
