@@ -63,6 +63,9 @@ def forbid_runtime_work(monkeypatch) -> None:
     monkeypatch.setattr("llmwiki.pdf.mineru_runner.run_mineru_command", forbidden)
     monkeypatch.setattr("llmwiki.llm.create_provider", forbidden)
     monkeypatch.setattr("llmwiki.vector.embeddings.create_embedding_provider", forbidden)
+    monkeypatch.setattr("llmwiki.ui.ask_actions.answer_question", forbidden)
+    monkeypatch.setattr("llmwiki.ui.ask_actions.plan_synthesis_writeback", forbidden)
+    monkeypatch.setattr("llmwiki.ui.ask_actions.create_synthesis_run", forbidden)
 
 
 def start_test_server(root: Path):
@@ -75,13 +78,25 @@ def start_test_server(root: Path):
 
 
 def test_ui_api_functions_do_not_mutate_workspace(monkeypatch) -> None:
-    from llmwiki.ui.api import get_config_status, get_ui_job, get_workspace_status, list_pages, list_runs, list_sources, list_ui_jobs
-    from llmwiki.ui.jobs import create_add_source_job
+    from llmwiki.ui.api import (
+        get_ask_job,
+        get_config_status,
+        get_ui_job,
+        get_workspace_status,
+        list_ask_jobs,
+        list_pages,
+        list_runs,
+        list_sources,
+        list_ui_jobs,
+    )
+    from llmwiki.ui.ask_models import AskUiRequest
+    from llmwiki.ui.jobs import create_add_source_job, create_ask_job
 
     forbid_runtime_work(monkeypatch)
     root = make_workspace()
     assert main(["init", "--root", str(root)]) == 0
     job = create_add_source_job(root, "paper.pdf")
+    ask_job = create_ask_job(root, AskUiRequest(question="What is OSWorld?"))
     before = workspace_fingerprint(root)
 
     get_workspace_status(root)
@@ -91,17 +106,21 @@ def test_ui_api_functions_do_not_mutate_workspace(monkeypatch) -> None:
     get_config_status(root)
     list_ui_jobs(root)
     get_ui_job(root, job.job_id)
+    list_ask_jobs(root)
+    get_ask_job(root, ask_job.job_id)
 
     assert workspace_fingerprint(root) == before
 
 
 def test_ui_http_api_routes_do_not_mutate_workspace(monkeypatch) -> None:
-    from llmwiki.ui.jobs import create_add_source_job
+    from llmwiki.ui.ask_models import AskUiRequest
+    from llmwiki.ui.jobs import create_add_source_job, create_ask_job
 
     forbid_runtime_work(monkeypatch)
     root = make_workspace()
     assert main(["init", "--root", str(root)]) == 0
     job = create_add_source_job(root, "paper.pdf")
+    ask_job = create_ask_job(root, AskUiRequest(question="What is OSWorld?"))
     before = workspace_fingerprint(root)
     server, thread = start_test_server(root)
     host, port = server.server_address
@@ -115,6 +134,8 @@ def test_ui_http_api_routes_do_not_mutate_workspace(monkeypatch) -> None:
             "/api/config",
             "/api/jobs",
             f"/api/jobs/{job.job_id}",
+            "/api/ask/jobs",
+            f"/api/ask/jobs/{ask_job.job_id}",
         ]:
             with urlopen(f"http://{host}:{port}{route}", timeout=5) as response:
                 assert response.status == 200
