@@ -3,10 +3,17 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from llmwiki.ask.answer import AskOptions, AskResult, answer_question
+from llmwiki.ask.answer import AnswerCitation, AskOptions, AskResult, answer_question
+from llmwiki.synthesis.planner import (
+    SynthesisPlan,
+    SynthesisPlanningError,
+    SynthesisPlanningOptions,
+    format_synthesis_preview,
+    plan_synthesis_writeback,
+)
 
 from .ask_models import AskUiRequest
-from .jobs import UiJob, now_iso, update_job
+from .jobs import UiJob, create_synthesis_preview_job, load_jobs, now_iso, update_job
 from .models import UI_SCHEMA_VERSION, sanitize_ui_text
 
 
@@ -63,6 +70,13 @@ def enqueue_ask_job(root: Path, payload: object, job_manager: Any) -> UiJob:
     return job_manager.enqueue(job)
 
 
+def enqueue_synthesis_preview_job(root: Path, ask_job_id: str, payload: object, job_manager: Any) -> UiJob:
+    _ = payload
+    ask_job = _require_answered_ask_job(root, ask_job_id)
+    job = create_synthesis_preview_job(root, ask_job.job_id)
+    return job_manager.enqueue(job)
+
+
 def run_ask_job(root: Path, job: UiJob) -> UiJob:
     root = root.resolve()
     job = update_job(root, job, status="running", stage="running", started_at=now_iso())
@@ -87,6 +101,65 @@ def run_ask_job(root: Path, job: UiJob) -> UiJob:
         job,
         status="applied",
         stage=str(payload.get("answer_status") or "answered"),
+        finished_at=now_iso(),
+        result=payload,
+    )
+
+
+def run_synthesis_preview_job(root: Path, job: UiJob) -> UiJob:
+    root = root.resolve()
+    job = update_job(root, job, status="running", stage="running", started_at=now_iso())
+    try:
+        ask_job = _require_answered_ask_job(root, job.parent_job_id)
+        ask_result = _ask_result_from_job(ask_job)
+        plan = plan_synthesis_writeback(
+            root,
+            ask_result,
+            SynthesisPlanningOptions(writeback_mode=job.writeback_mode or "auto"),
+        )
+    except SynthesisPlanningError as exc:
+        reason = sanitize_ui_text(exc)
+        return update_job(
+            root,
+            job,
+            status="failed",
+            stage="synthesis_preview",
+            finished_at=now_iso(),
+            failure_stage="synthesis_preview",
+            failure_reason=reason,
+            result={"error": reason},
+        )
+    except AskUiActionError as exc:
+        data = exc.to_dict()
+        return update_job(
+            root,
+            job,
+            status="failed",
+            stage="synthesis_preview",
+            finished_at=now_iso(),
+            failure_stage="synthesis_preview",
+            failure_reason=str(data["message"]),
+            result={"error": data["message"]},
+        )
+    except Exception as exc:  # pragma: no cover - defensive
+        reason = sanitize_ui_text(str(exc) or exc.__class__.__name__)
+        return update_job(
+            root,
+            job,
+            status="failed",
+            stage="synthesis_preview",
+            finished_at=now_iso(),
+            failure_stage="synthesis_preview",
+            failure_reason=reason,
+            result={"error": reason},
+        )
+
+    payload = _synthesis_preview_payload(plan)
+    return update_job(
+        root,
+        job,
+        status="applied",
+        stage=str(payload.get("preview_status") or "planned"),
         finished_at=now_iso(),
         result=payload,
     )
@@ -146,6 +219,50 @@ def _ask_options_from_job(job: UiJob) -> AskOptions:
     )
 
 
+def _require_answered_ask_job(root: Path, ask_job_id: str) -> UiJob:
+    for job in load_jobs(root).jobs:
+        if job.job_id != ask_job_id:
+            continue
+        if job.job_type != "ask_question":
+            raise AskUiActionError("ask_job_not_found", "Ask job was not found.", status_code=404)
+        answer_status = ""
+        if isinstance(job.result, dict):
+            answer_status = str(job.result.get("answer_status") or "")
+        if answer_status != "answered":
+            raise AskUiActionError("ask_job_not_answered", "Synthesis preview requires an answered ask job.")
+        return job
+    raise AskUiActionError("ask_job_not_found", "Ask job was not found.", status_code=404)
+
+
+def _ask_result_from_job(job: UiJob) -> AskResult:
+    result = job.result if isinstance(job.result, dict) else {}
+    citations = [
+        AnswerCitation(
+            claim_id=str(item.get("claim_id") or ""),
+            source_id=str(item.get("source_id") or ""),
+            citation_locator=str(item.get("citation_locator") or ""),
+            page_path=str(item.get("page_path") or ""),
+        )
+        for item in result.get("citations", [])
+        if isinstance(item, dict)
+    ]
+    return AskResult(
+        question=str(result.get("question") or job.question),
+        status=str(result.get("answer_status") or "answered"),
+        answer=str(result.get("answer") or ""),
+        analysis=str(result.get("analysis") or ""),
+        citations=citations,
+        warnings=[str(item) for item in _list_value(result.get("warnings"))],
+        uncertainties=[str(item) for item in _list_value(result.get("uncertainties"))],
+        conflicts=[str(item) for item in _list_value(result.get("conflicts"))],
+        suggested_title=str(result.get("suggested_title") or ""),
+        contexts=[item for item in _list_value(result.get("contexts")) if isinstance(item, dict)],
+        relationships=[item for item in _list_value(result.get("relationships")) if isinstance(item, dict)],
+        planning=result.get("planning") if isinstance(result.get("planning"), dict) else None,
+        error=str(result.get("error") or ""),
+    )
+
+
 def _ask_result_payload(result: AskResult) -> dict[str, object]:
     return {
         "question": sanitize_ui_text(result.question),
@@ -161,6 +278,21 @@ def _ask_result_payload(result: AskResult) -> dict[str, object]:
         "relationships": _bounded_payload(result.relationships, max_items=20),
         "suggested_title": sanitize_ui_text(result.suggested_title),
         "error": sanitize_ui_text(result.error),
+    }
+
+
+def _synthesis_preview_payload(plan: SynthesisPlan) -> dict[str, object]:
+    plan_dict = plan.to_dict()
+    return {
+        "preview_status": sanitize_ui_text(plan.status, max_chars=80),
+        "action": sanitize_ui_text(plan.action, max_chars=80),
+        "target_page_id": sanitize_ui_text(plan.target_page_id),
+        "target_path": sanitize_ui_text(plan.target_path),
+        "title": sanitize_ui_text(plan.title),
+        "evidence_claim_ids": [sanitize_ui_text(claim_id, max_chars=120) for claim_id in plan.evidence_claim_ids],
+        "synthesis_plan": sanitize_job_like_payload(plan_dict),
+        "preview_text": sanitize_ui_text(format_synthesis_preview(plan), max_chars=5000),
+        "warnings": [sanitize_ui_text(warning) for warning in plan.warnings],
     }
 
 
@@ -198,3 +330,7 @@ def _none_or_str(value: object) -> str | None:
         return None
     text = str(value).strip()
     return text or None
+
+
+def _list_value(value: object) -> list[object]:
+    return value if isinstance(value, list) else []

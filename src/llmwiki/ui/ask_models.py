@@ -10,3 +10,14 @@ class AskUiRequest:
     source_id: str | None = None
     page_type: str | None = None
     confidence: str | None = None
+
+
+@dataclass(frozen=True)
+class SynthesisPreviewRequest:
+    writeback_mode: str = "auto"
+
+
+@dataclass(frozen=True)
+class SynthesisWritebackRequest:
+    writeback_mode: str = "auto"
+    preview_job_id: str = ""
