@@ -218,7 +218,10 @@ def test_docs_describe_v1_commands_and_constraints():
     assert "llmwiki parsers status --root ." in readme
     assert "V3.1 Local UI" in readme
     assert "read-only dashboard" in readme
-    assert "schema_version=\"ui.v3.1\"" in readme
+    assert "V3.2 Source Library" in readme
+    assert "POST /api/sources/add" in readme
+    assert "state/ui-jobs/" in readme
+    assert "schema_version=\"ui.v3.2\"" in readme
     assert "llmwiki eval pdf-quality --root ." in readme
     assert "defaults to `auto`" in readme
     assert "tries MinerU first" in readme
@@ -286,16 +289,18 @@ def test_docs_describe_v1_commands_and_constraints():
     assert "parser_backend_attempts" in agents
     assert "Parser attempt diagnostics are not evidence" in agents
     assert "llmwiki clean --root ." in agents
-    assert "`llmwiki ui` starts a read-only local dashboard" in agents
-    assert "UI/status endpoints must not call LLM providers" in agents
-    assert "V3.1 UI is a workspace dashboard only" in agents
+    assert "`llmwiki ui` starts a local dashboard" in agents
+    assert "UI GET/status endpoints must not call LLM providers" in agents
+    assert "POST /api/sources/add" in agents
+    assert "state/ui-jobs/" in agents
+    assert "V3.2 UI supports single-source job visibility only" in agents
     assert "--scope generated" in agents
     assert "PDF source aliases must not include parser-created aliases or paper title aliases" in agents
     assert "LLM repair may only repair JSON syntax" in agents
     assert "content_role=\"ignored\"" in agents
     assert "MinerU" in agents
     assert "vector" in agents
-    assert "V3.1 local read-only UI is allowed" in agents
+    assert "V3.2 local Source Library UI is allowed" in agents
 
 
 def test_gitignore_excludes_virtualenv_and_python_caches():

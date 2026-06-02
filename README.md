@@ -179,7 +179,15 @@ UI API 包括：
 /api/config
 ```
 
-所有响应使用 `schema_version="ui.v3.1"`，并且只报告 API key 是否存在，不返回 API key 值、`config/api-keys.toml` 内容、raw prompt、raw LLM response 或完整 parser logs。
+所有响应使用 `schema_version="ui.v3.2"`，并且只报告 API key 是否存在，不返回 API key 值、`config/api-keys.toml` 内容、raw prompt、raw LLM response 或完整 parser logs。
+
+## V3.2 Source Library
+
+V3.2 在 `llmwiki ui --root .` 中增加 Source Library。用户可以在 dashboard 中提交一个 source path 或 URL，UI 会创建 `add_source` job，并在 Jobs 表中展示 `pending`、`running`、`applied`、`failed`、`interrupted` 状态。Job state 是 generated local state，位于 `state/ui-jobs/`，schema 为 `ui_job.v3.2`。
+
+V3.2 唯一可写 UI endpoint 是 `POST /api/sources/add`。它要求 `/api/session` 返回的本进程 `X-LLMWiki-UI-Token`，只负责校验输入、写入 UI job，并由 FIFO worker 顺序调用现有 `add_and_process_source(...)` pipeline。UI 层不得直接写正式 `wiki/` 或 `state/catalog.sqlite`；formal knowledge 仍必须通过 source import、LLM ingest、staging validation 和 apply。
+
+V3.2 只支持单个 source path/URL。批量/目录导入、retry/cancel、Ask UI、synthesis UI、claim browser 和细粒度 parser/LLM/apply progress 留给后续 V3/V4 spec。
 
 ### Internal/debug 命令
 

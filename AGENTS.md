@@ -141,13 +141,16 @@
 
 ## 11. UI Dashboard Rules
 
-- `llmwiki ui` starts a read-only local dashboard bound to `127.0.0.1` by default.
-- UI/status endpoints may read workspace skeleton, catalog, staging metadata, source sidecars, parser status, config presence, and vector index status.
-- UI/status endpoints must not call LLM providers, embedding providers, MinerU document parsing, parser execution, add/ingest/apply/ask/lint/eval/clean, or any write path.
-- UI must not bypass staging/apply and must not mutate `wiki/`, `staging/`, `sources/`, `state/catalog.sqlite`, or `state/embeddings/`.
+- `llmwiki ui` starts a local dashboard bound to `127.0.0.1` by default.
+- UI GET/status endpoints may read workspace skeleton, catalog, staging metadata, source sidecars, UI job state, parser status, config presence, and vector index status.
+- UI GET/status endpoints must not call LLM providers, embedding providers, MinerU document parsing, parser execution, add/ingest/apply/ask/lint/eval/clean, or any write path.
+- V3.2 Source Library allows exactly one mutating UI endpoint: `POST /api/sources/add`.
+- `POST /api/sources/add` must require `X-LLMWiki-UI-Token`, validate one source path/URL, write `state/ui-jobs/` job state, and then invoke only the existing `add_and_process_source(...)` pipeline through the UI worker.
+- UI must not bypass staging/apply and must not directly mutate formal `wiki/`, `staging/`, `sources/`, `state/catalog.sqlite`, or `state/embeddings/` data outside the existing add pipeline.
+- UI job state under `state/ui-jobs/` is generated cache and must be cleaned after tests/acceptance unless the user asks to keep it.
 - UI responses must not expose API key values, `config/api-keys.toml` contents, raw prompts, raw LLM responses, full parser logs, or parser artifact contents.
 - UI diagnostics are not evidence. Parser/status/config fields shown by the dashboard must not be returned as retrieval evidence.
-- V3.1 UI is a workspace dashboard only; do not add source import, ask, synthesis writeback, batch queue, or job execution UI without a later V3 spec and implementation plan.
+- V3.2 UI supports single-source job visibility only; do not add batch/folder import, ask, synthesis writeback, claim browser, retry/cancel, or fine-grained progress UI without a later V3/V4 spec and implementation plan.
 
 ## 12. Generated Files And Cleanup
 
@@ -197,7 +200,7 @@ llmwiki clean --root . --scope all
 
 - Do not default to external hosted vector databases. The V2.6 local rebuildable vector index under `state/embeddings/` is allowed.
 - Do not default to MCP integrations.
-- V3.1 local read-only UI is allowed; do not add operational UI features outside an approved V3 spec and implementation plan.
+- V3.2 local Source Library UI is allowed; do not add further operational UI features outside an approved V3 spec and implementation plan.
 - Do not add cloud sync or team permission systems by default.
 - Do not OCR scanned PDFs by default.
 - Do not automatically resolve conflicts between sources.
