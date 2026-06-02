@@ -87,6 +87,128 @@
         <div id="active-job-strip" class="active-job-strip muted">No active jobs.</div>
       </section>
 
+      <section class="action-section research-section" aria-label="Ask research question">
+        <div class="section-heading">
+          <h2>Research Loop</h2>
+          <span id="ask-status" class="muted">Ready</span>
+        </div>
+        <form id="ask-form" class="ask-form">
+          <label for="ask-question">Question</label>
+          <textarea id="ask-question" name="question" rows="4" placeholder="What evidence does this workspace contain?"></textarea>
+          <div class="ask-form-row">
+            <label>
+              Limit
+              <input id="ask-limit" name="limit" type="number" min="1" max="20" value="8">
+            </label>
+            <label>
+              Source
+              <input id="ask-source-id" name="source_id" type="text" autocomplete="off" placeholder="optional source_id">
+            </label>
+            <label>
+              Page Type
+              <input id="ask-page-type" name="page_type" type="text" autocomplete="off" placeholder="optional">
+            </label>
+            <label>
+              Confidence
+              <select id="ask-confidence" name="confidence">
+                <option value="">any</option>
+                <option value="cited">cited</option>
+                <option value="weak">weak</option>
+              </select>
+            </label>
+            <button id="ask-button" type="submit">Ask</button>
+          </div>
+        </form>
+      </section>
+
+      <section id="answer-panel" class="data-section" aria-label="Answer">
+        <div class="section-heading">
+          <h2>Answer</h2>
+          <span id="answer-status" class="muted">No answer yet.</span>
+        </div>
+        <p id="answer-text" class="answer-text muted">Ask a question to see grounded output.</p>
+        <h3>Analysis</h3>
+        <p id="analysis-text" class="answer-text muted">No analysis yet.</p>
+        <div class="answer-columns">
+          <div>
+            <h3>Warnings</h3>
+            <ul id="answer-warnings" class="compact-list"></ul>
+          </div>
+          <div>
+            <h3>Uncertainties</h3>
+            <ul id="answer-uncertainties" class="compact-list"></ul>
+          </div>
+          <div>
+            <h3>Conflicts</h3>
+            <ul id="answer-conflicts" class="compact-list"></ul>
+          </div>
+        </div>
+      </section>
+
+      <section class="data-section" aria-label="Retrieved evidence">
+        <div class="section-heading">
+          <h2>Retrieved Evidence</h2>
+          <span class="muted">Catalog-backed contexts only</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Claim</th>
+                <th>Source</th>
+                <th>Locator</th>
+                <th>Page</th>
+              </tr>
+            </thead>
+            <tbody id="evidence-table"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="data-section" aria-label="Citations">
+        <div class="section-heading">
+          <h2>Citations</h2>
+          <span class="muted">Answer citations from retrieved evidence</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Claim</th>
+                <th>Source</th>
+                <th>Locator</th>
+                <th>Page</th>
+              </tr>
+            </thead>
+            <tbody id="citations-table"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="data-section" aria-label="Query planning diagnostics">
+        <details id="planning-diagnostics">
+          <summary>Query planning diagnostics</summary>
+          <pre id="planning-json">No planning diagnostics yet.</pre>
+        </details>
+      </section>
+
+      <section id="synthesis-panel" class="action-section" aria-label="Synthesis writeback">
+        <div class="section-heading">
+          <h2>Synthesis Preview</h2>
+          <span id="synthesis-status" class="muted">Requires an answered ask job.</span>
+        </div>
+        <div class="synthesis-actions">
+          <select id="writeback-mode" aria-label="Writeback mode">
+            <option value="auto">auto</option>
+            <option value="create">create</option>
+            <option value="update">update</option>
+          </select>
+          <button id="synthesis-preview-button" type="button">Preview</button>
+          <button id="synthesis-writeback-button" type="button">Apply Writeback</button>
+        </div>
+        <pre id="synthesis-preview-text">No synthesis preview yet.</pre>
+      </section>
+
       <section class="data-section">
         <div class="section-heading">
           <h2>Sources</h2>

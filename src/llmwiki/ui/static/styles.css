@@ -39,7 +39,8 @@ button {
 }
 
 input,
-select {
+select,
+textarea {
   min-height: 38px;
   border: 1px solid #93a4b7;
   border-radius: 6px;
@@ -47,6 +48,14 @@ select {
   color: #102a43;
   background: #ffffff;
   font: inherit;
+}
+
+textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 96px;
+  padding: 10px;
+  resize: vertical;
 }
 
 button:hover {
@@ -133,7 +142,8 @@ button:hover {
   margin-top: 12px;
 }
 
-.source-form label {
+.source-form label,
+.ask-form label {
   display: block;
   margin-bottom: 8px;
   color: #52606d;
@@ -145,6 +155,33 @@ button:hover {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 140px 130px;
   gap: 10px;
+}
+
+.research-section {
+  border-color: #b8c7d9;
+}
+
+.ask-form {
+  margin-top: 12px;
+}
+
+.ask-form-row {
+  display: grid;
+  grid-template-columns: 90px minmax(0, 1fr) 150px 130px 90px;
+  gap: 10px;
+  align-items: end;
+  margin-top: 10px;
+}
+
+.ask-form-row label {
+  margin-bottom: 0;
+}
+
+.ask-form-row input,
+.ask-form-row select {
+  box-sizing: border-box;
+  width: 100%;
+  margin-top: 6px;
 }
 
 .active-job-strip {
@@ -167,6 +204,57 @@ button:hover {
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 12px;
+}
+
+.answer-text {
+  margin-top: 10px;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.answer-columns {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+
+h3 {
+  margin: 0 0 8px;
+  color: #334e68;
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.compact-list {
+  margin: 0;
+  padding-left: 18px;
+}
+
+details summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+pre {
+  box-sizing: border-box;
+  max-width: 100%;
+  margin: 12px 0 0;
+  padding: 12px;
+  overflow-x: auto;
+  border: 1px solid #e1e8ef;
+  border-radius: 6px;
+  background: #f9fbfc;
+  color: #243b53;
+  font-size: 13px;
+}
+
+.synthesis-actions {
+  display: grid;
+  grid-template-columns: 150px 110px 150px;
+  gap: 10px;
+  align-items: center;
 }
 
 .table-wrap {
@@ -229,6 +317,12 @@ td {
   }
 
   .source-form-row {
+    grid-template-columns: 1fr;
+  }
+
+  .ask-form-row,
+  .answer-columns,
+  .synthesis-actions {
     grid-template-columns: 1fr;
   }
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 
 
 STATIC_ROOT = Path("src/llmwiki/ui/static")
@@ -19,6 +20,14 @@ def test_index_references_dashboard_assets() -> None:
     assert 'id="parser-select"' in html
     assert 'id="jobs-table"' in html
     assert 'id="active-job-strip"' in html
+    assert 'id="ask-form"' in html
+    assert 'id="ask-question"' in html
+    assert 'id="ask-limit"' in html
+    assert 'id="answer-panel"' in html
+    assert 'id="citations-table"' in html
+    assert 'id="evidence-table"' in html
+    assert 'id="planning-diagnostics"' in html
+    assert 'id="synthesis-panel"' in html
     assert "/static/app.js" in html
     assert "/static/styles.css" in html
     assert "LLMWiki Dashboard" in html
@@ -27,10 +36,24 @@ def test_index_references_dashboard_assets() -> None:
 def test_app_js_fetches_dashboard_api_endpoints() -> None:
     js = read_static("app.js")
 
-    for endpoint in ["/api/session", "/api/status", "/api/sources", "/api/runs", "/api/pages", "/api/config", "/api/jobs", "/api/sources/add"]:
+    for endpoint in [
+        "/api/session",
+        "/api/status",
+        "/api/sources",
+        "/api/runs",
+        "/api/pages",
+        "/api/config",
+        "/api/jobs",
+        "/api/sources/add",
+        "/api/ask",
+        "/api/ask/jobs",
+        "/synthesis/preview",
+        "/synthesis/writeback",
+    ]:
         assert endpoint in js
     assert "X-LLMWiki-UI-Token" in js
     assert "setInterval" in js
+    assert "escapeHtml" in js
 
 
 def test_parser_select_contains_supported_options() -> None:
@@ -44,4 +67,4 @@ def test_static_assets_do_not_embed_secret_markers() -> None:
     combined = "\n".join(read_static(name) for name in ["index.html", "app.js", "styles.css"])
 
     assert "config/api-keys.toml" not in combined
-    assert "sk-" not in combined
+    assert re.search(r"sk-[A-Za-z0-9_-]*\d[A-Za-z0-9_-]{6,}", combined) is None

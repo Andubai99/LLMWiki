@@ -6,12 +6,18 @@ const ENDPOINTS = {
   pages: "/api/pages",
   config: "/api/config",
   jobs: "/api/jobs",
-  addSource: "/api/sources/add"
+  askJobs: "/api/ask/jobs",
+  addSource: "/api/sources/add",
+  ask: "/api/ask",
+  synthesisPreviewSuffix: "/synthesis/preview",
+  synthesisWritebackSuffix: "/synthesis/writeback"
 };
 
 const state = {
   actionToken: "",
-  pollTimer: null
+  pollTimer: null,
+  latestAskJobId: "",
+  latestPreviewJobId: ""
 };
 
 async function fetchJson(path, options = {}) {
@@ -32,13 +38,14 @@ async function loadDashboard() {
   if (!state.actionToken) {
     await loadSession();
   }
-  const [status, sources, runs, pages, config, jobs] = await Promise.all([
+  const [status, sources, runs, pages, config, jobs, askJobs] = await Promise.all([
     fetchJson(ENDPOINTS.status),
     fetchJson(ENDPOINTS.sources),
     fetchJson(ENDPOINTS.runs),
     fetchJson(ENDPOINTS.pages),
     fetchJson(ENDPOINTS.config),
-    fetchJson(ENDPOINTS.jobs)
+    fetchJson(ENDPOINTS.jobs),
+    fetchJson(ENDPOINTS.askJobs)
   ]);
   renderStatus(status);
   renderConfig(config);
@@ -46,7 +53,8 @@ async function loadDashboard() {
   renderRuns(runs.runs || []);
   renderPages(pages.pages || []);
   renderJobs(jobs.jobs || []);
-  renderWarnings(collectWarnings(status, sources, runs, pages, config, jobs));
+  renderResearchJobs(askJobs.jobs || []);
+  renderWarnings(collectWarnings(status, sources, runs, pages, config, jobs, askJobs));
   updateJobPolling(jobs.jobs || []);
 }
 
@@ -56,14 +64,7 @@ async function submitAddSource(event) {
   const parser = document.querySelector("#parser-select")?.value || "";
   setText("add-source-status", "Queueing...");
   try {
-    const payload = await fetchJson(ENDPOINTS.addSource, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-LLMWiki-UI-Token": state.actionToken
-      },
-      body: JSON.stringify({ source, parser })
-    });
+    const payload = await postWithToken(ENDPOINTS.addSource, { source, parser });
     setText("add-source-status", `Queued ${payload.job.job_id}`);
     document.querySelector("#source-input").value = "";
     await loadDashboard();
@@ -71,6 +72,70 @@ async function submitAddSource(event) {
     setText("add-source-status", "Failed");
     renderWarnings([{ category: "source", message: error.message }]);
   }
+}
+
+async function submitAsk(event) {
+  event.preventDefault();
+  const question = document.querySelector("#ask-question")?.value || "";
+  const limit = document.querySelector("#ask-limit")?.value || "8";
+  const source_id = document.querySelector("#ask-source-id")?.value || "";
+  const page_type = document.querySelector("#ask-page-type")?.value || "";
+  const confidence = document.querySelector("#ask-confidence")?.value || "";
+  setText("ask-status", "Queueing...");
+  try {
+    const payload = await postWithToken(ENDPOINTS.ask, { question, limit, source_id, page_type, confidence });
+    state.latestAskJobId = payload.job.job_id;
+    setText("ask-status", `Queued ${payload.job.job_id}`);
+    await loadDashboard();
+  } catch (error) {
+    setText("ask-status", "Failed");
+    renderWarnings([{ category: "ask", message: error.message }]);
+  }
+}
+
+async function submitSynthesisPreview() {
+  if (!state.latestAskJobId) {
+    renderWarnings([{ category: "synthesis", message: "No answered ask job is selected." }]);
+    return;
+  }
+  setText("synthesis-status", "Queueing preview...");
+  try {
+    const payload = await postWithToken(`${ENDPOINTS.ask}/${state.latestAskJobId}${ENDPOINTS.synthesisPreviewSuffix}`, {});
+    state.latestPreviewJobId = payload.job.job_id;
+    setText("synthesis-status", `Preview queued ${payload.job.job_id}`);
+    await loadDashboard();
+  } catch (error) {
+    setText("synthesis-status", "Preview failed");
+    renderWarnings([{ category: "synthesis", message: error.message }]);
+  }
+}
+
+async function submitSynthesisWriteback() {
+  if (!state.latestAskJobId) {
+    renderWarnings([{ category: "synthesis", message: "No answered ask job is selected." }]);
+    return;
+  }
+  const writeback_mode = document.querySelector("#writeback-mode")?.value || "auto";
+  setText("synthesis-status", "Queueing writeback...");
+  try {
+    const payload = await postWithToken(`${ENDPOINTS.ask}/${state.latestAskJobId}${ENDPOINTS.synthesisWritebackSuffix}`, { writeback_mode });
+    setText("synthesis-status", `Writeback queued ${payload.job.job_id}`);
+    await loadDashboard();
+  } catch (error) {
+    setText("synthesis-status", "Writeback failed");
+    renderWarnings([{ category: "synthesis", message: error.message }]);
+  }
+}
+
+async function postWithToken(path, body) {
+  return fetchJson(path, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-LLMWiki-UI-Token": state.actionToken
+    },
+    body: JSON.stringify(body)
+  });
 }
 
 function renderStatus(status) {
@@ -115,13 +180,68 @@ function renderJobs(jobs) {
   const rows = jobs.map((job) => `
     <tr>
       <td><strong>${escapeHtml(job.job_id)}</strong><span>${escapeHtml(job.created_at || "")}</span></td>
-      <td>${escapeHtml(job.source_input || "")}<span>${escapeHtml(job.requested_parser || "default")}</span></td>
+      <td>${escapeHtml(job.source_input || job.question || job.parent_job_id || "")}<span>${escapeHtml(job.requested_parser || job.writeback_mode || "default")}</span></td>
       <td>${escapeHtml(job.status || "")}</td>
       <td>${escapeHtml(job.stage || "")}</td>
-      <td>${escapeHtml(job.run_id || job.failure_stage || "")}<span>${escapeHtml(job.failure_reason || job.source_id || "")}</span></td>
+      <td>${escapeHtml(job.run_id || job.failure_stage || job.result?.answer_status || job.result?.preview_status || job.result?.writeback_status || "")}<span>${escapeHtml(job.failure_reason || job.source_id || "")}</span></td>
     </tr>
   `);
   setTable("jobs-table", rows, 5);
+}
+
+function renderResearchJobs(jobs) {
+  const askJob = jobs.find((job) => job.job_type === "ask_question" && job.result && job.result.answer_status === "answered")
+    || jobs.find((job) => job.job_type === "ask_question");
+  const previewJob = jobs.find((job) => job.job_type === "synthesis_preview" && job.result && job.result.preview_status);
+  if (askJob) {
+    state.latestAskJobId = askJob.job_id;
+    renderAnswer(askJob.result || {});
+  }
+  if (previewJob) {
+    state.latestPreviewJobId = previewJob.job_id;
+    renderSynthesisPreview(previewJob.result || {});
+  }
+}
+
+function renderAnswer(result) {
+  setText("answer-status", result.answer_status || "unknown");
+  setText("answer-text", result.answer || "No answer text.");
+  setText("analysis-text", result.analysis || "No analysis.");
+  setList("answer-warnings", result.warnings || []);
+  setList("answer-uncertainties", result.uncertainties || []);
+  setList("answer-conflicts", result.conflicts || []);
+  renderCitations(result.citations || []);
+  renderEvidence(result.contexts || []);
+  setText("planning-json", JSON.stringify(result.planning || {}, null, 2));
+}
+
+function renderCitations(citations) {
+  const rows = citations.map((citation) => `
+    <tr>
+      <td>${escapeHtml(citation.claim_id || "")}</td>
+      <td>${escapeHtml(citation.source_id || "")}</td>
+      <td>${escapeHtml(citation.citation_locator || "")}</td>
+      <td>${escapeHtml(citation.page_path || "")}</td>
+    </tr>
+  `);
+  setTable("citations-table", rows, 4);
+}
+
+function renderEvidence(contexts) {
+  const rows = contexts.map((context) => `
+    <tr>
+      <td><strong>${escapeHtml(context.claim_id || "")}</strong><span>${escapeHtml(context.claim_text || "")}</span></td>
+      <td>${escapeHtml(context.source_id || "")}</td>
+      <td>${escapeHtml(context.citation_locator || "")}</td>
+      <td>${escapeHtml(context.page_path || "")}</td>
+    </tr>
+  `);
+  setTable("evidence-table", rows, 4);
+}
+
+function renderSynthesisPreview(result) {
+  setText("synthesis-status", `${result.preview_status || "preview"} / ${result.action || "unknown"}`);
+  setText("synthesis-preview-text", result.preview_text || JSON.stringify(result.synthesis_plan || {}, null, 2));
 }
 
 function renderRuns(runs) {
@@ -188,6 +308,14 @@ function setTable(id, rows, colspan) {
   target.innerHTML = rows.length ? rows.join("") : `<tr><td colspan="${colspan}" class="muted">No data.</td></tr>`;
 }
 
+function setList(id, items) {
+  const target = document.querySelector(`#${id}`);
+  if (!target) {
+    return;
+  }
+  target.innerHTML = items.length ? items.map((item) => `<li>${escapeHtml(item)}</li>`).join("") : '<li class="muted">None.</li>';
+}
+
 function setText(id, value) {
   const target = document.querySelector(`#${id}`);
   if (target) {
@@ -210,6 +338,18 @@ document.querySelector("#refresh-button")?.addEventListener("click", () => {
 
 document.querySelector("#add-source-form")?.addEventListener("submit", (event) => {
   submitAddSource(event).catch(showLoadError);
+});
+
+document.querySelector("#ask-form")?.addEventListener("submit", (event) => {
+  submitAsk(event).catch(showLoadError);
+});
+
+document.querySelector("#synthesis-preview-button")?.addEventListener("click", () => {
+  submitSynthesisPreview().catch(showLoadError);
+});
+
+document.querySelector("#synthesis-writeback-button")?.addEventListener("click", () => {
+  submitSynthesisWriteback().catch(showLoadError);
 });
 
 function showLoadError(error) {
