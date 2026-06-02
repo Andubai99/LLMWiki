@@ -121,3 +121,35 @@ def test_api_error_response_is_sanitized(monkeypatch) -> None:
         server.shutdown()
         server.server_close()
         thread.join(timeout=5)
+
+
+def test_serve_ui_starts_and_stops_job_manager(monkeypatch, tmp_path: Path) -> None:
+    import llmwiki.ui.server as ui_server
+
+    events: list[str] = []
+
+    class FakeJobManager:
+        def start(self) -> None:
+            events.append("start")
+
+        def stop(self) -> None:
+            events.append("stop")
+
+    class FakeServer:
+        server_address = ("127.0.0.1", 8765)
+
+        def __init__(self) -> None:
+            self.job_manager = FakeJobManager()
+
+        def serve_forever(self) -> None:
+            raise KeyboardInterrupt
+
+        def server_close(self) -> None:
+            self.job_manager.stop()
+
+    monkeypatch.setattr(ui_server, "create_ui_server", lambda config: FakeServer())
+    monkeypatch.setattr(ui_server.webbrowser, "open", lambda url: (_ for _ in ()).throw(AssertionError("browser should not open")))
+
+    ui_server.serve_ui(tmp_path, open_browser=False)
+
+    assert events == ["start", "stop"]
