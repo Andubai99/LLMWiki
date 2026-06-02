@@ -18,7 +18,17 @@ def snapshot_files(root: Path) -> dict[str, bytes]:
     }
 
 
+def force_missing_mineru(root: Path) -> None:
+    config_path = root / "config" / "config.toml"
+    config_path.write_text(
+        config_path.read_text(encoding="utf-8").replace('mineru_command = "mineru"', 'mineru_command = "missing-mineru"'),
+        encoding="utf-8",
+        newline="\n",
+    )
+
+
 def seed_pdf_source(root: Path, monkeypatch) -> str:
+    force_missing_mineru(root)
     monkeypatch.setattr(
         "llmwiki.pdf_blocks.read_pdf_pages",
         lambda content: (
@@ -113,6 +123,42 @@ def test_evaluate_pdf_quality_reports_mineru_command_counters(capsys):
     metadata["parser_backend_fallback_from"] = "mineru"
     metadata["parser_backend_fallback_reason"] = "MinerU command timed out"
     metadata["parser_content_list_path"] = "sources/parser-artifacts/missing/content_list.json"
+    metadata["parser_backend_attempts"] = [
+        {
+            "backend": "mineru",
+            "status": "failed",
+            "command_invoked": True,
+            "command": ["mineru"],
+            "command_source": "PATH",
+            "returncode": -1,
+            "timed_out": True,
+            "duration_seconds": 10.0,
+            "stdout_snippet": "",
+            "stderr_snippet": "timeout",
+            "content_list_candidates": [],
+            "content_list_discovery_count": 0,
+            "failure_stage": "content_list_discovery",
+            "failure_reason": "MinerU content-list output was not found",
+            "warnings": ["MinerU content-list output was not found"],
+        },
+        {
+            "backend": "pypdf",
+            "status": "succeeded",
+            "command_invoked": False,
+            "command": [],
+            "command_source": "",
+            "returncode": None,
+            "timed_out": False,
+            "duration_seconds": None,
+            "stdout_snippet": "",
+            "stderr_snippet": "",
+            "content_list_candidates": [],
+            "content_list_discovery_count": 0,
+            "failure_stage": "",
+            "failure_reason": "",
+            "warnings": [],
+        },
+    ]
     metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
 
     payload = evaluate_pdf_quality(root).to_dict()
@@ -122,6 +168,14 @@ def test_evaluate_pdf_quality_reports_mineru_command_counters(capsys):
     assert payload["mineru_timeout_count"] == 1
     assert payload["mineru_content_list_missing_count"] == 1
     assert payload["auto_fallback_count"] == 1
+    assert payload["mineru_command_discovered_count"] == 1
+    assert payload["mineru_command_source_distribution"] == {"PATH": 1}
+    assert payload["mineru_attempt_count"] == 1
+    assert payload["mineru_attempt_failure_count"] == 1
+    assert payload["mineru_attempt_timeout_count"] == 1
+    assert payload["mineru_attempt_missing_content_list_count"] == 1
+    assert payload["auto_fallback_with_attempt_diagnostics_count"] == 1
+    assert payload["auto_fallback_missing_attempt_diagnostics_count"] == 0
 
 
 def test_evaluate_pdf_quality_reports_identity_and_repair_counters(monkeypatch, capsys):

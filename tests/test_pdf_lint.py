@@ -288,6 +288,61 @@ def test_lint_reports_missing_mineru_content_list_and_secret_parser_snippet(caps
     assert "pdf parser secret snippets: 1" in out
 
 
+def test_lint_reports_auto_fallback_missing_attempt_diagnostics(capsys):
+    root = make_workspace()
+    assert main(["init", "--root", str(root)]) == 0
+    source_id = seed_pdf_source(root)
+    write_pdf_sidecars(root, source_id)
+    metadata_path = root / "sources" / "metadata" / f"{source_id}.json"
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    metadata["parser_backend"] = "pypdf"
+    metadata["parser_backend_fallback_from"] = "mineru"
+    metadata["parser_backend_fallback_reason"] = "MinerU parser failed; falling back to pypdf"
+    metadata["parser_backend_attempts"] = []
+    metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+    capsys.readouterr()
+
+    assert main(["lint", "--root", str(root)]) == 1
+    out = capsys.readouterr().out
+
+    assert "pdf auto fallback missing attempt diagnostics: 1" in out
+
+
+def test_lint_reports_secret_parser_attempt_snippet(capsys):
+    root = make_workspace()
+    assert main(["init", "--root", str(root)]) == 0
+    source_id = seed_pdf_source(root)
+    write_pdf_sidecars(root, source_id)
+    metadata_path = root / "sources" / "metadata" / f"{source_id}.json"
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    metadata["parser_backend_attempts"] = [
+        {
+            "backend": "mineru",
+            "status": "failed",
+            "command_invoked": True,
+            "command": ["mineru"],
+            "command_source": "PATH",
+            "returncode": 1,
+            "timed_out": False,
+            "duration_seconds": 0.1,
+            "stdout_snippet": "ok",
+            "stderr_snippet": "api_key=should-not-be-stored",
+            "content_list_candidates": [],
+            "content_list_discovery_count": 0,
+            "failure_stage": "command",
+            "failure_reason": "failed",
+            "warnings": [],
+        }
+    ]
+    metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+    capsys.readouterr()
+
+    assert main(["lint", "--root", str(root)]) == 1
+    out = capsys.readouterr().out
+
+    assert "pdf parser secret snippets: 1" in out
+
+
 def test_lint_reports_ignored_blocks_in_chunks(capsys):
     root = make_workspace()
     assert main(["init", "--root", str(root)]) == 0
