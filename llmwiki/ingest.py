@@ -178,6 +178,7 @@ def source_parse_diagnostics(root: Path, source: dict[str, str]) -> dict[str, ob
     metadata = load_metadata_json(metadata_path) if metadata_path.exists() else None
     blocks = load_blocks_jsonl(blocks_path) if blocks_path.exists() else []
     chunks = load_chunks_jsonl(chunks_path) if chunks_path.exists() else []
+    parser_attempts = metadata.parser_backend_attempts if metadata else []
     return {
         "source_parse_schema": BLOCK_SCHEMA_VERSION,
         "source_chunk_schema": CHUNK_SCHEMA_VERSION,
@@ -202,6 +203,8 @@ def source_parse_diagnostics(root: Path, source: dict[str, str]) -> dict[str, ob
         "parser_command_stderr_snippet": metadata.parser_command_stderr_snippet if metadata else "",
         "parser_content_list_path": metadata.parser_content_list_path if metadata else "",
         "parser_content_list_discovery_count": metadata.parser_content_list_discovery_count if metadata else 0,
+        "parser_backend_attempts": parser_attempts,
+        "parser_backend_attempt_count": len(parser_attempts),
         "title_quality": metadata.title_quality if metadata else {},
         "title_candidates": metadata.title_candidates if metadata else [],
         "paper_identity": metadata.paper_identity if metadata else {},
@@ -647,6 +650,10 @@ def render_source_page(
             "",
             *parser_quality,
             "",
+            "## Parser Attempts",
+            "",
+            *parser_attempt_lines(source_diagnostics or {}),
+            "",
             "## Key Claims",
             "",
             *[format_claim_bullet(claim) for claim in claims],
@@ -727,6 +734,34 @@ def parser_quality_lines(source_diagnostics: dict[str, object]) -> list[str]:
         f"- repeated_header_footer_count: `{parser_quality.get('repeated_header_footer_count', 0)}`",
         f"- page_number_count: `{parser_quality.get('page_number_count', 0)}`",
     ]
+
+
+def parser_attempt_lines(source_diagnostics: dict[str, object]) -> list[str]:
+    attempts = source_diagnostics.get("parser_backend_attempts") if source_diagnostics else []
+    if not isinstance(attempts, list) or not attempts:
+        return ["- None recorded."]
+    lines: list[str] = []
+    for attempt in attempts:
+        if not isinstance(attempt, dict):
+            continue
+        backend = str(attempt.get("backend", ""))
+        status = str(attempt.get("status", ""))
+        extras: list[str] = []
+        command_source = str(attempt.get("command_source", ""))
+        if command_source:
+            extras.append(f"source={command_source}")
+        returncode = attempt.get("returncode")
+        if returncode is not None:
+            extras.append(f"returncode={returncode}")
+        failure_stage = str(attempt.get("failure_stage", ""))
+        if failure_stage:
+            extras.append(f"failure_stage={failure_stage}")
+        failure_reason = str(attempt.get("failure_reason", ""))
+        if failure_reason:
+            extras.append(f"reason={failure_reason}")
+        suffix = f" ({', '.join(extras)})" if extras else ""
+        lines.append(f"- {backend}: {status}{suffix}")
+    return lines or ["- None recorded."]
 
 
 def render_concept_page(
@@ -923,6 +958,8 @@ def pdf_parse_diagnostics_section(source_diagnostics: dict[str, object]) -> list
         f"- parser_content_list_discovery_count: `{source_diagnostics.get('parser_content_list_discovery_count', 0)}`",
         f"- parser_command_stdout_snippet: `{source_diagnostics.get('parser_command_stdout_snippet', '')}`",
         f"- parser_command_stderr_snippet: `{source_diagnostics.get('parser_command_stderr_snippet', '')}`",
+        f"- parser_backend_attempt_count: {source_diagnostics.get('parser_backend_attempt_count', 0)}",
+        *parser_attempt_lines(source_diagnostics),
         f"- metadata_path: `{source_diagnostics.get('metadata_path', '')}`",
         f"- blocks_path: `{source_diagnostics.get('blocks_path', '')}`",
         f"- chunks_path: `{source_diagnostics.get('chunks_path', '')}`",
