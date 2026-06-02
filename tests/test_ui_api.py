@@ -37,7 +37,7 @@ def test_response_dataclass_to_dict_is_stable() -> None:
     )
 
     assert response.to_dict() == {
-        "schema_version": "ui.v3.1",
+        "schema_version": "ui.v3.2",
         "status": "ready",
         "workspace_root": ".",
         "initialized": True,
@@ -61,7 +61,7 @@ def test_config_status_to_dict_does_not_expose_secret_values() -> None:
 
     payload = response.to_dict()
 
-    assert payload["schema_version"] == "ui.v3.1"
+    assert payload["schema_version"] == "ui.v3.2"
     assert "api_key" not in repr(payload).replace("api_key_present", "")
 
 
@@ -235,6 +235,8 @@ def test_list_sources_includes_latest_run_and_sidecar_summary() -> None:
     assert payload[0]["source_id"] == "src_ui"
     assert payload[0]["latest_run_id"] == "run_ui"
     assert payload[0]["latest_run_status"] == "applied"
+    assert payload[0]["latest_job_id"] == ""
+    assert payload[0]["latest_job_status"] == ""
     assert payload[0]["parser_backend"] == "mineru"
     assert payload[0]["parser_fallback"] == "pypdf"
     assert payload[0]["sidecars"] == {"metadata": True, "blocks": True, "chunks": False}
@@ -253,6 +255,42 @@ def test_list_sources_malformed_sidecar_warns_without_crashing() -> None:
     assert source["source_id"] == "src_ui"
     assert source["warnings"]
     assert "bad json" not in repr(source)
+
+
+def test_list_sources_includes_latest_ui_job_summary() -> None:
+    from llmwiki.ui.api import list_sources
+    from llmwiki.ui.jobs import create_add_source_job, update_job
+
+    root = make_workspace()
+    assert main(["init", "--root", str(root)]) == 0
+    seed_ui_catalog(root)
+    job = create_add_source_job(root, "sources/raw/src_ui.pdf", parser="auto")
+    update_job(root, job, status="applied", stage="applied", source_id="src_ui")
+
+    payload = [source.to_dict() for source in list_sources(root)]
+
+    assert payload[0]["latest_job_id"] == job.job_id
+    assert payload[0]["latest_job_status"] == "applied"
+
+
+def test_list_ui_jobs_and_get_ui_job_return_summaries_and_warnings() -> None:
+    from llmwiki.ui.api import get_ui_job, list_ui_jobs
+    from llmwiki.ui.jobs import create_add_source_job
+
+    root = make_workspace()
+    assert main(["init", "--root", str(root)]) == 0
+    job = create_add_source_job(root, "paper.pdf", parser="pypdf")
+    (root / "state" / "ui-jobs" / "bad.json").write_text("{bad json", encoding="utf-8")
+
+    payload = list_ui_jobs(root).to_dict()
+    detail = get_ui_job(root, job.job_id)
+
+    assert payload["schema_version"] == "ui.v3.2"
+    assert payload["jobs"][0]["job_id"] == job.job_id
+    assert payload["warnings"]
+    assert detail is not None
+    assert detail.to_dict()["job_id"] == job.job_id
+    assert get_ui_job(root, "missing") is None
 
 
 def test_list_runs_merges_catalog_and_staging_metadata() -> None:

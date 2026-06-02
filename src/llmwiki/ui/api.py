@@ -15,6 +15,8 @@ from ..vector.index import vector_index_status
 from ..workspace import REQUIRED_PATHS, check_workspace
 from .models import (
     ConfigStatusResponse,
+    JobListResponse,
+    JobSummary,
     PageSummary,
     RunSummary,
     SourceSummary,
@@ -23,6 +25,7 @@ from .models import (
     sanitize_ui_text,
     workspace_relative_path,
 )
+from .jobs import UiJob, load_jobs
 
 
 CATALOG_COUNT_TABLES = (
@@ -148,6 +151,7 @@ def list_sources(root: Path, limit: int = 100) -> list[SourceSummary]:
     if not db_path.exists():
         return []
     latest_runs = latest_run_by_source(db_path)
+    latest_jobs = latest_job_by_source(root)
     sources: list[SourceSummary] = []
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
@@ -172,6 +176,7 @@ def list_sources(root: Path, limit: int = 100) -> list[SourceSummary]:
             "chunks": (root / "sources" / "chunks" / f"{source_id}.jsonl").exists(),
         }
         latest = latest_runs.get(source_id, {})
+        latest_job = latest_jobs.get(source_id, {})
         sources.append(
             SourceSummary(
                 source_id=source_id,
@@ -182,6 +187,8 @@ def list_sources(root: Path, limit: int = 100) -> list[SourceSummary]:
                 status=str(row["status"]),
                 latest_run_id=str(latest.get("run_id", "")),
                 latest_run_status=str(latest.get("status", "")),
+                latest_job_id=str(latest_job.get("job_id", "")),
+                latest_job_status=str(latest_job.get("status", "")),
                 parser_backend=str(metadata.get("parser_backend", "")),
                 parser_fallback=str(metadata.get("parser_backend_fallback_from", "")),
                 sidecars=sidecars,
@@ -189,6 +196,22 @@ def list_sources(root: Path, limit: int = 100) -> list[SourceSummary]:
             )
         )
     return sources
+
+
+def list_ui_jobs(root: Path, limit: int = 100) -> JobListResponse:
+    result = load_jobs(root)
+    return JobListResponse(
+        jobs=[job_summary(job) for job in result.jobs[:limit]],
+        warnings=result.warnings,
+    )
+
+
+def get_ui_job(root: Path, job_id: str) -> JobSummary | None:
+    result = load_jobs(root)
+    for job in result.jobs:
+        if job.job_id == job_id:
+            return job_summary(job)
+    return None
 
 
 def list_runs(root: Path, limit: int = 50) -> list[RunSummary]:
@@ -322,6 +345,40 @@ def latest_run_by_source(db_path: Path) -> dict[str, dict[str, str]]:
         if source_id not in latest:
             latest[source_id] = {key: str(row[key] or "") for key in row.keys()}
     return latest
+
+
+def latest_job_by_source(root: Path) -> dict[str, dict[str, str]]:
+    latest: dict[str, dict[str, str]] = {}
+    result = load_jobs(root)
+    for job in result.jobs:
+        if not job.source_id or job.source_id in latest:
+            continue
+        latest[job.source_id] = {
+            "job_id": job.job_id,
+            "status": job.status,
+        }
+    return latest
+
+
+def job_summary(job: UiJob) -> JobSummary:
+    return JobSummary(
+        job_id=job.job_id,
+        job_type=job.job_type,
+        status=job.status,
+        source_input=job.source_input,
+        source_kind=job.source_kind,
+        requested_parser=job.requested_parser,
+        created_at=job.created_at,
+        started_at=job.started_at,
+        finished_at=job.finished_at,
+        source_id=job.source_id,
+        run_id=job.run_id,
+        stage=job.stage,
+        result=job.result,
+        failure_stage=job.failure_stage,
+        failure_reason=job.failure_reason,
+        warnings=job.warnings,
+    )
 
 
 def read_source_metadata(root: Path, source_id: str) -> tuple[dict[str, Any], list[UiWarning]]:

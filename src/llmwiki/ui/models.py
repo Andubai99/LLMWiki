@@ -6,7 +6,7 @@ import re
 from typing import Any
 
 
-UI_SCHEMA_VERSION = "ui.v3.1"
+UI_SCHEMA_VERSION = "ui.v3.2"
 
 _SECRET_PATTERNS = (
     re.compile(r"sk-[A-Za-z0-9_\-]+"),
@@ -81,6 +81,8 @@ class SourceSummary(UiResponse):
     status: str = ""
     latest_run_id: str = ""
     latest_run_status: str = ""
+    latest_job_id: str = ""
+    latest_job_status: str = ""
     parser_backend: str = ""
     parser_fallback: str = ""
     sidecars: dict[str, bool] = field(default_factory=dict)
@@ -111,6 +113,32 @@ class PageSummary(UiResponse):
     path: str = ""
     source_id: str = ""
     claim_count: int = 0
+    warnings: list[UiWarning] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class JobSummary(UiResponse):
+    job_id: str = ""
+    job_type: str = ""
+    status: str = ""
+    source_input: str = ""
+    source_kind: str = ""
+    requested_parser: str | None = None
+    created_at: str = ""
+    started_at: str | None = None
+    finished_at: str | None = None
+    source_id: str = ""
+    run_id: str = ""
+    stage: str = ""
+    result: dict[str, Any] = field(default_factory=dict)
+    failure_stage: str = ""
+    failure_reason: str = ""
+    warnings: list[UiWarning] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class JobListResponse(UiResponse):
+    jobs: list[JobSummary] = field(default_factory=list)
     warnings: list[UiWarning] = field(default_factory=list)
 
 
