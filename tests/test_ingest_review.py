@@ -244,15 +244,23 @@ def test_pdf_mineru_command_diagnostics_surface_in_staging(monkeypatch, capsys):
     assert manifest["parser_command_returncode"] == 0
     assert manifest["parser_content_list_path"].endswith("content_list.json")
     assert manifest["parser_content_list_discovery_count"] == 1
+    assert manifest["parser_backend_attempts"][0]["backend"] == "mineru"
+    assert manifest["parser_backend_attempts"][0]["status"] == "succeeded"
     assert "parser_command_invoked: `true`" in triage
+    assert "parser_backend_attempt_count: 1" in triage
+    assert "- mineru: succeeded" in triage
     assert "parser_content_list_path:" in triage
     assert "parser_command_stdout_snippet: `parsed`" in triage
     assert "parser_command_invoked: `true`" in source_content
+    assert "## Parser Attempts" in source_content
+    assert "- mineru: succeeded" in source_content
     assert "parser_content_list_path:" in source_content
 
     assert main(["review", run_id, "--detail", "--root", str(root)]) == 0
     review = capsys.readouterr().out
     assert "parser_command_invoked: `true`" in review
+    assert "parser_backend_attempt_count: 1" in review
+    assert "- mineru: succeeded" in review
     assert "parsed" in review
     assert "content_list.json" in review
     assert "config/api-keys.toml" not in review
