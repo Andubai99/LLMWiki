@@ -242,6 +242,7 @@ def test_ask_accepts_mineru_catalog_claim_without_artifact_citations(monkeypatch
     assert data["citations"][0]["claim_id"] == "clm_mineru_table"
     assert data["citations"][0]["citation_locator"].startswith("page:2;block:")
     assert "parser-artifacts" not in json.dumps(data["citations"])
+    assert "parser_backend_attempts" not in json.dumps(data["citations"])
 
 
 def test_ask_answers_natural_chinese_question_from_hybrid_retrieval(monkeypatch, capsys):

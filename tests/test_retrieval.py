@@ -220,6 +220,7 @@ def test_retrieve_mineru_derived_claim_uses_catalog_evidence_not_artifacts(capsy
     assert context["claim_id"] == "clm_mineru_table"
     assert context["citation_locator"].startswith("page:2;block:")
     assert "parser-artifacts" not in json.dumps(context)
+    assert "parser_backend_attempts" not in json.dumps(context)
 
 
 def test_retrieve_does_not_call_llm_planner_or_provider(monkeypatch, capsys):
