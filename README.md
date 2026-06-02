@@ -60,6 +60,14 @@ llmwiki add docs/papers/example.pdf --root .
 
 MinerU artifacts under `sources/parser-artifacts/` remain generated source artifacts, not evidence. The LLM must not choose the parser backend, block ids, chunk ids, page numbers, artifact paths, or chunk boundaries. Retrieval, query, and ask still expose only catalog-backed claims with real page/block locators.
 
+## V2.9.6 MinerU Operational Hardening
+
+`llmwiki parsers status --root . --json` now reports `parser_status.v2.9.6` and includes `mineru_command_source`. Command discovery checks the configured command, PATH, the workspace `.venv`, and the repo `.venv`; it does not mutate PATH, install MinerU, parse documents, call LLMs, call embedding providers, or write workspace files.
+
+When `auto` tries MinerU and then falls back to `pypdf`, the generated PDF metadata records `parser_backend_attempts`: a sanitized failed MinerU attempt plus the successful pypdf attempt. These attempts are visible in `run.json`, `triage.md`, source pages, `llmwiki lint`, and `llmwiki eval pdf-quality`, but they are diagnostics only and are never retrieval evidence.
+
+Parser command logs remain bounded and secret-safe. API keys, `config/api-keys.toml`, full parser logs, and backend-native artifacts must not be committed or exposed as claims/citations. Explicit `--parser mineru` remains strict and never falls back; explicit `--parser pypdf` still skips MinerU.
+
 ## V2.9.2 PDF Quality Notes
 
 Text PDFs are now parsed into source metadata, stable blocks, and deterministic chunks before LLM ingest. Generated sidecars live under `sources/metadata/`, `sources/blocks/`, and `sources/chunks/`; these files are local generated artifacts and are ignored by Git like `sources/raw/` and `sources/normalized/`.

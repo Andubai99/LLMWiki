@@ -102,6 +102,10 @@ This repository is a local, source-backed research wiki. Treat it as a knowledge
 - `llmwiki parsers status` is read-only and must not call LLM, embedding, MinerU document parsing, network, or write workspace files.
 - Auto fallback from MinerU to `pypdf` must remain visible in source metadata, staging diagnostics, lint, and `eval pdf-quality`.
 - V2.9.5 may use MinerU as the preferred auto parser backend. Scanned PDF OCR, table cell-level evidence, figure understanding, and equation semantic interpretation are deferred.
+- V2.9.6 parser command discovery may check configured command, PATH, workspace `.venv`, and repo `.venv`; it must not mutate PATH or install MinerU automatically.
+- Auto fallback parser attempts must remain visible as sanitized `parser_backend_attempts` diagnostics in metadata, staging, lint, and `eval pdf-quality`.
+- Parser attempt diagnostics are not evidence and must never be returned by `retrieve`, `query`, or `ask`.
+- Parser stdout/stderr snippets must be bounded and secret-safe; API keys, `config/api-keys.toml`, and full parser logs must not be persisted.
 
 ## First-Version Boundaries
 
