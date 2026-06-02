@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import sys as _sys
 
+from .ask import answer as _ask_answer
+from .ask import planner as _ask_planner
 from .ingestion import apply as _ingestion_apply
 from .ingestion import ingest as _ingestion_ingest
 from .ingestion import llm_ingest as _ingestion_llm_ingest
@@ -34,6 +36,8 @@ _sys.modules.setdefault(f"{__name__}.pipeline", _ingestion_pipeline)
 _sys.modules.setdefault(f"{__name__}.ingest", _ingestion_ingest)
 _sys.modules.setdefault(f"{__name__}.llm_ingest", _ingestion_llm_ingest)
 _sys.modules.setdefault(f"{__name__}.apply", _ingestion_apply)
+_sys.modules.setdefault(f"{__name__}.answer", _ask_answer)
+_sys.modules.setdefault(f"{__name__}.planner", _ask_planner)
 _sys.modules.setdefault(f"{__name__}.query_analysis", _retrieval_query_analysis)
 _sys.modules.setdefault(f"{__name__}.retrievers", _retrieval_retrievers)
 _sys.modules.setdefault(f"{__name__}.rerankers", _retrieval_rerankers)
@@ -54,6 +58,8 @@ pipeline = _ingestion_pipeline
 ingest = _ingestion_ingest
 llm_ingest = _ingestion_llm_ingest
 apply = _ingestion_apply
+answer = _ask_answer
+planner = _ask_planner
 query_analysis = _retrieval_query_analysis
 retrievers = _retrieval_retrievers
 rerankers = _retrieval_rerankers

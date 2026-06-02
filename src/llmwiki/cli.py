@@ -8,7 +8,7 @@ import sys
 import tomllib
 from pathlib import Path
 
-from .answer import AskOptions, AskResult, answer_question
+from .ask.answer import AskOptions, AskResult, answer_question
 from .ingestion.apply import UnsafePatchError, apply_run
 from .db import catalog_path, schema_status
 from .ingestion.ingest import ingest_source, review_run

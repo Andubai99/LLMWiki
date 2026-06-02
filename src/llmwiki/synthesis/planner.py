@@ -6,7 +6,7 @@ import re
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-from ..answer import AskResult
+from ..ask.answer import AskResult
 from ..db import RELATIONSHIP_TYPES, catalog_path, connect
 from ..llm import create_provider, load_llm_config
 from ..ingestion.pipeline import sanitize_error

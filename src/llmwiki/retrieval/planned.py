@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from ..planner import QueryPlan
+from ..ask.planner import QueryPlan
 from . import retrieve_context
 
 
