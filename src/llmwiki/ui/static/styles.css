@@ -38,6 +38,17 @@ button {
   cursor: pointer;
 }
 
+input,
+select {
+  min-height: 38px;
+  border: 1px solid #93a4b7;
+  border-radius: 6px;
+  padding: 0 10px;
+  color: #102a43;
+  background: #ffffff;
+  font: inherit;
+}
+
 button:hover {
   background: #edf4f7;
 }
@@ -80,6 +91,7 @@ button:hover {
 .metric,
 .config-grid article,
 .warnings-panel,
+.action-section,
 .data-section {
   border: 1px solid #d6dee8;
   border-radius: 8px;
@@ -111,9 +123,37 @@ button:hover {
 }
 
 .warnings-panel,
+.action-section,
 .data-section {
   margin-top: 18px;
   padding: 16px;
+}
+
+.source-form {
+  margin-top: 12px;
+}
+
+.source-form label {
+  display: block;
+  margin-bottom: 8px;
+  color: #52606d;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.source-form-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 140px 130px;
+  gap: 10px;
+}
+
+.active-job-strip {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid #e1e8ef;
+  border-radius: 6px;
+  background: #f9fbfc;
+  overflow-wrap: anywhere;
 }
 
 .warnings-panel ul {
@@ -186,6 +226,10 @@ td {
   button {
     margin-top: 14px;
     width: 100%;
+  }
+
+  .source-form-row {
+    grid-template-columns: 1fr;
   }
 
   .status-strip,

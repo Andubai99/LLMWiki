@@ -66,6 +66,27 @@
         </ul>
       </section>
 
+      <section class="action-section" aria-label="Source library">
+        <div class="section-heading">
+          <h2>Source Library</h2>
+          <span id="add-source-status" class="muted">Ready</span>
+        </div>
+        <form id="add-source-form" class="source-form">
+          <label for="source-input">Source path or URL</label>
+          <div class="source-form-row">
+            <input id="source-input" name="source" type="text" autocomplete="off" placeholder="docs/papers/example.pdf">
+            <select id="parser-select" name="parser" aria-label="PDF parser">
+              <option value="">default</option>
+              <option value="auto">auto</option>
+              <option value="pypdf">pypdf</option>
+              <option value="mineru">mineru</option>
+            </select>
+            <button id="add-source-button" type="submit">Add Source</button>
+          </div>
+        </form>
+        <div id="active-job-strip" class="active-job-strip muted">No active jobs.</div>
+      </section>
+
       <section class="data-section">
         <div class="section-heading">
           <h2>Sources</h2>
@@ -83,6 +104,27 @@
               </tr>
             </thead>
             <tbody id="sources-table"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="data-section">
+        <div class="section-heading">
+          <h2>Jobs</h2>
+          <span id="jobs-table-count" class="muted">0 rows</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Job</th>
+                <th>Source</th>
+                <th>Status</th>
+                <th>Stage</th>
+                <th>Result</th>
+              </tr>
+            </thead>
+            <tbody id="jobs-table"></tbody>
           </table>
         </div>
       </section>

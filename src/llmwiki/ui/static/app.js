@@ -1,13 +1,21 @@
 const ENDPOINTS = {
+  session: "/api/session",
   status: "/api/status",
   sources: "/api/sources",
   runs: "/api/runs",
   pages: "/api/pages",
-  config: "/api/config"
+  config: "/api/config",
+  jobs: "/api/jobs",
+  addSource: "/api/sources/add"
 };
 
-async function fetchJson(path) {
-  const response = await fetch(path);
+const state = {
+  actionToken: "",
+  pollTimer: null
+};
+
+async function fetchJson(path, options = {}) {
+  const response = await fetch(path, options);
   const payload = await response.json();
   if (!response.ok) {
     throw new Error(payload.message || payload.error || "Request failed");
@@ -15,20 +23,54 @@ async function fetchJson(path) {
   return payload;
 }
 
+async function loadSession() {
+  const session = await fetchJson(ENDPOINTS.session);
+  state.actionToken = session.action_token || "";
+}
+
 async function loadDashboard() {
-  const [status, sources, runs, pages, config] = await Promise.all([
+  if (!state.actionToken) {
+    await loadSession();
+  }
+  const [status, sources, runs, pages, config, jobs] = await Promise.all([
     fetchJson(ENDPOINTS.status),
     fetchJson(ENDPOINTS.sources),
     fetchJson(ENDPOINTS.runs),
     fetchJson(ENDPOINTS.pages),
-    fetchJson(ENDPOINTS.config)
+    fetchJson(ENDPOINTS.config),
+    fetchJson(ENDPOINTS.jobs)
   ]);
   renderStatus(status);
   renderConfig(config);
   renderSources(sources.sources || []);
   renderRuns(runs.runs || []);
   renderPages(pages.pages || []);
-  renderWarnings(collectWarnings(status, sources, runs, pages, config));
+  renderJobs(jobs.jobs || []);
+  renderWarnings(collectWarnings(status, sources, runs, pages, config, jobs));
+  updateJobPolling(jobs.jobs || []);
+}
+
+async function submitAddSource(event) {
+  event.preventDefault();
+  const source = document.querySelector("#source-input")?.value || "";
+  const parser = document.querySelector("#parser-select")?.value || "";
+  setText("add-source-status", "Queueing...");
+  try {
+    const payload = await fetchJson(ENDPOINTS.addSource, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-LLMWiki-UI-Token": state.actionToken
+      },
+      body: JSON.stringify({ source, parser })
+    });
+    setText("add-source-status", `Queued ${payload.job.job_id}`);
+    document.querySelector("#source-input").value = "";
+    await loadDashboard();
+  } catch (error) {
+    setText("add-source-status", "Failed");
+    renderWarnings([{ category: "source", message: error.message }]);
+  }
 }
 
 function renderStatus(status) {
@@ -58,12 +100,28 @@ function renderSources(sources) {
     <tr>
       <td><strong>${escapeHtml(source.title || source.source_id)}</strong><span>${escapeHtml(source.source_id)}</span></td>
       <td>${escapeHtml(source.source_type || "")}</td>
-      <td>${escapeHtml(source.status || "")}</td>
+      <td>${escapeHtml(source.status || "")}<span>${escapeHtml(source.latest_job_status || "")}</span></td>
       <td>${escapeHtml(source.parser_backend || "n/a")}${source.parser_fallback ? `<span>fallback: ${escapeHtml(source.parser_fallback)}</span>` : ""}</td>
-      <td>${escapeHtml(source.latest_run_id || "none")}<span>${escapeHtml(source.latest_run_status || "")}</span></td>
+      <td>${escapeHtml(source.latest_run_id || "none")}<span>${escapeHtml(source.latest_run_status || source.latest_job_id || "")}</span></td>
     </tr>
   `);
   setTable("sources-table", rows, 5);
+}
+
+function renderJobs(jobs) {
+  setText("jobs-table-count", `${jobs.length} rows`);
+  const active = jobs.filter((job) => job.status === "pending" || job.status === "running");
+  setText("active-job-strip", active.length ? `${active.length} active job(s): ${active.map((job) => job.job_id).join(", ")}` : "No active jobs.");
+  const rows = jobs.map((job) => `
+    <tr>
+      <td><strong>${escapeHtml(job.job_id)}</strong><span>${escapeHtml(job.created_at || "")}</span></td>
+      <td>${escapeHtml(job.source_input || "")}<span>${escapeHtml(job.requested_parser || "default")}</span></td>
+      <td>${escapeHtml(job.status || "")}</td>
+      <td>${escapeHtml(job.stage || "")}</td>
+      <td>${escapeHtml(job.run_id || job.failure_stage || "")}<span>${escapeHtml(job.failure_reason || job.source_id || "")}</span></td>
+    </tr>
+  `);
+  setTable("jobs-table", rows, 5);
 }
 
 function renderRuns(runs) {
@@ -109,6 +167,19 @@ function collectWarnings(...payloads) {
   return payloads.flatMap((payload) => payload.warnings || []);
 }
 
+function updateJobPolling(jobs) {
+  const hasActive = jobs.some((job) => job.status === "pending" || job.status === "running");
+  if (hasActive && !state.pollTimer) {
+    state.pollTimer = setInterval(() => {
+      loadDashboard().catch(showLoadError);
+    }, 2000);
+  }
+  if (!hasActive && state.pollTimer) {
+    clearInterval(state.pollTimer);
+    state.pollTimer = null;
+  }
+}
+
 function setTable(id, rows, colspan) {
   const target = document.querySelector(`#${id}`);
   if (!target) {
@@ -135,6 +206,10 @@ function escapeHtml(value) {
 
 document.querySelector("#refresh-button")?.addEventListener("click", () => {
   loadDashboard().catch(showLoadError);
+});
+
+document.querySelector("#add-source-form")?.addEventListener("submit", (event) => {
+  submitAddSource(event).catch(showLoadError);
 });
 
 function showLoadError(error) {
