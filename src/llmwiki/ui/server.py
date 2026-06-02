@@ -10,7 +10,18 @@ import socket
 import webbrowser
 
 from .actions import UiActionError, enqueue_add_source_job, run_add_source_job
-from .api import get_config_status, get_ui_job, get_workspace_status, list_pages, list_runs, list_sources, list_ui_jobs
+from .api import (
+    get_ask_job,
+    get_config_status,
+    get_ui_job,
+    get_workspace_status,
+    list_ask_jobs,
+    list_pages,
+    list_runs,
+    list_sources,
+    list_ui_jobs,
+)
+from .ask_actions import AskUiActionError, enqueue_ask_job
 from .jobs import UiJobManager, mark_stale_running_jobs_interrupted
 from .models import UI_SCHEMA_VERSION, sanitize_ui_text
 
@@ -65,7 +76,7 @@ def create_ui_server(config: UiServerConfig) -> ThreadingHTTPServer:
     job_manager = UiJobManager(root, worker=lambda job: run_add_source_job(root, job))
 
     class LLMWikiUiHandler(BaseHTTPRequestHandler):
-        server_version = "LLMWikiUI/3.2"
+        server_version = "LLMWikiUI/3.3"
 
         def do_GET(self) -> None:  # noqa: N802 - stdlib handler API
             try:
@@ -153,15 +164,29 @@ def write_api(handler: BaseHTTPRequestHandler, path: str) -> None:
         "/api/session": lambda: {
             "schema_version": UI_SCHEMA_VERSION,
             "action_token": server.action_token,
-            "supported_actions": ["add_source"],
+            "supported_actions": [
+                "add_source",
+                "ask_question",
+                "synthesis_preview",
+                "synthesis_writeback",
+            ],
         },
         "/api/sources": lambda: {"schema_version": UI_SCHEMA_VERSION, "sources": [item.to_dict() for item in list_sources(root)]},
         "/api/runs": lambda: {"schema_version": UI_SCHEMA_VERSION, "runs": [item.to_dict() for item in list_runs(root)]},
         "/api/pages": lambda: {"schema_version": UI_SCHEMA_VERSION, "pages": [item.to_dict() for item in list_pages(root)]},
         "/api/jobs": lambda: list_ui_jobs(root).to_dict(),
+        "/api/ask/jobs": lambda: list_ask_jobs(root).to_dict(),
         "/api/config": lambda: get_config_status(root).to_dict(),
     }
     route = routes.get(path)
+    if route is None and path.startswith("/api/ask/jobs/"):
+        job_id = path.removeprefix("/api/ask/jobs/")
+        job = get_ask_job(root, job_id)
+        if job is None:
+            write_json(handler, 404, {"schema_version": UI_SCHEMA_VERSION, "error": "not_found"})
+            return
+        write_json(handler, 200, job.to_dict())
+        return
     if route is None and path.startswith("/api/jobs/"):
         job_id = path.removeprefix("/api/jobs/")
         job = get_ui_job(root, job_id)
@@ -177,7 +202,7 @@ def write_api(handler: BaseHTTPRequestHandler, path: str) -> None:
 
 
 def write_post_api(handler: BaseHTTPRequestHandler, path: str) -> None:
-    if path != "/api/sources/add":
+    if path not in {"/api/sources/add", "/api/ask"}:
         write_json(handler, 404, {"schema_version": UI_SCHEMA_VERSION, "error": "not_found"})
         return
     server = ui_server(handler)
@@ -186,8 +211,11 @@ def write_post_api(handler: BaseHTTPRequestHandler, path: str) -> None:
         return
     try:
         payload = read_json_body(handler)
-        job = enqueue_add_source_job(server.root, payload, server.job_manager)
-    except UiActionError as exc:
+        if path == "/api/sources/add":
+            job = enqueue_add_source_job(server.root, payload, server.job_manager)
+        else:
+            job = enqueue_ask_job(server.root, payload, server.job_manager)
+    except (UiActionError, AskUiActionError) as exc:
         data = exc.to_dict()
         write_json(
             handler,

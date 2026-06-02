@@ -37,7 +37,7 @@ def test_response_dataclass_to_dict_is_stable() -> None:
     )
 
     assert response.to_dict() == {
-        "schema_version": "ui.v3.2",
+        "schema_version": "ui.v3.3",
         "status": "ready",
         "workspace_root": ".",
         "initialized": True,
@@ -61,7 +61,7 @@ def test_config_status_to_dict_does_not_expose_secret_values() -> None:
 
     payload = response.to_dict()
 
-    assert payload["schema_version"] == "ui.v3.2"
+    assert payload["schema_version"] == "ui.v3.3"
     assert "api_key" not in repr(payload).replace("api_key_present", "")
 
 
@@ -285,7 +285,7 @@ def test_list_ui_jobs_and_get_ui_job_return_summaries_and_warnings() -> None:
     payload = list_ui_jobs(root).to_dict()
     detail = get_ui_job(root, job.job_id)
 
-    assert payload["schema_version"] == "ui.v3.2"
+    assert payload["schema_version"] == "ui.v3.3"
     assert payload["jobs"][0]["job_id"] == job.job_id
     assert payload["warnings"]
     assert detail is not None

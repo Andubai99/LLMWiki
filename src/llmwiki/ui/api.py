@@ -214,6 +214,23 @@ def get_ui_job(root: Path, job_id: str) -> JobSummary | None:
     return None
 
 
+def list_ask_jobs(root: Path, limit: int = 50) -> JobListResponse:
+    result = load_jobs(root)
+    ask_jobs = [job for job in result.jobs if job.job_type in {"ask_question", "synthesis_preview", "synthesis_writeback"}]
+    return JobListResponse(
+        jobs=[job_summary(job) for job in ask_jobs[:limit]],
+        warnings=result.warnings,
+    )
+
+
+def get_ask_job(root: Path, job_id: str) -> JobSummary | None:
+    result = load_jobs(root)
+    for job in result.jobs:
+        if job.job_id == job_id and job.job_type in {"ask_question", "synthesis_preview", "synthesis_writeback"}:
+            return job_summary(job)
+    return None
+
+
 def list_runs(root: Path, limit: int = 50) -> list[RunSummary]:
     root = root.resolve()
     catalog_runs = catalog_run_rows(root, limit=limit)
@@ -373,6 +390,10 @@ def job_summary(job: UiJob) -> JobSummary:
         finished_at=job.finished_at,
         source_id=job.source_id,
         run_id=job.run_id,
+        question=job.question,
+        ask_options=job.ask_options,
+        parent_job_id=job.parent_job_id,
+        writeback_mode=job.writeback_mode,
         stage=job.stage,
         result=job.result,
         failure_stage=job.failure_stage,

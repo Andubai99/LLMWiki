@@ -6,7 +6,7 @@ import re
 from typing import Any
 
 
-UI_SCHEMA_VERSION = "ui.v3.2"
+UI_SCHEMA_VERSION = "ui.v3.3"
 
 _SECRET_PATTERNS = (
     re.compile(r"sk-[A-Za-z0-9_\-]+"),
@@ -129,6 +129,10 @@ class JobSummary(UiResponse):
     finished_at: str | None = None
     source_id: str = ""
     run_id: str = ""
+    question: str = ""
+    ask_options: dict[str, Any] = field(default_factory=dict)
+    parent_job_id: str = ""
+    writeback_mode: str = ""
     stage: str = ""
     result: dict[str, Any] = field(default_factory=dict)
     failure_stage: str = ""
