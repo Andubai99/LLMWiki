@@ -26,8 +26,11 @@ from .ask_actions import (
     enqueue_ask_job,
     enqueue_synthesis_preview_job,
     enqueue_synthesis_writeback_job,
+    run_ask_job,
+    run_synthesis_preview_job,
+    run_synthesis_writeback_job,
 )
-from .jobs import UiJobManager, mark_stale_running_jobs_interrupted
+from .jobs import UiJob, UiJobManager, mark_stale_running_jobs_interrupted
 from .models import UI_SCHEMA_VERSION, sanitize_ui_text
 
 
@@ -78,7 +81,7 @@ def create_ui_server(config: UiServerConfig) -> ThreadingHTTPServer:
     port = find_available_port(config.host, config.port)
     action_token = config.action_token or secrets.token_urlsafe(32)
     mark_stale_running_jobs_interrupted(root)
-    job_manager = UiJobManager(root, worker=lambda job: run_add_source_job(root, job))
+    job_manager = UiJobManager(root, worker=lambda job: dispatch_ui_job(root, job))
 
     class LLMWikiUiHandler(BaseHTTPRequestHandler):
         server_version = "LLMWikiUI/3.3"
@@ -137,6 +140,18 @@ def serve_ui(root: Path, host: str = "127.0.0.1", port: int = 8765, open_browser
         pass
     finally:
         server.server_close()
+
+
+def dispatch_ui_job(root: Path, job: UiJob) -> UiJob:
+    if job.job_type == "add_source":
+        return run_add_source_job(root, job)
+    if job.job_type == "ask_question":
+        return run_ask_job(root, job)
+    if job.job_type == "synthesis_preview":
+        return run_synthesis_preview_job(root, job)
+    if job.job_type == "synthesis_writeback":
+        return run_synthesis_writeback_job(root, job)
+    raise RuntimeError(f"Unknown UI job type: {job.job_type}")
 
 
 def handle_get(handler: BaseHTTPRequestHandler) -> None:

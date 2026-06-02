@@ -49,7 +49,7 @@ def test_server_serves_status_json_on_localhost() -> None:
     payload = json.loads(body)
     assert status == 200
     assert "application/json" in content_type
-    assert payload["schema_version"] == "ui.v3.2"
+    assert payload["schema_version"] == "ui.v3.3"
     assert payload["initialized"] is True
 
 
@@ -153,3 +153,25 @@ def test_serve_ui_starts_and_stops_job_manager(monkeypatch, tmp_path: Path) -> N
     ui_server.serve_ui(tmp_path, open_browser=False)
 
     assert events == ["start", "stop"]
+
+
+def test_dispatch_ui_job_supports_v3_3_job_types(monkeypatch, tmp_path: Path) -> None:
+    import llmwiki.ui.server as ui_server
+    from llmwiki.ui.jobs import UiJob
+
+    calls: list[str] = []
+
+    monkeypatch.setattr(ui_server, "run_add_source_job", lambda root, job: calls.append(f"add:{job.job_id}") or job)
+    monkeypatch.setattr(ui_server, "run_ask_job", lambda root, job: calls.append(f"ask:{job.job_id}") or job, raising=False)
+    monkeypatch.setattr(ui_server, "run_synthesis_preview_job", lambda root, job: calls.append(f"preview:{job.job_id}") or job, raising=False)
+    monkeypatch.setattr(ui_server, "run_synthesis_writeback_job", lambda root, job: calls.append(f"writeback:{job.job_id}") or job, raising=False)
+
+    for job_type in ["add_source", "ask_question", "synthesis_preview", "synthesis_writeback"]:
+        ui_server.dispatch_ui_job(tmp_path, UiJob(job_id=f"job_{job_type}", job_type=job_type))
+
+    assert calls == [
+        "add:job_add_source",
+        "ask:job_ask_question",
+        "preview:job_synthesis_preview",
+        "writeback:job_synthesis_writeback",
+    ]
