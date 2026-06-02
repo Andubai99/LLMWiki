@@ -51,6 +51,7 @@ class SourceMetadata:
     parser_command_stderr_snippet: str = ""
     parser_content_list_path: str = ""
     parser_content_list_discovery_count: int = 0
+    parser_backend_attempts: list[dict[str, Any]] = field(default_factory=list)
     schema_version: str = METADATA_SCHEMA_VERSION
     authors: list[str] = field(default_factory=list)
     abstract: str = ""
@@ -150,11 +151,13 @@ def parse_pdf_source(
             raise
         fallback_result = PypdfBackend().parse(request)
         warning = f"MinerU parser failed; falling back to pypdf: {exc}"
+        attempts = [*getattr(exc, "attempts", []), *fallback_result.metadata.parser_backend_attempts]
         metadata = replace(
             fallback_result.metadata,
             parser_backend_fallback_from="mineru",
             parser_backend_fallback_reason=warning,
             parser_backend_warnings=[*fallback_result.metadata.parser_backend_warnings, warning],
+            parser_backend_attempts=attempts,
         )
         return PdfParseResult(metadata=metadata, blocks=fallback_result.blocks)
     metadata = result.metadata
@@ -205,6 +208,25 @@ def build_pdf_parse_result_from_pages(
         extraction_engine=parser_backend,
         parser_backend=parser_backend,
         parser_backend_warnings=warnings,
+        parser_backend_attempts=[
+            {
+                "backend": parser_backend,
+                "status": "succeeded",
+                "command_invoked": False,
+                "command": [],
+                "command_source": "",
+                "returncode": None,
+                "timed_out": False,
+                "duration_seconds": None,
+                "stdout_snippet": "",
+                "stderr_snippet": "",
+                "content_list_candidates": [],
+                "content_list_discovery_count": 0,
+                "failure_stage": "",
+                "failure_reason": "",
+                "warnings": [],
+            }
+        ],
         authors=authors,
         abstract=abstract,
         warnings=warnings,
@@ -400,6 +422,7 @@ def load_metadata_json(path: Path) -> SourceMetadata:
     data = json.loads(path.read_text(encoding="utf-8"))
     data.setdefault("title_quality", {"status": "legacy", "selected_source": "unknown", "score": 0.0, "reasons": []})
     data.setdefault("title_candidates", [])
+    data.setdefault("parser_backend_attempts", [])
     data.setdefault(
         "paper_identity",
         {

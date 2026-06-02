@@ -144,7 +144,8 @@ def test_import_pdf_records_auto_fallback_pypdf_backend(monkeypatch, capsys):
     assert metadata["parser_backend"] == "pypdf"
     assert metadata["parser_backend_fallback_from"] == "mineru"
     assert "falling back to pypdf" in metadata["parser_backend_fallback_reason"]
-    assert metadata["parser_backend_attempts"] == []
+    assert metadata["parser_backend_attempts"][0]["backend"] == "pypdf"
+    assert metadata["parser_backend_attempts"][0]["status"] == "succeeded"
 
 
 def test_import_pdf_auto_uses_mineru_command_and_records_diagnostics(monkeypatch, capsys):

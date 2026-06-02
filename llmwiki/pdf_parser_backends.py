@@ -67,7 +67,9 @@ class PdfParserSelection:
 
 
 class PdfParserBackendError(RuntimeError):
-    pass
+    def __init__(self, message: str, *, attempts: list[dict[str, Any]] | None = None) -> None:
+        super().__init__(message)
+        self.attempts = attempts or []
 
 
 class PdfParserBackend(Protocol):
@@ -124,6 +126,7 @@ class PypdfBackend:
             extraction_engine=self.name,
             parser_backend=self.name,
             parser_backend_version=None,
+            parser_backend_attempts=[_pypdf_attempt(status="succeeded")],
             authors=authors,
             abstract=abstract,
             warnings=warnings,
@@ -184,14 +187,36 @@ class MinerUBackend:
             )
             if command_result.returncode != 0 or command_result.timed_out:
                 reason = "; ".join(command_result.warnings) or f"MinerU command failed with code {command_result.returncode}"
-                raise PdfParserBackendError(reason)
+                raise PdfParserBackendError(
+                    reason,
+                    attempts=[
+                        _mineru_attempt_from_command_result(
+                            command_result,
+                            status="failed",
+                            command_source=discovery.command_source,
+                            failure_stage="command",
+                            failure_reason=reason,
+                        )
+                    ],
+                )
             try:
                 content_list_path = mineru_runner.select_mineru_content_list(
                     command_result.content_list_candidates,
                     pdf_stem=Path(request.filename).stem,
                 )
             except mineru_runner.MinerUCommandError as exc:
-                raise PdfParserBackendError(str(exc)) from exc
+                raise PdfParserBackendError(
+                    str(exc),
+                    attempts=[
+                        _mineru_attempt_from_command_result(
+                            command_result,
+                            status="failed",
+                            command_source=discovery.command_source,
+                            failure_stage="content_list_discovery",
+                            failure_reason=str(exc),
+                        )
+                    ],
+                ) from exc
         else:
             content_list_path = output_dir / "content_list.json"
         if not content_list_path.exists():
@@ -199,9 +224,31 @@ class MinerUBackend:
         try:
             content = json.loads(content_list_path.read_text(encoding="utf-8"))
         except json.JSONDecodeError as exc:
-            raise PdfParserBackendError(f"Invalid MinerU content_list.json: {exc.msg}") from exc
+            attempts = []
+            if command_result is not None:
+                attempts.append(
+                    _mineru_attempt_from_command_result(
+                        command_result,
+                        status="failed",
+                        command_source=command_result.command_source,
+                        failure_stage="content_list_parse",
+                        failure_reason=f"Invalid MinerU content_list.json: {exc.msg}",
+                    )
+                )
+            raise PdfParserBackendError(f"Invalid MinerU content_list.json: {exc.msg}", attempts=attempts) from exc
         if not isinstance(content, list):
-            raise PdfParserBackendError("MinerU content_list.json must contain a list")
+            attempts = []
+            if command_result is not None:
+                attempts.append(
+                    _mineru_attempt_from_command_result(
+                        command_result,
+                        status="failed",
+                        command_source=command_result.command_source,
+                        failure_stage="content_list_parse",
+                        failure_reason="MinerU content_list.json must contain a list",
+                    )
+                )
+            raise PdfParserBackendError("MinerU content_list.json must contain a list", attempts=attempts)
 
         blocks: list[SourceBlock] = []
         page_counts: dict[int, int] = defaultdict(int)
@@ -273,6 +320,18 @@ class MinerUBackend:
             parser_command_stderr_snippet=command_result.stderr_snippet if command_result else "",
             parser_content_list_path=artifact_path,
             parser_content_list_discovery_count=len(command_result.content_list_candidates) if command_result else 1,
+            parser_backend_attempts=[
+                _mineru_attempt_from_command_result(
+                    command_result,
+                    status="succeeded",
+                    command_source=command_result.command_source if command_result else "",
+                    failure_stage="",
+                    failure_reason="",
+                    content_list_path=artifact_path,
+                )
+                if command_result
+                else _mineru_precomputed_attempt(content_list_path=artifact_path)
+            ],
             title_quality={"status": "selected", "selected_source": "mineru", "score": 1.0, "reasons": ["mineru_title"]},
             title_candidates=[{"text": title, "source": "mineru", "score": 1.0, "reasons": ["mineru_title"]}],
             paper_identity={"title": title, "authors": [], "venue_or_status": "", "canonical_names": [title], "warnings": []},
@@ -352,6 +411,77 @@ def select_pdf_parser_backend(
             warnings=["MinerU parser backend unavailable; falling back to pypdf"],
         )
     raise PdfParserBackendError(f"Unsupported PDF parser backend: {backend_name}")
+
+
+def _pypdf_attempt(*, status: str) -> dict[str, Any]:
+    return {
+        "backend": "pypdf",
+        "status": status,
+        "command_invoked": False,
+        "command": [],
+        "command_source": "",
+        "returncode": None,
+        "timed_out": False,
+        "duration_seconds": None,
+        "stdout_snippet": "",
+        "stderr_snippet": "",
+        "content_list_candidates": [],
+        "content_list_discovery_count": 0,
+        "failure_stage": "",
+        "failure_reason": "",
+        "warnings": [],
+    }
+
+
+def _mineru_precomputed_attempt(*, content_list_path: str) -> dict[str, Any]:
+    return {
+        "backend": "mineru",
+        "status": "succeeded",
+        "command_invoked": False,
+        "command": [],
+        "command_source": "precomputed_output",
+        "returncode": None,
+        "timed_out": False,
+        "duration_seconds": None,
+        "stdout_snippet": "",
+        "stderr_snippet": "",
+        "content_list_candidates": [content_list_path],
+        "content_list_discovery_count": 1,
+        "failure_stage": "",
+        "failure_reason": "",
+        "warnings": [],
+    }
+
+
+def _mineru_attempt_from_command_result(
+    result: mineru_runner.MinerUCommandResult,
+    *,
+    status: str,
+    command_source: str,
+    failure_stage: str,
+    failure_reason: str,
+    content_list_path: str = "",
+) -> dict[str, Any]:
+    candidates = [to_posix(path) for path in result.content_list_candidates]
+    if content_list_path and content_list_path not in candidates:
+        candidates.insert(0, content_list_path)
+    return {
+        "backend": "mineru",
+        "status": status,
+        "command_invoked": True,
+        "command": list(result.command),
+        "command_source": result.command_source or command_source,
+        "returncode": result.returncode,
+        "timed_out": result.timed_out,
+        "duration_seconds": result.duration_seconds,
+        "stdout_snippet": result.stdout_snippet,
+        "stderr_snippet": result.stderr_snippet,
+        "content_list_candidates": candidates,
+        "content_list_discovery_count": len(result.content_list_candidates),
+        "failure_stage": failure_stage,
+        "failure_reason": failure_reason,
+        "warnings": list(result.warnings),
+    }
 
 
 def to_posix(path: str | Path) -> str:
