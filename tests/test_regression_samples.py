@@ -221,7 +221,12 @@ def test_docs_describe_v1_commands_and_constraints():
     assert "V3.2 Source Library" in readme
     assert "POST /api/sources/add" in readme
     assert "state/ui-jobs/" in readme
-    assert "schema_version=\"ui.v3.2\"" in readme
+    assert "schema_version=\"ui.v3.3\"" in readme
+    assert "V3.3 Ask And Synthesis UI" in readme
+    assert "POST /api/ask" in readme
+    assert "POST /api/ask/<job-id>/synthesis/preview" in readme
+    assert "POST /api/ask/<job-id>/synthesis/writeback" in readme
+    assert "ui_job.v3.3" in readme
     assert "llmwiki eval pdf-quality --root ." in readme
     assert "defaults to `auto`" in readme
     assert "tries MinerU first" in readme
@@ -292,15 +297,17 @@ def test_docs_describe_v1_commands_and_constraints():
     assert "`llmwiki ui` starts a local dashboard" in agents
     assert "UI GET/status endpoints must not call LLM providers" in agents
     assert "POST /api/sources/add" in agents
+    assert "POST /api/ask" in agents
+    assert "create_synthesis_run" in agents
     assert "state/ui-jobs/" in agents
-    assert "V3.2 UI supports single-source job visibility only" in agents
+    assert "V3.3 UI supports single-source add jobs plus ask/synthesis jobs" in agents
     assert "--scope generated" in agents
     assert "PDF source aliases must not include parser-created aliases or paper title aliases" in agents
     assert "LLM repair may only repair JSON syntax" in agents
     assert "content_role=\"ignored\"" in agents
     assert "MinerU" in agents
     assert "vector" in agents
-    assert "V3.2 local Source Library UI is allowed" in agents
+    assert "V3.3 local Source Library and Ask/Synthesis UI are allowed" in agents
 
 
 def test_gitignore_excludes_virtualenv_and_python_caches():

@@ -144,13 +144,18 @@
 - `llmwiki ui` starts a local dashboard bound to `127.0.0.1` by default.
 - UI GET/status endpoints may read workspace skeleton, catalog, staging metadata, source sidecars, UI job state, parser status, config presence, and vector index status.
 - UI GET/status endpoints must not call LLM providers, embedding providers, MinerU document parsing, parser execution, add/ingest/apply/ask/lint/eval/clean, or any write path.
-- V3.2 Source Library allows exactly one mutating UI endpoint: `POST /api/sources/add`.
+- V3.3 UI allows these mutating token-protected endpoints: `POST /api/sources/add`, `POST /api/ask`, `POST /api/ask/<job-id>/synthesis/preview`, and `POST /api/ask/<job-id>/synthesis/writeback`.
 - `POST /api/sources/add` must require `X-LLMWiki-UI-Token`, validate one source path/URL, write `state/ui-jobs/` job state, and then invoke only the existing `add_and_process_source(...)` pipeline through the UI worker.
+- `POST /api/ask` may call `answer_question(...)` only through a queued UI worker job after token validation. It must not run ask work from GET routes or during server startup.
+- UI query planning diagnostics are not evidence. Retrieved Evidence and Citations UI sections must only show catalog-backed contexts/citations returned by existing ask/retrieve code.
+- `POST /api/ask/<job-id>/synthesis/preview` must be read-only: it may call synthesis planning through a queued job but must not create staging runs, wiki pages, source artifacts, or catalog rows.
+- `POST /api/ask/<job-id>/synthesis/writeback` must use only `create_synthesis_run(...)`; the UI layer must not call `apply_run`, write catalog rows, or write wiki pages directly.
+- Synthesis plan output is not evidence, and preview/writeback jobs must remain tied to an answered ask job.
 - UI must not bypass staging/apply and must not directly mutate formal `wiki/`, `staging/`, `sources/`, `state/catalog.sqlite`, or `state/embeddings/` data outside the existing add pipeline.
 - UI job state under `state/ui-jobs/` is generated cache and must be cleaned after tests/acceptance unless the user asks to keep it.
 - UI responses must not expose API key values, `config/api-keys.toml` contents, raw prompts, raw LLM responses, full parser logs, or parser artifact contents.
 - UI diagnostics are not evidence. Parser/status/config fields shown by the dashboard must not be returned as retrieval evidence.
-- V3.2 UI supports single-source job visibility only; do not add batch/folder import, ask, synthesis writeback, claim browser, retry/cancel, or fine-grained progress UI without a later V3/V4 spec and implementation plan.
+- V3.3 UI supports single-source add jobs plus ask/synthesis jobs. Do not add batch/folder import, claim browser, retry/cancel, chat history, or fine-grained progress UI without a later V3/V4 spec and implementation plan.
 
 ## 12. Generated Files And Cleanup
 
@@ -200,7 +205,7 @@ llmwiki clean --root . --scope all
 
 - Do not default to external hosted vector databases. The V2.6 local rebuildable vector index under `state/embeddings/` is allowed.
 - Do not default to MCP integrations.
-- V3.2 local Source Library UI is allowed; do not add further operational UI features outside an approved V3 spec and implementation plan.
+- V3.3 local Source Library and Ask/Synthesis UI are allowed; do not add further operational UI features outside an approved V3 spec and implementation plan.
 - Do not add cloud sync or team permission systems by default.
 - Do not OCR scanned PDFs by default.
 - Do not automatically resolve conflicts between sources.

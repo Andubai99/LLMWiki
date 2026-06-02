@@ -179,7 +179,7 @@ UI API 包括：
 /api/config
 ```
 
-所有响应使用 `schema_version="ui.v3.2"`，并且只报告 API key 是否存在，不返回 API key 值、`config/api-keys.toml` 内容、raw prompt、raw LLM response 或完整 parser logs。
+当前 UI 响应使用 `schema_version="ui.v3.3"`，并且只报告 API key 是否存在，不返回 API key 值、`config/api-keys.toml` 内容、raw prompt、raw LLM response 或完整 parser logs。
 
 ## V3.2 Source Library
 
@@ -187,7 +187,25 @@ V3.2 在 `llmwiki ui --root .` 中增加 Source Library。用户可以在 dashbo
 
 V3.2 唯一可写 UI endpoint 是 `POST /api/sources/add`。它要求 `/api/session` 返回的本进程 `X-LLMWiki-UI-Token`，只负责校验输入、写入 UI job，并由 FIFO worker 顺序调用现有 `add_and_process_source(...)` pipeline。UI 层不得直接写正式 `wiki/` 或 `state/catalog.sqlite`；formal knowledge 仍必须通过 source import、LLM ingest、staging validation 和 apply。
 
-V3.2 只支持单个 source path/URL。批量/目录导入、retry/cancel、Ask UI、synthesis UI、claim browser 和细粒度 parser/LLM/apply progress 留给后续 V3/V4 spec。
+V3.2 只支持单个 source path/URL。批量/目录导入、retry/cancel、claim browser 和细粒度 parser/LLM/apply progress 留给后续 V3/V4 spec。
+
+## V3.3 Ask And Synthesis UI
+
+V3.3 在 `llmwiki ui --root .` 中增加 Ask And Synthesis UI。用户可以在本地 dashboard 中提交问题，UI 会创建 `ask_question` job，由 FIFO worker 调用既有 `answer_question(...)`，并展示 answer、analysis、citations、retrieved evidence、warnings、uncertainties、conflicts 和 query planning diagnostics。
+
+V3.3 新增 token-protected endpoints：
+
+```text
+POST /api/ask
+GET /api/ask/jobs
+GET /api/ask/jobs/<job-id>
+POST /api/ask/<job-id>/synthesis/preview
+POST /api/ask/<job-id>/synthesis/writeback
+```
+
+Synthesis preview 是只读的：它只调用 synthesis planner，生成 preview job，不创建 staging，不写 `wiki/`、`sources/`、`state/catalog.sqlite`。Synthesis writeback 必须由用户显式触发，并且只通过现有 `create_synthesis_run(...)` staging/apply 路径执行。Planner output 和 synthesis plan output 都不是 evidence；UI 中的 Retrieved Evidence 和 Citations 只显示 catalog-backed claims。
+
+V3.3 job state 仍位于 `state/ui-jobs/`，schema 为 `ui_job.v3.3`。`POST /api/sources/add`、`POST /api/ask`、synthesis preview/writeback 都要求本进程 `X-LLMWiki-UI-Token`。GET endpoints 仍保持只读。
 
 ### Internal/debug 命令
 
@@ -456,7 +474,7 @@ Vector retrieval 是召回信号，不是 evidence 来源。命中的 vector chu
 - `llmwiki ask` 使用 LLM query planning + local retrieve + grounded answer。
 - `llmwiki ask --writeback` 通过 staging/apply 生成 synthesis 页面。
 - `llmwiki retrieve` / `llmwiki query` 混合检索和 citation-backed evidence。
-- `llmwiki ui` 本地只读 workspace dashboard。
+- `llmwiki ui` 本地 workspace dashboard、Source Library、Ask UI 和 synthesis preview/writeback UI。
 - `llmwiki eval retrieval` 本地评测检索质量。
 - `llmwiki embeddings test/rebuild/status` 管理本地可重建 vector index。
 - claim-first staging。
@@ -467,7 +485,7 @@ Vector retrieval 是召回信号，不是 evidence 来源。命中的 vector chu
 
 - 外部 hosted vector DB 作为默认基础设施。
 - MCP server 集成。
-- source import / ask / synthesis 的交互式 Web UI。
+- 批量 source import / retry / cancel 的交互式 Web UI。
 - Obsidian plugin。
 - 云同步。
 - 团队权限系统。
