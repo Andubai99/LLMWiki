@@ -197,7 +197,7 @@ def test_docs_describe_v1_commands_and_constraints():
     readme = (root / "README.md").read_text(encoding="utf-8")
     agents = (root / "AGENTS.md").read_text(encoding="utf-8")
 
-    for command in ("init", "add", "ingest", "review", "apply", "query", "retrieve", "ask", "lint", "doctor", "clean"):
+    for command in ("init", "add", "ingest", "review", "apply", "query", "retrieve", "ask", "lint", "doctor", "clean", "ui"):
         assert f"llmwiki {command}" in readme
     assert "--json" in readme
     assert "--format prompt" in readme
@@ -216,6 +216,9 @@ def test_docs_describe_v1_commands_and_constraints():
     assert "sources/parser-artifacts/" in readme
     assert "page/block locators" in readme
     assert "llmwiki parsers status --root ." in readme
+    assert "V3.1 Local UI" in readme
+    assert "read-only dashboard" in readme
+    assert "schema_version=\"ui.v3.1\"" in readme
     assert "llmwiki eval pdf-quality --root ." in readme
     assert "defaults to `auto`" in readme
     assert "tries MinerU first" in readme
@@ -283,13 +286,16 @@ def test_docs_describe_v1_commands_and_constraints():
     assert "parser_backend_attempts" in agents
     assert "Parser attempt diagnostics are not evidence" in agents
     assert "llmwiki clean --root ." in agents
+    assert "`llmwiki ui` starts a read-only local dashboard" in agents
+    assert "UI/status endpoints must not call LLM providers" in agents
+    assert "V3.1 UI is a workspace dashboard only" in agents
     assert "--scope generated" in agents
     assert "PDF source aliases must not include parser-created aliases or paper title aliases" in agents
     assert "LLM repair may only repair JSON syntax" in agents
     assert "content_role=\"ignored\"" in agents
     assert "MinerU" in agents
     assert "vector" in agents
-    assert "Web UI" in agents
+    assert "V3.1 local read-only UI is allowed" in agents
 
 
 def test_gitignore_excludes_virtualenv_and_python_caches():

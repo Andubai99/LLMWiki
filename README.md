@@ -95,6 +95,13 @@ llmwiki clean --root .
 llmwiki clean --root . --scope all
 ```
 
+本地只读 dashboard：
+
+```bash
+llmwiki ui --root .
+llmwiki ui --root . --no-open --port 8765
+```
+
 ## 工作区结构
 
 - `config/config.toml`：工作区主配置。
@@ -147,6 +154,7 @@ llmwiki query "问题" --root .
 llmwiki lint --root .
 llmwiki doctor --root .
 llmwiki clean --root .
+llmwiki ui --root .
 ```
 
 `llmwiki ask` 会先调用 LLM query planning，再使用本地 retrieve 从 wiki/catalog 检索证据，最后只基于 retrieved evidence 生成 grounded answer。默认不写回 wiki。
@@ -154,6 +162,24 @@ llmwiki clean --root .
 `llmwiki retrieve` 是外部 RAG 系统、Agent 和 LLM prompt 的标准 evidence API。`llmwiki query` 是同一路径的人类可读输出，不维护另一套弱检索。
 
 `llmwiki clean --root .` 默认只清理测试缓存和临时验收工作区；`llmwiki clean --root . --scope generated` 清理生成态 source/wiki/staging/state/vector cache；`--scope all` 同时清理两类内容。`--dry-run` 可先预览将删除的路径。该命令会保留 `.gitkeep`、`config/api-keys.toml`、`docs/papers/`、`.venv/` 和用户资料。
+
+## V3.1 Local UI
+
+`llmwiki ui --root .` 启动绑定 `127.0.0.1` 的本地 read-only dashboard。它直接读取 workspace skeleton、catalog、staging runs、PDF sidecars、parser 状态、LLM/embedding 配置状态和 vector index 状态，用于快速判断当前 workspace 是否 ready、有哪些 sources、最近 runs 和 wiki pages。
+
+V3.1 UI 只提供观察面，不提供操作面。Dashboard/API 不执行 `add`、`ingest`、`apply`、`ask`、`lint`、`eval`、`clean`，不运行 LLM、embedding provider、MinerU 文档解析或 PDF parser，也不写 `wiki/`、`staging/`、`sources/`、`state/catalog.sqlite` 或 `state/embeddings/`。
+
+UI API 包括：
+
+```text
+/api/status
+/api/sources
+/api/runs
+/api/pages
+/api/config
+```
+
+所有响应使用 `schema_version="ui.v3.1"`，并且只报告 API key 是否存在，不返回 API key 值、`config/api-keys.toml` 内容、raw prompt、raw LLM response 或完整 parser logs。
 
 ### Internal/debug 命令
 
@@ -422,6 +448,7 @@ Vector retrieval 是召回信号，不是 evidence 来源。命中的 vector chu
 - `llmwiki ask` 使用 LLM query planning + local retrieve + grounded answer。
 - `llmwiki ask --writeback` 通过 staging/apply 生成 synthesis 页面。
 - `llmwiki retrieve` / `llmwiki query` 混合检索和 citation-backed evidence。
+- `llmwiki ui` 本地只读 workspace dashboard。
 - `llmwiki eval retrieval` 本地评测检索质量。
 - `llmwiki embeddings test/rebuild/status` 管理本地可重建 vector index。
 - claim-first staging。
@@ -432,7 +459,7 @@ Vector retrieval 是召回信号，不是 evidence 来源。命中的 vector chu
 
 - 外部 hosted vector DB 作为默认基础设施。
 - MCP server 集成。
-- Web UI。
+- source import / ask / synthesis 的交互式 Web UI。
 - Obsidian plugin。
 - 云同步。
 - 团队权限系统。

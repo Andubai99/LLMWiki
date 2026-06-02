@@ -139,7 +139,17 @@
 - Run relevant evals before and after retrieval/parser/wiki-maintenance quality changes.
 - The committed eval dataset is the golden local suite; large public benchmark downloads should remain gitignored raw material unless explicitly curated into committed eval cases.
 
-## 11. Generated Files And Cleanup
+## 11. UI Dashboard Rules
+
+- `llmwiki ui` starts a read-only local dashboard bound to `127.0.0.1` by default.
+- UI/status endpoints may read workspace skeleton, catalog, staging metadata, source sidecars, parser status, config presence, and vector index status.
+- UI/status endpoints must not call LLM providers, embedding providers, MinerU document parsing, parser execution, add/ingest/apply/ask/lint/eval/clean, or any write path.
+- UI must not bypass staging/apply and must not mutate `wiki/`, `staging/`, `sources/`, `state/catalog.sqlite`, or `state/embeddings/`.
+- UI responses must not expose API key values, `config/api-keys.toml` contents, raw prompts, raw LLM responses, full parser logs, or parser artifact contents.
+- UI diagnostics are not evidence. Parser/status/config fields shown by the dashboard must not be returned as retrieval evidence.
+- V3.1 UI is a workspace dashboard only; do not add source import, ask, synthesis writeback, batch queue, or job execution UI without a later V3 spec and implementation plan.
+
+## 12. Generated Files And Cleanup
 
 每次运行测试、验收、批量导入实验或真实 PDF acceptance 后，必须及时清理生成态和缓存，除非用户明确要求保留用于检查。
 
@@ -175,7 +185,7 @@ llmwiki clean --root . --scope all
 
 提交前必须确认 `git status --short` 不包含 `.test-workspaces`、`.pytest_cache`、`.tmp`、生成态 source/wiki/staging/state/vector files、`config/api-keys.toml` 或大型 PDF 原料。
 
-## 12. Git And Closeout
+## 13. Git And Closeout
 
 - 按功能拆分提交，不要把无关改动塞进一个提交。
 - 如果一次运行修改了仓库文件，结束前应提交，除非存在明确 blocker。
@@ -183,11 +193,11 @@ llmwiki clean --root . --scope all
 - 每次提交前运行与改动相关的最小验证；涉及文档契约时至少运行 `tests/test_regression_samples.py`。
 - 不要提交 `.test-workspaces`、`.pytest_cache`、`.tmp`、生成态 wiki/source/staging/state/vector cache 或 API key。
 
-## 13. First-Version Boundaries
+## 14. First-Version Boundaries
 
 - Do not default to external hosted vector databases. The V2.6 local rebuildable vector index under `state/embeddings/` is allowed.
 - Do not default to MCP integrations.
-- Web UI is planned for V3, but do not add ad hoc UI code outside an approved V3 spec and implementation plan.
+- V3.1 local read-only UI is allowed; do not add operational UI features outside an approved V3 spec and implementation plan.
 - Do not add cloud sync or team permission systems by default.
 - Do not OCR scanned PDFs by default.
 - Do not automatically resolve conflicts between sources.
