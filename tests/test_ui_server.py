@@ -49,7 +49,7 @@ def test_server_serves_status_json_on_localhost() -> None:
     payload = json.loads(body)
     assert status == 200
     assert "application/json" in content_type
-    assert payload["schema_version"] == "ui.v3.1"
+    assert payload["schema_version"] == "ui.v3.2"
     assert payload["initialized"] is True
 
 
