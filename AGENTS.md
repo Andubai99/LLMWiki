@@ -162,6 +162,16 @@
 - UI diagnostics are not evidence. Parser/status/config fields shown by the dashboard must not be returned as retrieval evidence.
 - V3.4 UI supports single-source add jobs, ask/synthesis jobs, and read-only Evidence/Wiki Browser. Do not add batch/folder import, retry/cancel, chat history, fine-grained progress UI, editing, relationship confirmation, or quality dashboards without a later V3/V4/V5 spec and implementation plan.
 
+## 11.5 Corpus Import Queue Rules
+
+- V4.1 corpus import is CLI-first batch orchestration for local files/folders/list files. Do not add UI routes, URL batch import, concurrent workers, background daemons, or metric/result extraction without a later spec and implementation plan.
+- `llmwiki corpus import` and `llmwiki corpus retry` may call only the existing `add_and_process_source(...)` pipeline for formal knowledge changes.
+- The corpus layer must not directly write `wiki/`, `staging/`, `sources/`, `state/catalog.sqlite`, or `state/embeddings/`.
+- `llmwiki corpus status` and `llmwiki corpus import --dry-run` are read-only: they must not call LLM providers, embedding providers, MinerU, parser execution, add/ingest/apply, ask, synthesis, lint/eval/clean, or any write path.
+- Batch state under `state/corpus-batches/` is generated cache and must not be committed. It uses `corpus_batch.v4.1`, `corpus_item.v4.1`, and `corpus_attempt.v4.1`.
+- Failed corpus items must not invalidate successful items. Retry must append attempts to the same batch instead of creating a replacement batch.
+- Duplicate detection may use local SHA-256 and applied catalog state, but uncertain duplicates must be reported as warnings instead of being silently skipped.
+
 ## 12. Generated Files And Cleanup
 
 每次运行测试、验收、批量导入实验或真实 PDF acceptance 后，必须及时清理生成态和缓存，除非用户明确要求保留用于检查。
@@ -185,6 +195,7 @@ llmwiki clean --root . --scope all
 - generated `sources/parser-artifacts/*`，保留 `.gitkeep`
 - generated `staging/*`
 - generated `state/catalog.sqlite`
+- generated `state/corpus-batches/*`
 - generated `state/embeddings/*`
 - generated `wiki/sources/*.md`、`wiki/concepts/*.md`、`wiki/entities/*.md`、`wiki/syntheses/*.md`
 - generated `wiki/index.md` 和 `wiki/log.md`，除非当前任务明确要求保留正式输出

@@ -225,6 +225,32 @@ GET /api/evidence/relationships
 
 V3.4 中 page markdown 是页面文本，不是 formal evidence。只有 catalog-backed claims 和 catalog relationships 是 evidence；synthesis markdown 段落不会被升级为 claims。Markdown/text `line:N` 和 PDF `page:N;block:<block-id>` locator 可显示 bounded context；unsupported locator、missing sidecar、malformed sidecar 只产生 warning，不伪造证据。
 
+## V4.1 Corpus Import Queue
+
+V4.1 新增 CLI-first 的语料导入队列，用于把同领域论文或资料按顺序批量交给现有 `add_and_process_source(...)` pipeline。它只做 batch orchestration，不改变 ingest、staging、apply 语义，不新增 UI，也不做 metric/result extraction。
+
+常用命令：
+
+```bash
+llmwiki corpus import docs/papers --root . --dry-run
+llmwiki corpus import docs/papers --root . --recursive --parser auto
+llmwiki corpus status --root .
+llmwiki corpus status <batch-id> --root . --json
+llmwiki corpus retry <batch-id> --root . --failed-only
+llmwiki corpus skip <batch-id> <item-id-or-path> --root . --reason "out of scope"
+```
+
+Batch state 是 generated cache，位于 `state/corpus-batches/`：
+
+```text
+state/corpus-batches/<batch-id>/batch.json
+state/corpus-batches/<batch-id>/items.jsonl
+state/corpus-batches/<batch-id>/attempts.jsonl
+state/corpus-batches/<batch-id>/events.jsonl
+```
+
+`corpus import --dry-run` 和 `corpus status` 是只读操作，不调用 LLM、parser、add/apply，也不写 `state/corpus-batches/`。真实 `corpus import` / `corpus retry` 只通过现有 `add_and_process_source(...)` 写正式知识；corpus layer 不直接写 `wiki/`、`staging/`、`sources/` 或 `state/catalog.sqlite`。URL batch import is out of scope；URL 仍使用单源 `llmwiki add`。
+
 ### Internal/debug 命令
 
 ```bash

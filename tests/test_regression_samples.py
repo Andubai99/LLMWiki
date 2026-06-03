@@ -197,7 +197,21 @@ def test_docs_describe_v1_commands_and_constraints():
     readme = (root / "README.md").read_text(encoding="utf-8")
     agents = (root / "AGENTS.md").read_text(encoding="utf-8")
 
-    for command in ("init", "add", "ingest", "review", "apply", "query", "retrieve", "ask", "lint", "doctor", "clean", "ui"):
+    for command in (
+        "init",
+        "add",
+        "ingest",
+        "review",
+        "apply",
+        "query",
+        "retrieve",
+        "ask",
+        "lint",
+        "doctor",
+        "clean",
+        "ui",
+        "corpus",
+    ):
         assert f"llmwiki {command}" in readme
     assert "--json" in readme
     assert "--format prompt" in readme
@@ -229,6 +243,10 @@ def test_docs_describe_v1_commands_and_constraints():
     assert "ui_job.v3.3" in readme
     assert "V3.4 Evidence And Wiki Browser" in readme
     assert "GET /api/evidence/claims/<claim-id>" in readme
+    assert "V4.1 Corpus Import Queue" in readme
+    assert "llmwiki corpus import docs/papers --root . --dry-run" in readme
+    assert "state/corpus-batches/" in readme
+    assert "URL batch import is out of scope" in readme
     assert "page markdown 是页面文本，不是 formal evidence" in readme
     assert "llmwiki eval pdf-quality --root ." in readme
     assert "defaults to `auto`" in readme
@@ -306,6 +324,11 @@ def test_docs_describe_v1_commands_and_constraints():
     assert "V3.4 UI adds these read-only browser endpoints" in agents
     assert "Only catalog-backed claims and catalog relationships count as evidence" in agents
     assert "V3.4 UI supports single-source add jobs, ask/synthesis jobs, and read-only Evidence/Wiki Browser" in agents
+    assert "Corpus Import Queue Rules" in agents
+    assert "llmwiki corpus import" in agents
+    assert "state/corpus-batches/" in agents
+    assert "corpus_batch.v4.1" in agents
+    assert "Failed corpus items must not invalidate successful items" in agents
     assert "--scope generated" in agents
     assert "PDF source aliases must not include parser-created aliases or paper title aliases" in agents
     assert "LLM repair may only repair JSON syntax" in agents
@@ -343,6 +366,7 @@ def test_gitignore_excludes_generated_workspace_content():
         "staging/*",
         "!staging/.gitkeep",
         "state/*.sqlite",
+        "state/corpus-batches/",
         "state/ui-jobs/",
         "wiki/sources/*.md",
         "wiki/concepts/*.md",
