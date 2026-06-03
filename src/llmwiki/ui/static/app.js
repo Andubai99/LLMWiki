@@ -24,7 +24,7 @@ async function fetchJson(path, options = {}) {
   const response = await fetch(path, options);
   const payload = await response.json();
   if (!response.ok) {
-    throw new Error(payload.message || payload.error || "Request failed");
+    throw new Error(payload.message || payload.error || "请求失败");
   }
   return payload;
 }
@@ -62,15 +62,15 @@ async function submitAddSource(event) {
   event.preventDefault();
   const source = document.querySelector("#source-input")?.value || "";
   const parser = document.querySelector("#parser-select")?.value || "";
-  setText("add-source-status", "Queueing...");
+  setText("add-source-status", "正在排队...");
   try {
     const payload = await postWithToken(ENDPOINTS.addSource, { source, parser });
-    setText("add-source-status", `Queued ${payload.job.job_id}`);
+    setText("add-source-status", `资料源任务已排队：${payload.job.job_id}`);
     document.querySelector("#source-input").value = "";
     await loadDashboard();
   } catch (error) {
-    setText("add-source-status", "Failed");
-    renderWarnings([{ category: "source", message: error.message }]);
+    setText("add-source-status", "失败");
+    renderWarnings([{ category: "资料源", message: error.message }]);
   }
 }
 
@@ -81,49 +81,53 @@ async function submitAsk(event) {
   const source_id = document.querySelector("#ask-source-id")?.value || "";
   const page_type = document.querySelector("#ask-page-type")?.value || "";
   const confidence = document.querySelector("#ask-confidence")?.value || "";
-  setText("ask-status", "Queueing...");
+  setText("ask-status", "正在排队...");
   try {
     const payload = await postWithToken(ENDPOINTS.ask, { question, limit, source_id, page_type, confidence });
     state.latestAskJobId = payload.job.job_id;
-    setText("ask-status", `Queued ${payload.job.job_id}`);
+    setText("ask-status", `问答任务已排队：${payload.job.job_id}`);
     await loadDashboard();
   } catch (error) {
-    setText("ask-status", "Failed");
-    renderWarnings([{ category: "ask", message: error.message }]);
+    setText("ask-status", "失败");
+    renderWarnings([{ category: "问答", message: error.message }]);
   }
 }
 
 async function submitSynthesisPreview() {
   if (!state.latestAskJobId) {
-    renderWarnings([{ category: "synthesis", message: "No answered ask job is selected." }]);
+    setText("synthesis-status", "需要先完成一次成功回答。");
+    setText("synthesis-preview-text", "需要先完成一次成功回答。");
+    renderWarnings([{ category: "综合", message: "需要先完成一次成功回答。" }]);
     return;
   }
-  setText("synthesis-status", "Queueing preview...");
+  setText("synthesis-status", "正在排队综合预览...");
   try {
     const payload = await postWithToken(`${ENDPOINTS.ask}/${state.latestAskJobId}${ENDPOINTS.synthesisPreviewSuffix}`, {});
     state.latestPreviewJobId = payload.job.job_id;
-    setText("synthesis-status", `Preview queued ${payload.job.job_id}`);
+    setText("synthesis-status", `综合预览任务已排队：${payload.job.job_id}`);
     await loadDashboard();
   } catch (error) {
-    setText("synthesis-status", "Preview failed");
-    renderWarnings([{ category: "synthesis", message: error.message }]);
+    setText("synthesis-status", "综合预览提交失败");
+    setText("synthesis-preview-text", `综合预览提交失败\n原因：${error.message}`);
+    renderWarnings([{ category: "综合", message: error.message }]);
   }
 }
 
 async function submitSynthesisWriteback() {
   if (!state.latestAskJobId) {
-    renderWarnings([{ category: "synthesis", message: "No answered ask job is selected." }]);
+    setText("synthesis-status", "需要先完成一次成功回答。");
+    renderWarnings([{ category: "综合", message: "需要先完成一次成功回答。" }]);
     return;
   }
   const writeback_mode = document.querySelector("#writeback-mode")?.value || "auto";
-  setText("synthesis-status", "Queueing writeback...");
+  setText("synthesis-status", "正在排队写回草稿...");
   try {
     const payload = await postWithToken(`${ENDPOINTS.ask}/${state.latestAskJobId}${ENDPOINTS.synthesisWritebackSuffix}`, { writeback_mode });
-    setText("synthesis-status", `Writeback queued ${payload.job.job_id}`);
+    setText("synthesis-status", `写回草稿任务已排队：${payload.job.job_id}`);
     await loadDashboard();
   } catch (error) {
-    setText("synthesis-status", "Writeback failed");
-    renderWarnings([{ category: "synthesis", message: error.message }]);
+    setText("synthesis-status", "写回草稿提交失败");
+    renderWarnings([{ category: "综合", message: error.message }]);
   }
 }
 
@@ -139,13 +143,13 @@ async function postWithToken(path, body) {
 }
 
 function renderStatus(status) {
-  setText("workspace-root", status.workspace_root || "Workspace unavailable");
+  setText("workspace-root", status.workspace_root || "工作区不可用");
   setText("status-value", status.status || "unknown");
   setText("sources-count", String((status.counts && status.counts.sources) || 0));
   setText("claims-count", String((status.counts && status.counts.claims) || 0));
   setText("pages-count", String((status.counts && status.counts.pages) || 0));
   const latest = (status.latest_runs || [])[0];
-  setText("latest-run", latest ? `${latest.run_id} (${latest.status})` : "None");
+  setText("latest-run", latest ? `${latest.run_id} (${latest.status})` : "无");
 }
 
 function renderConfig(config) {
@@ -153,14 +157,14 @@ function renderConfig(config) {
   const embedding = config.embedding || {};
   const parser = config.parser || {};
   const vector = config.vector || {};
-  setText("llm-status", `${llm.provider || "unknown"} / ${llm.model || "no model"} / key ${llm.api_key_present ? "present" : "missing"}`);
+  setText("llm-status", `${llm.provider || "unknown"} / ${llm.model || "no model"} / 密钥 ${llm.api_key_present ? "present" : "missing"}`);
   setText("embedding-status", `${embedding.provider || "unknown"} / ${embedding.model || "no model"} / ${embedding.enabled ? "enabled" : "disabled"}`);
   setText("parser-status", `${parser.default_backend || "unknown"} -> ${parser.fallback_backend || "none"} / MinerU ${parser.mineru_available ? "available" : "unavailable"}`);
   setText("vector-status", vector.index_present ? `present / ${vector.chunk_count || 0} chunks` : "not built");
 }
 
 function renderSources(sources) {
-  setText("sources-table-count", `${sources.length} rows`);
+  setText("sources-table-count", `${sources.length} 行`);
   const rows = sources.map((source) => `
     <tr>
       <td><strong>${escapeHtml(source.title || source.source_id)}</strong><span>${escapeHtml(source.source_id)}</span></td>
@@ -174,9 +178,12 @@ function renderSources(sources) {
 }
 
 function renderJobs(jobs) {
-  setText("jobs-table-count", `${jobs.length} rows`);
+  setText("jobs-table-count", `${jobs.length} 行`);
   const active = jobs.filter((job) => job.status === "pending" || job.status === "running");
-  setText("active-job-strip", active.length ? `${active.length} active job(s): ${active.map((job) => job.job_id).join(", ")}` : "No active jobs.");
+  setText(
+    "active-job-strip",
+    active.length ? `${active.length} 个运行中的任务：${active.map((job) => job.job_id).join(", ")}` : "没有运行中的任务。"
+  );
   const rows = jobs.map((job) => `
     <tr>
       <td><strong>${escapeHtml(job.job_id)}</strong><span>${escapeHtml(job.created_at || "")}</span></td>
@@ -192,21 +199,25 @@ function renderJobs(jobs) {
 function renderResearchJobs(jobs) {
   const askJob = jobs.find((job) => job.job_type === "ask_question" && job.result && job.result.answer_status === "answered")
     || jobs.find((job) => job.job_type === "ask_question");
-  const previewJob = jobs.find((job) => job.job_type === "synthesis_preview" && job.result && job.result.preview_status);
+  const previewJob = jobs.find((job) => job.job_type === "synthesis_preview");
   if (askJob) {
     state.latestAskJobId = askJob.job_id;
     renderAnswer(askJob.result || {});
   }
   if (previewJob) {
     state.latestPreviewJobId = previewJob.job_id;
-    renderSynthesisPreview(previewJob.result || {});
+    if (previewJob.status === "failed") {
+      renderSynthesisPreviewFailure(previewJob);
+    } else if (previewJob.result && previewJob.result.preview_status) {
+      renderSynthesisPreview(previewJob.result || {});
+    }
   }
 }
 
 function renderAnswer(result) {
   setText("answer-status", result.answer_status || "unknown");
-  setText("answer-text", result.answer || "No answer text.");
-  setText("analysis-text", result.analysis || "No analysis.");
+  setText("answer-text", result.answer || "暂无回答文本。");
+  setText("analysis-text", result.analysis || "暂无分析。");
   setList("answer-warnings", result.warnings || []);
   setList("answer-uncertainties", result.uncertainties || []);
   setList("answer-conflicts", result.conflicts || []);
@@ -240,12 +251,18 @@ function renderEvidence(contexts) {
 }
 
 function renderSynthesisPreview(result) {
-  setText("synthesis-status", `${result.preview_status || "preview"} / ${result.action || "unknown"}`);
+  setText("synthesis-status", `预览状态：${result.preview_status || "preview"} / 动作：${result.action || "unknown"}`);
   setText("synthesis-preview-text", result.preview_text || JSON.stringify(result.synthesis_plan || {}, null, 2));
 }
 
+function renderSynthesisPreviewFailure(job) {
+  const reason = job.failure_reason || job.result?.error || "未知失败原因";
+  setText("synthesis-status", `综合预览失败：${job.job_id}`);
+  setText("synthesis-preview-text", `综合预览失败\n任务：${job.job_id}\n原因：${reason}`);
+}
+
 function renderRuns(runs) {
-  setText("runs-table-count", `${runs.length} rows`);
+  setText("runs-table-count", `${runs.length} 行`);
   const rows = runs.map((run) => `
     <tr>
       <td><strong>${escapeHtml(run.run_id)}</strong><span>${escapeHtml(run.run_type || "")}</span></td>
@@ -259,7 +276,7 @@ function renderRuns(runs) {
 }
 
 function renderPages(pages) {
-  setText("pages-table-count", `${pages.length} rows`);
+  setText("pages-table-count", `${pages.length} 行`);
   const rows = pages.map((page) => `
     <tr>
       <td><strong>${escapeHtml(page.title || page.page_id)}</strong><span>${escapeHtml(page.page_id || "")}</span></td>
@@ -277,10 +294,10 @@ function renderWarnings(warnings) {
     return;
   }
   if (!warnings.length) {
-    list.innerHTML = '<li class="muted">No warnings.</li>';
+    list.innerHTML = '<li class="muted">暂无警告。</li>';
     return;
   }
-  list.innerHTML = warnings.map((warning) => `<li><strong>${escapeHtml(warning.category || "general")}</strong> ${escapeHtml(warning.message || "")}</li>`).join("");
+  list.innerHTML = warnings.map((warning) => `<li><strong>${escapeHtml(displayWarningCategory(warning.category))}</strong> ${escapeHtml(warning.message || "")}</li>`).join("");
 }
 
 function collectWarnings(...payloads) {
@@ -305,7 +322,7 @@ function setTable(id, rows, colspan) {
   if (!target) {
     return;
   }
-  target.innerHTML = rows.length ? rows.join("") : `<tr><td colspan="${colspan}" class="muted">No data.</td></tr>`;
+  target.innerHTML = rows.length ? rows.join("") : `<tr><td colspan="${colspan}" class="muted">无数据。</td></tr>`;
 }
 
 function setList(id, items) {
@@ -313,7 +330,7 @@ function setList(id, items) {
   if (!target) {
     return;
   }
-  target.innerHTML = items.length ? items.map((item) => `<li>${escapeHtml(item)}</li>`).join("") : '<li class="muted">None.</li>';
+  target.innerHTML = items.length ? items.map((item) => `<li>${escapeHtml(item)}</li>`).join("") : '<li class="muted">无。</li>';
 }
 
 function setText(id, value) {
@@ -330,6 +347,17 @@ function escapeHtml(value) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
+}
+
+function displayWarningCategory(category) {
+  const labels = {
+    source: "资料源",
+    ask: "问答",
+    synthesis: "综合",
+    dashboard: "工作台",
+    general: "一般"
+  };
+  return labels[category] || category || "一般";
 }
 
 document.querySelector("#refresh-button")?.addEventListener("click", () => {
@@ -354,7 +382,7 @@ document.querySelector("#synthesis-writeback-button")?.addEventListener("click",
 
 function showLoadError(error) {
   setText("status-value", "error");
-  renderWarnings([{ category: "dashboard", message: `Unable to load dashboard: ${error.message}` }]);
+  renderWarnings([{ category: "工作台", message: `无法加载工作台：${error.message}` }]);
 }
 
 loadDashboard().catch(showLoadError);

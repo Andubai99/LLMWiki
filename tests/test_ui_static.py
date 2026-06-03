@@ -30,7 +30,25 @@ def test_index_references_dashboard_assets() -> None:
     assert 'id="synthesis-panel"' in html
     assert "/static/app.js" in html
     assert "/static/styles.css" in html
-    assert "LLMWiki Dashboard" in html
+    assert "LLMWiki 工作台" in html
+
+
+def test_index_uses_chinese_dashboard_copy() -> None:
+    html = read_static("index.html")
+
+    for text in (
+        "本地工作区",
+        "资料源库",
+        "研究问答",
+        "综合预览",
+        "检索证据",
+        "引用",
+        "查询规划诊断",
+        "任务",
+        "最近运行",
+        "Wiki 页面",
+    ):
+        assert text in html
 
 
 def test_app_js_fetches_dashboard_api_endpoints() -> None:
@@ -54,6 +72,9 @@ def test_app_js_fetches_dashboard_api_endpoints() -> None:
     assert "X-LLMWiki-UI-Token" in js
     assert "setInterval" in js
     assert "escapeHtml" in js
+    assert "综合预览失败" in js
+    assert "暂无警告。" in js
+    assert "无数据。" in js
 
 
 def test_parser_select_contains_supported_options() -> None:

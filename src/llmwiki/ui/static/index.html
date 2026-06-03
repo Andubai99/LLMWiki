@@ -1,163 +1,163 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>LLMWiki Dashboard</title>
+    <title>LLMWiki 工作台</title>
     <link rel="stylesheet" href="/static/styles.css">
   </head>
   <body>
     <main id="dashboard-root">
       <header class="topbar">
         <div>
-          <p class="eyebrow">Local Workspace</p>
-          <h1>LLMWiki Dashboard</h1>
-          <p id="workspace-root" class="muted">Loading workspace...</p>
+          <p class="eyebrow">本地工作区</p>
+          <h1>LLMWiki 工作台</h1>
+          <p id="workspace-root" class="muted">正在加载工作区...</p>
         </div>
-        <button id="refresh-button" type="button" title="Refresh dashboard data">Refresh</button>
+        <button id="refresh-button" type="button" title="刷新工作台数据">刷新</button>
       </header>
 
-      <section class="status-strip" aria-label="Workspace summary">
+      <section class="status-strip" aria-label="工作区摘要">
         <article class="metric">
-          <span class="label">Status</span>
-          <strong id="status-value">Loading</strong>
+          <span class="label">状态</span>
+          <strong id="status-value">加载中</strong>
         </article>
         <article class="metric">
-          <span class="label">Sources</span>
+          <span class="label">资料源</span>
           <strong id="sources-count">0</strong>
         </article>
         <article class="metric">
-          <span class="label">Claims</span>
+          <span class="label">声明</span>
           <strong id="claims-count">0</strong>
         </article>
         <article class="metric">
-          <span class="label">Pages</span>
+          <span class="label">页面</span>
           <strong id="pages-count">0</strong>
         </article>
         <article class="metric">
-          <span class="label">Latest Run</span>
-          <strong id="latest-run">None</strong>
+          <span class="label">最近运行</span>
+          <strong id="latest-run">无</strong>
         </article>
       </section>
 
-      <section class="config-grid" aria-label="Configuration status">
+      <section class="config-grid" aria-label="配置状态">
         <article>
           <h2>LLM</h2>
-          <p id="llm-status">Loading</p>
+          <p id="llm-status">加载中</p>
         </article>
         <article>
           <h2>Embedding</h2>
-          <p id="embedding-status">Loading</p>
+          <p id="embedding-status">加载中</p>
         </article>
         <article>
-          <h2>Parser</h2>
-          <p id="parser-status">Loading</p>
+          <h2>解析器</h2>
+          <p id="parser-status">加载中</p>
         </article>
         <article>
-          <h2>Vector Index</h2>
-          <p id="vector-status">Loading</p>
+          <h2>向量索引</h2>
+          <p id="vector-status">加载中</p>
         </article>
       </section>
 
-      <section class="warnings-panel" aria-label="Warnings">
-        <h2>Warnings</h2>
+      <section class="warnings-panel" aria-label="警告">
+        <h2>警告</h2>
         <ul id="warnings-list">
-          <li class="muted">No warnings loaded yet.</li>
+          <li class="muted">尚未加载警告。</li>
         </ul>
       </section>
 
-      <section class="action-section" aria-label="Source library">
+      <section class="action-section" aria-label="资料源库">
         <div class="section-heading">
-          <h2>Source Library</h2>
-          <span id="add-source-status" class="muted">Ready</span>
+          <h2>资料源库</h2>
+          <span id="add-source-status" class="muted">就绪</span>
         </div>
         <form id="add-source-form" class="source-form">
-          <label for="source-input">Source path or URL</label>
+          <label for="source-input">资料源路径或 URL</label>
           <div class="source-form-row">
             <input id="source-input" name="source" type="text" autocomplete="off" placeholder="docs/papers/example.pdf">
-            <select id="parser-select" name="parser" aria-label="PDF parser">
-              <option value="">default</option>
+            <select id="parser-select" name="parser" aria-label="PDF 解析器">
+              <option value="">默认</option>
               <option value="auto">auto</option>
               <option value="pypdf">pypdf</option>
               <option value="mineru">mineru</option>
             </select>
-            <button id="add-source-button" type="submit">Add Source</button>
+            <button id="add-source-button" type="submit">添加资料源</button>
           </div>
         </form>
-        <div id="active-job-strip" class="active-job-strip muted">No active jobs.</div>
+        <div id="active-job-strip" class="active-job-strip muted">没有运行中的任务。</div>
       </section>
 
-      <section class="action-section research-section" aria-label="Ask research question">
+      <section class="action-section research-section" aria-label="研究问答">
         <div class="section-heading">
-          <h2>Research Loop</h2>
-          <span id="ask-status" class="muted">Ready</span>
+          <h2>研究问答</h2>
+          <span id="ask-status" class="muted">就绪</span>
         </div>
         <form id="ask-form" class="ask-form">
-          <label for="ask-question">Question</label>
-          <textarea id="ask-question" name="question" rows="4" placeholder="What evidence does this workspace contain?"></textarea>
+          <label for="ask-question">问题</label>
+          <textarea id="ask-question" name="question" rows="4" placeholder="这个工作区里有哪些本地证据？"></textarea>
           <div class="ask-form-row">
             <label>
-              Limit
+              数量上限
               <input id="ask-limit" name="limit" type="number" min="1" max="20" value="8">
             </label>
             <label>
-              Source
-              <input id="ask-source-id" name="source_id" type="text" autocomplete="off" placeholder="optional source_id">
+              资料源
+              <input id="ask-source-id" name="source_id" type="text" autocomplete="off" placeholder="可选 source_id">
             </label>
             <label>
-              Page Type
-              <input id="ask-page-type" name="page_type" type="text" autocomplete="off" placeholder="optional">
+              页面类型
+              <input id="ask-page-type" name="page_type" type="text" autocomplete="off" placeholder="可选">
             </label>
             <label>
-              Confidence
+              置信状态
               <select id="ask-confidence" name="confidence">
-                <option value="">any</option>
+                <option value="">任意</option>
                 <option value="cited">cited</option>
                 <option value="weak">weak</option>
               </select>
             </label>
-            <button id="ask-button" type="submit">Ask</button>
+            <button id="ask-button" type="submit">提问</button>
           </div>
         </form>
       </section>
 
-      <section id="answer-panel" class="data-section" aria-label="Answer">
+      <section id="answer-panel" class="data-section" aria-label="回答">
         <div class="section-heading">
-          <h2>Answer</h2>
-          <span id="answer-status" class="muted">No answer yet.</span>
+          <h2>回答</h2>
+          <span id="answer-status" class="muted">暂无回答。</span>
         </div>
-        <p id="answer-text" class="answer-text muted">Ask a question to see grounded output.</p>
-        <h3>Analysis</h3>
-        <p id="analysis-text" class="answer-text muted">No analysis yet.</p>
+        <p id="answer-text" class="answer-text muted">提交问题后会显示基于本地证据的回答。</p>
+        <h3>分析</h3>
+        <p id="analysis-text" class="answer-text muted">暂无分析。</p>
         <div class="answer-columns">
           <div>
-            <h3>Warnings</h3>
+            <h3>警告</h3>
             <ul id="answer-warnings" class="compact-list"></ul>
           </div>
           <div>
-            <h3>Uncertainties</h3>
+            <h3>不确定性</h3>
             <ul id="answer-uncertainties" class="compact-list"></ul>
           </div>
           <div>
-            <h3>Conflicts</h3>
+            <h3>冲突</h3>
             <ul id="answer-conflicts" class="compact-list"></ul>
           </div>
         </div>
       </section>
 
-      <section class="data-section" aria-label="Retrieved evidence">
+      <section class="data-section" aria-label="检索证据">
         <div class="section-heading">
-          <h2>Retrieved Evidence</h2>
-          <span class="muted">Catalog-backed contexts only</span>
+          <h2>检索证据</h2>
+          <span class="muted">仅显示 catalog-backed contexts</span>
         </div>
         <div class="table-wrap">
           <table>
             <thead>
               <tr>
-                <th>Claim</th>
-                <th>Source</th>
-                <th>Locator</th>
-                <th>Page</th>
+                <th>声明</th>
+                <th>资料源</th>
+                <th>定位符</th>
+                <th>页面</th>
               </tr>
             </thead>
             <tbody id="evidence-table"></tbody>
@@ -165,19 +165,19 @@
         </div>
       </section>
 
-      <section class="data-section" aria-label="Citations">
+      <section class="data-section" aria-label="引用">
         <div class="section-heading">
-          <h2>Citations</h2>
-          <span class="muted">Answer citations from retrieved evidence</span>
+          <h2>引用</h2>
+          <span class="muted">回答引用来自检索证据</span>
         </div>
         <div class="table-wrap">
           <table>
             <thead>
               <tr>
-                <th>Claim</th>
-                <th>Source</th>
-                <th>Locator</th>
-                <th>Page</th>
+                <th>声明</th>
+                <th>资料源</th>
+                <th>定位符</th>
+                <th>页面</th>
               </tr>
             </thead>
             <tbody id="citations-table"></tbody>
@@ -185,44 +185,44 @@
         </div>
       </section>
 
-      <section class="data-section" aria-label="Query planning diagnostics">
+      <section class="data-section" aria-label="查询规划诊断">
         <details id="planning-diagnostics">
-          <summary>Query planning diagnostics</summary>
-          <pre id="planning-json">No planning diagnostics yet.</pre>
+          <summary>查询规划诊断</summary>
+          <pre id="planning-json">暂无查询规划诊断。</pre>
         </details>
       </section>
 
-      <section id="synthesis-panel" class="action-section" aria-label="Synthesis writeback">
+      <section id="synthesis-panel" class="action-section" aria-label="综合写回">
         <div class="section-heading">
-          <h2>Synthesis Preview</h2>
-          <span id="synthesis-status" class="muted">Requires an answered ask job.</span>
+          <h2>综合预览</h2>
+          <span id="synthesis-status" class="muted">需要先完成一次成功回答。</span>
         </div>
         <div class="synthesis-actions">
-          <select id="writeback-mode" aria-label="Writeback mode">
+          <select id="writeback-mode" aria-label="写回模式">
             <option value="auto">auto</option>
             <option value="create">create</option>
             <option value="update">update</option>
           </select>
-          <button id="synthesis-preview-button" type="button">Preview</button>
-          <button id="synthesis-writeback-button" type="button">Apply Writeback</button>
+          <button id="synthesis-preview-button" type="button">生成预览</button>
+          <button id="synthesis-writeback-button" type="button">创建写回草稿</button>
         </div>
-        <pre id="synthesis-preview-text">No synthesis preview yet.</pre>
+        <pre id="synthesis-preview-text">暂无综合预览。</pre>
       </section>
 
       <section class="data-section">
         <div class="section-heading">
-          <h2>Sources</h2>
-          <span id="sources-table-count" class="muted">0 rows</span>
+          <h2>资料源</h2>
+          <span id="sources-table-count" class="muted">0 行</span>
         </div>
         <div class="table-wrap">
           <table>
             <thead>
               <tr>
-                <th>Source</th>
-                <th>Type</th>
-                <th>Status</th>
-                <th>Parser</th>
-                <th>Latest Run</th>
+                <th>资料源</th>
+                <th>类型</th>
+                <th>状态</th>
+                <th>解析器</th>
+                <th>最近运行</th>
               </tr>
             </thead>
             <tbody id="sources-table"></tbody>
@@ -232,18 +232,18 @@
 
       <section class="data-section">
         <div class="section-heading">
-          <h2>Jobs</h2>
-          <span id="jobs-table-count" class="muted">0 rows</span>
+          <h2>任务</h2>
+          <span id="jobs-table-count" class="muted">0 行</span>
         </div>
         <div class="table-wrap">
           <table>
             <thead>
               <tr>
-                <th>Job</th>
-                <th>Source</th>
-                <th>Status</th>
-                <th>Stage</th>
-                <th>Result</th>
+                <th>任务</th>
+                <th>资料源/问题</th>
+                <th>状态</th>
+                <th>阶段</th>
+                <th>结果</th>
               </tr>
             </thead>
             <tbody id="jobs-table"></tbody>
@@ -253,18 +253,18 @@
 
       <section class="data-section">
         <div class="section-heading">
-          <h2>Recent Runs</h2>
-          <span id="runs-table-count" class="muted">0 rows</span>
+          <h2>最近运行</h2>
+          <span id="runs-table-count" class="muted">0 行</span>
         </div>
         <div class="table-wrap">
           <table>
             <thead>
               <tr>
-                <th>Run</th>
-                <th>Source</th>
-                <th>Status</th>
-                <th>Stage</th>
-                <th>Claims</th>
+                <th>运行</th>
+                <th>资料源</th>
+                <th>状态</th>
+                <th>阶段</th>
+                <th>声明</th>
               </tr>
             </thead>
             <tbody id="runs-table"></tbody>
@@ -274,17 +274,17 @@
 
       <section class="data-section">
         <div class="section-heading">
-          <h2>Wiki Pages</h2>
-          <span id="pages-table-count" class="muted">0 rows</span>
+          <h2>Wiki 页面</h2>
+          <span id="pages-table-count" class="muted">0 行</span>
         </div>
         <div class="table-wrap">
           <table>
             <thead>
               <tr>
-                <th>Page</th>
-                <th>Type</th>
-                <th>Path</th>
-                <th>Claims</th>
+                <th>页面</th>
+                <th>类型</th>
+                <th>路径</th>
+                <th>声明</th>
               </tr>
             </thead>
             <tbody id="pages-table"></tbody>
