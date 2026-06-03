@@ -9,6 +9,8 @@ import tomllib
 from pathlib import Path
 
 from .ask.answer import AskOptions, AskResult, answer_question
+from .corpus.formatting import batch_payload, format_import_summary, format_json, format_status_summary
+from .corpus.runner import import_corpus, retry_corpus, skip_item, status as corpus_status
 from .ingestion.apply import UnsafePatchError, apply_run
 from .db import catalog_path, schema_status
 from .ingestion.ingest import ingest_source, review_run
@@ -45,6 +47,7 @@ COMMANDS = (
     "retrieve",
     "ask",
     "eval",
+    "corpus",
     "clean",
     "embeddings",
     "parsers",
@@ -283,6 +286,89 @@ def cmd_clean(args: argparse.Namespace) -> int:
         print(f"Clean failed: {exc}")
         return 1
     print(format_clean_report(result))
+    return 0
+
+
+def cmd_corpus_import(args: argparse.Namespace) -> int:
+    root = Path(args.root).resolve()
+    inputs = [args.path] if args.path else []
+    try:
+        result = import_corpus(
+            root,
+            inputs,
+            recursive=args.recursive,
+            list_file=args.list_file,
+            dry_run=args.dry_run,
+            fail_fast=args.fail_fast,
+            parser_backend=args.parser,
+        )
+    except (FileNotFoundError, ValueError) as exc:
+        print(f"Corpus import failed: {sanitize_error(exc)}")
+        return 1
+    if args.json:
+        print(format_json(batch_payload(result.batch, result.items, result.attempts)))  # type: ignore[arg-type]
+    else:
+        print(format_import_summary(result.batch, result.items, dry_run=result.dry_run))  # type: ignore[arg-type]
+    return result.exit_code
+
+
+def cmd_corpus_status(args: argparse.Namespace) -> int:
+    root = Path(args.root).resolve()
+    try:
+        result = corpus_status(root, args.batch_id)
+    except (FileNotFoundError, ValueError) as exc:
+        print(f"Corpus status failed: {sanitize_error(exc)}")
+        return 1
+    if args.json:
+        if args.batch_id:
+            print(format_json(batch_payload(result.batch, result.items, result.attempts)))  # type: ignore[arg-type]
+        else:
+            print(
+                format_json(
+                    {
+                        "batches": [batch.to_dict() for batch in result.batches or []],
+                        "items_by_batch": {
+                            batch_id: [item.to_dict() for item in items]
+                            for batch_id, items in (result.items_by_batch or {}).items()
+                        },
+                    }
+                )
+            )
+    else:
+        print(format_status_summary(result.batches or [], result.items_by_batch or {}))
+    return 0
+
+
+def cmd_corpus_retry(args: argparse.Namespace) -> int:
+    root = Path(args.root).resolve()
+    try:
+        result = retry_corpus(
+            root,
+            args.batch_id,
+            item_id=args.item,
+            failed_only=args.failed_only,
+        )
+    except (FileNotFoundError, ValueError) as exc:
+        print(f"Corpus retry failed: {sanitize_error(exc)}")
+        return 1
+    if args.json:
+        print(format_json(batch_payload(result.batch, result.items, result.attempts)))  # type: ignore[arg-type]
+    else:
+        print(format_import_summary(result.batch, result.items))  # type: ignore[arg-type]
+    return result.exit_code
+
+
+def cmd_corpus_skip(args: argparse.Namespace) -> int:
+    root = Path(args.root).resolve()
+    try:
+        result = skip_item(root, args.batch_id, args.item, reason=args.reason or "")
+    except (FileNotFoundError, ValueError) as exc:
+        print(f"Corpus skip failed: {sanitize_error(exc)}")
+        return 1
+    if args.json:
+        print(format_json(batch_payload(result.batch, result.items, result.attempts)))  # type: ignore[arg-type]
+    else:
+        print(format_import_summary(result.batch, result.items))  # type: ignore[arg-type]
     return 0
 
 
@@ -631,6 +717,53 @@ def build_parser() -> argparse.ArgumentParser:
     pdf_quality_eval_parser.add_argument("--root", default=".")
     pdf_quality_eval_parser.add_argument("--json", action="store_true", help="Output stable machine-readable JSON.")
     pdf_quality_eval_parser.set_defaults(func=cmd_eval_pdf_quality)
+
+    corpus_parser = subparsers.add_parser("corpus", help="Manage corpus import batches.")
+    corpus_subparsers = corpus_parser.add_subparsers(dest="corpus_command", required=True)
+    corpus_import_parser = corpus_subparsers.add_parser(
+        "import",
+        help="Queue and process a local corpus import batch.",
+    )
+    corpus_import_parser.add_argument("path", nargs="?")
+    corpus_import_parser.add_argument("--root", default=".")
+    corpus_import_parser.add_argument("--dry-run", action="store_true")
+    corpus_import_parser.add_argument("--recursive", action="store_true")
+    corpus_import_parser.add_argument("--list-file")
+    corpus_import_parser.add_argument("--fail-fast", action="store_true")
+    corpus_import_parser.add_argument("--parser", choices=("auto", "pypdf", "mineru"), default=None)
+    corpus_import_parser.add_argument("--json", action="store_true", help="Output stable machine-readable JSON.")
+    corpus_import_parser.set_defaults(func=cmd_corpus_import)
+
+    corpus_status_parser = corpus_subparsers.add_parser(
+        "status",
+        help="Show corpus import batch status without running imports.",
+    )
+    corpus_status_parser.add_argument("batch_id", nargs="?")
+    corpus_status_parser.add_argument("--root", default=".")
+    corpus_status_parser.add_argument("--json", action="store_true", help="Output stable machine-readable JSON.")
+    corpus_status_parser.set_defaults(func=cmd_corpus_status)
+
+    corpus_retry_parser = corpus_subparsers.add_parser(
+        "retry",
+        help="Retry failed or interrupted corpus batch items.",
+    )
+    corpus_retry_parser.add_argument("batch_id")
+    corpus_retry_parser.add_argument("--root", default=".")
+    corpus_retry_parser.add_argument("--failed-only", action="store_true")
+    corpus_retry_parser.add_argument("--item")
+    corpus_retry_parser.add_argument("--json", action="store_true", help="Output stable machine-readable JSON.")
+    corpus_retry_parser.set_defaults(func=cmd_corpus_retry)
+
+    corpus_skip_parser = corpus_subparsers.add_parser(
+        "skip",
+        help="Mark a pending or failed corpus batch item as skipped.",
+    )
+    corpus_skip_parser.add_argument("batch_id")
+    corpus_skip_parser.add_argument("item")
+    corpus_skip_parser.add_argument("--root", default=".")
+    corpus_skip_parser.add_argument("--reason", default="")
+    corpus_skip_parser.add_argument("--json", action="store_true", help="Output stable machine-readable JSON.")
+    corpus_skip_parser.set_defaults(func=cmd_corpus_skip)
 
     clean_parser = subparsers.add_parser(
         "clean",
