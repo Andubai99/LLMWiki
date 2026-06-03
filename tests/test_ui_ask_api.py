@@ -41,7 +41,7 @@ def test_post_ask_with_valid_token_queues_job() -> None:
         stop_server(server, thread)
 
     assert status == 202
-    assert payload["schema_version"] == "ui.v3.3"
+    assert payload["schema_version"] == "ui.v3.4"
     assert payload["job"]["job_type"] == "ask_question"
     assert payload["job"]["question"] == "What is OSWorld?"
     assert payload["job"]["ask_options"]["limit"] == 5
@@ -84,7 +84,7 @@ def test_get_ask_jobs_returns_ask_jobs_only() -> None:
         stop_server(server, thread)
 
     assert status == 200
-    assert payload["schema_version"] == "ui.v3.3"
+    assert payload["schema_version"] == "ui.v3.4"
     assert [job["job_id"] for job in payload["jobs"]] == [ask_job.job_id]
     assert add_job.job_id not in repr(payload)
 
@@ -125,7 +125,7 @@ def test_session_endpoint_includes_ask_supported_actions() -> None:
         stop_server(server, thread)
 
     assert status == 200
-    assert payload["schema_version"] == "ui.v3.3"
+    assert payload["schema_version"] == "ui.v3.4"
     assert payload["supported_actions"] == [
         "add_source",
         "ask_question",

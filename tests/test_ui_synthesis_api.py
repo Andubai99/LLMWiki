@@ -84,7 +84,7 @@ def test_post_synthesis_preview_valid_answered_job_queues_preview() -> None:
         stop_server(server, thread)
 
     assert status == 202
-    assert payload["schema_version"] == "ui.v3.3"
+    assert payload["schema_version"] == "ui.v3.4"
     assert payload["job"]["job_type"] == "synthesis_preview"
     assert payload["job"]["parent_job_id"] == ask_job.job_id
     assert jobs_status == 200
@@ -184,7 +184,7 @@ def test_post_synthesis_writeback_valid_request_queues_job() -> None:
         stop_server(server, thread)
 
     assert status == 202
-    assert payload["schema_version"] == "ui.v3.3"
+    assert payload["schema_version"] == "ui.v3.4"
     assert payload["job"]["job_type"] == "synthesis_writeback"
     assert payload["job"]["parent_job_id"] == ask_job.job_id
     assert payload["job"]["writeback_mode"] == "update"

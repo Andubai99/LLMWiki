@@ -65,7 +65,7 @@ def test_session_endpoint_returns_action_token_and_supported_actions() -> None:
         stop_server(server, thread)
 
     assert status == 200
-    assert payload["schema_version"] == "ui.v3.3"
+    assert payload["schema_version"] == "ui.v3.4"
     assert payload["action_token"] == "abc123"
     assert "add_source" in payload["supported_actions"]
     assert "Access-Control-Allow-Origin" not in headers
@@ -81,7 +81,7 @@ def test_jobs_endpoint_returns_json() -> None:
         stop_server(server, thread)
 
     assert status == 200
-    assert payload["schema_version"] == "ui.v3.3"
+    assert payload["schema_version"] == "ui.v3.4"
     assert payload["jobs"] == []
 
 
@@ -144,7 +144,7 @@ def test_post_add_source_with_valid_token_enqueues_job() -> None:
         stop_server(server, thread)
 
     assert status == 202
-    assert payload["schema_version"] == "ui.v3.3"
+    assert payload["schema_version"] == "ui.v3.4"
     assert payload["job"]["status"] == "pending"
     assert jobs_status == 200
     assert jobs_payload["jobs"][0]["job_id"] == payload["job"]["job_id"]
