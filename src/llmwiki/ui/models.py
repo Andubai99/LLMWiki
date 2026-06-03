@@ -6,7 +6,7 @@ import re
 from typing import Any
 
 
-UI_SCHEMA_VERSION = "ui.v3.3"
+UI_SCHEMA_VERSION = "ui.v3.4"
 
 _SECRET_PATTERNS = (
     re.compile(r"sk-[A-Za-z0-9_\-]+"),
