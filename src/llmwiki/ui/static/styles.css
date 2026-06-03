@@ -257,6 +257,97 @@ pre {
   align-items: center;
 }
 
+.browser-section {
+  border-color: #c7d3df;
+}
+
+.browser-form {
+  margin-bottom: 12px;
+}
+
+.browser-form-row {
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) 140px 120px 130px 140px 80px;
+  gap: 10px;
+  align-items: end;
+}
+
+.wiki-browser-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 160px 80px;
+  gap: 10px;
+  align-items: end;
+}
+
+.browser-form label {
+  display: block;
+  color: #52606d;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.browser-form input,
+.browser-form select {
+  box-sizing: border-box;
+  width: 100%;
+  margin-top: 6px;
+}
+
+.link-button {
+  min-height: 0;
+  border: 0;
+  padding: 0;
+  color: #0f5f8f;
+  background: transparent;
+  font: inherit;
+  font-weight: 700;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.link-button:hover {
+  background: transparent;
+  text-decoration: underline;
+}
+
+.detail-meta {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.detail-meta div {
+  min-height: 52px;
+  padding: 10px;
+  border: 1px solid #e1e8ef;
+  border-radius: 6px;
+  background: #f9fbfc;
+}
+
+.detail-meta span,
+.detail-meta strong {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.detail-meta span {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.detail-meta strong {
+  margin-top: 4px;
+  color: #243b53;
+  font-size: 13px;
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+
 .table-wrap {
   overflow-x: auto;
 }
@@ -322,7 +413,11 @@ td {
 
   .ask-form-row,
   .answer-columns,
-  .synthesis-actions {
+  .synthesis-actions,
+  .browser-form-row,
+  .wiki-browser-row,
+  .detail-meta,
+  .detail-grid {
     grid-template-columns: 1fr;
   }
 

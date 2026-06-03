@@ -28,6 +28,14 @@ def test_index_references_dashboard_assets() -> None:
     assert 'id="evidence-table"' in html
     assert 'id="planning-diagnostics"' in html
     assert 'id="synthesis-panel"' in html
+    assert 'id="claim-browser-form"' in html
+    assert 'id="claim-query"' in html
+    assert 'id="claim-browser-table"' in html
+    assert 'id="wiki-browser-form"' in html
+    assert 'id="wiki-browser-table"' in html
+    assert 'id="browser-detail-panel"' in html
+    assert 'id="browser-detail-text"' in html
+    assert 'id="browser-relationships-table"' in html
     assert "/static/app.js" in html
     assert "/static/styles.css" in html
     assert "LLMWiki 工作台" in html
@@ -42,6 +50,11 @@ def test_index_uses_chinese_dashboard_copy() -> None:
         "研究问答",
         "综合预览",
         "检索证据",
+        "证据浏览",
+        "Wiki 浏览",
+        "声明详情",
+        "资料源详情",
+        "页面详情",
         "引用",
         "查询规划诊断",
         "任务",
@@ -65,6 +78,10 @@ def test_app_js_fetches_dashboard_api_endpoints() -> None:
         "/api/sources/add",
         "/api/ask",
         "/api/ask/jobs",
+        "/api/evidence/claims",
+        "/api/evidence/relationships",
+        "/api/sources/",
+        "/api/pages/",
         "/synthesis/preview",
         "/synthesis/writeback",
     ]:
@@ -72,6 +89,10 @@ def test_app_js_fetches_dashboard_api_endpoints() -> None:
     assert "X-LLMWiki-UI-Token" in js
     assert "setInterval" in js
     assert "escapeHtml" in js
+    assert "loadClaimDetail" in js
+    assert "loadSourceDetail" in js
+    assert "loadPageDetail" in js
+    assert "data-claim-id" in js
     assert "综合预览失败" in js
     assert "暂无警告。" in js
     assert "无数据。" in js

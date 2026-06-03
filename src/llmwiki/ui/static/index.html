@@ -209,6 +209,146 @@
         <pre id="synthesis-preview-text">暂无综合预览。</pre>
       </section>
 
+      <section class="data-section browser-section" aria-label="证据浏览">
+        <div class="section-heading">
+          <h2>证据浏览</h2>
+          <span id="claim-browser-count" class="muted">0 行</span>
+        </div>
+        <form id="claim-browser-form" class="browser-form">
+          <div class="browser-form-row">
+            <label>
+              查询
+              <input id="claim-query" name="query" type="text" autocomplete="off" placeholder="声明文本或定位符">
+            </label>
+            <label>
+              资料源
+              <input id="claim-filter-source" name="source_id" type="text" autocomplete="off" placeholder="source_id">
+            </label>
+            <label>
+              页面类型
+              <input id="claim-filter-page-type" name="page_type" type="text" autocomplete="off" placeholder="page_type">
+            </label>
+            <label>
+              置信状态
+              <select id="claim-filter-confidence" name="confidence">
+                <option value="">任意</option>
+                <option value="cited">cited</option>
+                <option value="weak">weak</option>
+              </select>
+            </label>
+            <label>
+              关系
+              <select id="claim-filter-relationship" name="relationship_type">
+                <option value="">任意</option>
+                <option value="supports">supports</option>
+                <option value="contradicts">contradicts</option>
+                <option value="refines">refines</option>
+                <option value="contains">contains</option>
+                <option value="similar_to">similar_to</option>
+              </select>
+            </label>
+            <button id="claim-browser-button" type="submit">筛选</button>
+          </div>
+        </form>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>声明</th>
+                <th>资料源</th>
+                <th>置信状态</th>
+                <th>关系</th>
+                <th>定位符</th>
+              </tr>
+            </thead>
+            <tbody id="claim-browser-table"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="data-section browser-section" aria-label="Wiki 浏览">
+        <div class="section-heading">
+          <h2>Wiki 浏览</h2>
+          <span id="wiki-browser-count" class="muted">0 行</span>
+        </div>
+        <form id="wiki-browser-form" class="browser-form">
+          <div class="wiki-browser-row">
+            <label>
+              查询
+              <input id="wiki-query" name="query" type="text" autocomplete="off" placeholder="页面标题或路径">
+            </label>
+            <label>
+              页面类型
+              <select id="wiki-page-type" name="page_type">
+                <option value="">全部</option>
+                <option value="source">source</option>
+                <option value="concept">concept</option>
+                <option value="entity">entity</option>
+                <option value="synthesis">synthesis</option>
+                <option value="index">index</option>
+              </select>
+            </label>
+            <button id="wiki-browser-button" type="submit">筛选</button>
+          </div>
+        </form>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>页面</th>
+                <th>类型</th>
+                <th>路径</th>
+                <th>声明</th>
+              </tr>
+            </thead>
+            <tbody id="wiki-browser-table"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="browser-detail-panel" class="data-section detail-panel" aria-label="浏览详情">
+        <div class="section-heading">
+          <h2 id="browser-detail-title">声明详情</h2>
+          <span id="browser-detail-status" class="muted">选择一条声明、资料源或页面查看详情。</span>
+        </div>
+        <p class="muted detail-mode-labels">声明详情 / 资料源详情 / 页面详情</p>
+        <div id="browser-detail-meta" class="detail-meta"></div>
+        <pre id="browser-detail-text">暂无详情。</pre>
+        <div class="detail-grid">
+          <div>
+            <h3>关系</h3>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>subject</th>
+                    <th>type</th>
+                    <th>object</th>
+                    <th>evidence</th>
+                  </tr>
+                </thead>
+                <tbody id="browser-relationships-table"></tbody>
+              </table>
+            </div>
+          </div>
+          <div>
+            <h3>相关声明</h3>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>声明</th>
+                    <th>资料源</th>
+                    <th>定位符</th>
+                  </tr>
+                </thead>
+                <tbody id="browser-related-claims-table"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <section class="data-section">
         <div class="section-heading">
           <h2>资料源</h2>
