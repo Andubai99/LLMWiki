@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -37,6 +38,8 @@ GENERATED_FILES = (
     "wiki/log.md",
 )
 
+PYCACHE_SEARCH_ROOTS = ("src", "tests", "llmwiki")
+
 SCOPES = ("cache", "generated", "all")
 
 
@@ -59,17 +62,17 @@ def clean_workspace(root: Path, *, scope: str = "cache", dry_run: bool = False) 
     if scope in {"cache", "all"}:
         for relative in CACHE_DIRECTORIES:
             target = safe_target(resolved_root, relative)
-            remove_path(target, dry_run=dry_run, removed=removed)
+            remove_path(target, root=resolved_root, dry_run=dry_run, removed=removed)
         for target in sorted(find_pycache_directories(resolved_root)):
-            remove_path(target, dry_run=dry_run, removed=removed)
+            remove_path(target, root=resolved_root, dry_run=dry_run, removed=removed)
 
     if scope in {"generated", "all"}:
         for relative in GENERATED_CLEAR_DIRECTORIES:
             target = safe_target(resolved_root, relative)
-            clear_directory(target, dry_run=dry_run, removed=removed, kept=kept)
+            clear_directory(target, root=resolved_root, dry_run=dry_run, removed=removed, kept=kept)
         for relative in GENERATED_FILES:
             target = safe_target(resolved_root, relative)
-            remove_path(target, dry_run=dry_run, removed=removed)
+            remove_path(target, root=resolved_root, dry_run=dry_run, removed=removed)
 
     return CleanResult(
         root=resolved_root,
@@ -119,40 +122,64 @@ def ensure_under_root(root: Path, target: Path) -> None:
 
 def find_pycache_directories(root: Path) -> list[Path]:
     results: list[Path] = []
-    for path in root.rglob("__pycache__"):
-        if not path.is_dir():
+    resolved_root = root.resolve()
+    stack = [
+        safe_target(resolved_root, relative)
+        for relative in PYCACHE_SEARCH_ROOTS
+        if (resolved_root / relative).exists()
+    ]
+    root_pycache = resolved_root / "__pycache__"
+    if root_pycache.exists():
+        stack.append(root_pycache)
+    while stack:
+        current = stack.pop()
+        if current.name == "__pycache__":
+            if current.is_dir() and not current.is_symlink():
+                results.append(current.resolve())
             continue
-        if is_inside_named_directory(path, ".venv"):
+        try:
+            children = sorted(current.iterdir())
+        except OSError:
             continue
-        ensure_under_root(root, path.resolve())
-        results.append(path.resolve())
+        for child in children:
+            if child.is_symlink() or not child.is_dir():
+                continue
+            resolved_child = child.resolve()
+            ensure_under_root(resolved_root, resolved_child)
+            if child.name == "__pycache__":
+                results.append(resolved_child)
+                continue
+            stack.append(resolved_child)
     return results
 
 
-def is_inside_named_directory(path: Path, name: str) -> bool:
-    return any(part == name for part in path.parts)
-
-
-def clear_directory(target: Path, *, dry_run: bool, removed: list[Path], kept: list[Path]) -> None:
+def clear_directory(target: Path, *, root: Path, dry_run: bool, removed: list[Path], kept: list[Path]) -> None:
+    ensure_under_root(root, Path(os.path.abspath(target)))
     if not target.exists():
         return
     if not target.is_dir():
-        remove_path(target, dry_run=dry_run, removed=removed)
+        remove_path(target, root=root, dry_run=dry_run, removed=removed)
         return
     for child in sorted(target.iterdir()):
         if child.name == ".gitkeep":
             kept.append(child.resolve())
             continue
-        remove_path(child.resolve(), dry_run=dry_run, removed=removed)
+        remove_path(child, root=root, dry_run=dry_run, removed=removed)
 
 
-def remove_path(target: Path, *, dry_run: bool, removed: list[Path]) -> None:
-    if not target.exists():
+def remove_path(target: Path, *, root: Path, dry_run: bool, removed: list[Path]) -> None:
+    if not target.exists() and not target.is_symlink():
         return
-    removed.append(target.resolve())
+    workspace_entry = Path(os.path.abspath(target))
+    ensure_under_root(root, workspace_entry)
+    if not target.is_symlink():
+        ensure_under_root(root, target.resolve())
+    removed.append(workspace_entry)
     if dry_run:
         return
-    if target.is_dir():
+    if target.is_symlink():
+        target.unlink()
+    elif target.is_dir():
         shutil.rmtree(target)
     else:
         target.unlink()

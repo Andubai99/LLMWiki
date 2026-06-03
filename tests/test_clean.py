@@ -44,6 +44,7 @@ def seed_dirty_workspace(root: Path) -> dict[str, Path]:
         "staging": write_file(root / "staging" / "run_src_a" / "run.json"),
         "catalog": write_file(root / "state" / "catalog.sqlite"),
         "embedding": write_file(root / "state" / "embeddings" / "vectors.jsonl"),
+        "ui_job": write_file(root / "state" / "ui-jobs" / "job.json"),
         "wiki_source": write_file(root / "wiki" / "sources" / "src_a.md"),
         "wiki_concept": write_file(root / "wiki" / "concepts" / "concept.md"),
         "wiki_entity": write_file(root / "wiki" / "entities" / "entity.md"),
@@ -64,6 +65,7 @@ def seed_dirty_workspace(root: Path) -> dict[str, Path]:
         root / "sources" / "parser-artifacts",
         root / "staging",
         root / "state" / "embeddings",
+        root / "state" / "ui-jobs",
         root / "wiki" / "sources",
         root / "wiki" / "concepts",
         root / "wiki" / "entities",
@@ -93,6 +95,7 @@ def test_clean_default_removes_cache_only(temp_workspace, capsys):
         "staging",
         "catalog",
         "embedding",
+        "ui_job",
         "wiki_source",
         "wiki_concept",
         "wiki_entity",
@@ -125,6 +128,7 @@ def test_clean_generated_preserves_gitkeep_and_user_files(temp_workspace, capsys
         "staging",
         "catalog",
         "embedding",
+        "ui_job",
         "wiki_source",
         "wiki_concept",
         "wiki_entity",
@@ -142,6 +146,7 @@ def test_clean_generated_preserves_gitkeep_and_user_files(temp_workspace, capsys
         root / "sources" / "parser-artifacts" / ".gitkeep",
         root / "staging" / ".gitkeep",
         root / "state" / "embeddings" / ".gitkeep",
+        root / "state" / "ui-jobs" / ".gitkeep",
         root / "wiki" / "sources" / ".gitkeep",
         root / "wiki" / "concepts" / ".gitkeep",
         root / "wiki" / "entities" / ".gitkeep",
@@ -174,6 +179,7 @@ def test_clean_all_removes_cache_and_generated(temp_workspace, capsys):
         "staging",
         "catalog",
         "embedding",
+        "ui_job",
         "wiki_source",
         "wiki_concept",
         "wiki_entity",
@@ -184,6 +190,53 @@ def test_clean_all_removes_cache_and_generated(temp_workspace, capsys):
         assert not paths[key].exists()
     for key in ("api_keys", "paper", "venv", "thinking"):
         assert paths[key].exists()
+
+
+def test_clean_cache_prunes_large_generated_and_user_dirs(temp_workspace):
+    root = temp_workspace
+    project_pycache = write_file(root / "src" / "llmwiki" / "__pycache__" / "module.pyc")
+    venv_pycache = write_file(root / ".venv" / "Lib" / "site-packages" / "pkg" / "__pycache__" / "pkg.pyc")
+    git_pycache = write_file(root / ".git" / "objects" / "__pycache__" / "object.pyc")
+    paper_pycache = write_file(root / "docs" / "papers" / "__pycache__" / "paper.pyc")
+    doc_pycache = write_file(root / "docs" / "superpowers" / "__pycache__" / "doc.pyc")
+    raw_pycache = write_file(root / "sources" / "raw" / "__pycache__" / "source.pyc")
+    wiki_pycache = write_file(root / "wiki" / "concepts" / "__pycache__" / "wiki.pyc")
+    state_pycache = write_file(root / "state" / "__pycache__" / "state.pyc")
+
+    clean_workspace(root, scope="cache")
+
+    assert not project_pycache.exists()
+    assert venv_pycache.exists()
+    assert git_pycache.exists()
+    assert paper_pycache.exists()
+    assert doc_pycache.exists()
+    assert raw_pycache.exists()
+    assert wiki_pycache.exists()
+    assert state_pycache.exists()
+
+
+def test_clean_all_preserves_generated_directory_skeleton(temp_workspace):
+    root = temp_workspace
+    seed_dirty_workspace(root)
+
+    clean_workspace(root, scope="all")
+
+    for directory in (
+        root / "sources" / "raw",
+        root / "sources" / "normalized",
+        root / "sources" / "metadata",
+        root / "sources" / "blocks",
+        root / "sources" / "chunks",
+        root / "sources" / "parser-artifacts",
+        root / "staging",
+        root / "state" / "embeddings",
+        root / "state" / "ui-jobs",
+        root / "wiki" / "sources",
+        root / "wiki" / "concepts",
+        root / "wiki" / "entities",
+        root / "wiki" / "syntheses",
+    ):
+        assert directory.is_dir()
 
 
 def test_clean_dry_run_does_not_delete(temp_workspace, capsys):
