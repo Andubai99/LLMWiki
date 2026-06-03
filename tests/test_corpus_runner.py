@@ -154,3 +154,32 @@ def test_corpus_status_json_and_skip(monkeypatch, capsys) -> None:
     data = json.loads(capsys.readouterr().out)
     assert data["batch"]["batch_id"] == batch_id
     assert data["items"][0]["status"] == "skipped"
+
+
+def test_corpus_skip_item_id_does_not_match_unrelated_relative_path(monkeypatch, capsys) -> None:
+    import llmwiki.corpus.runner as runner
+
+    root = make_workspace()
+    assert main(["init", "--root", str(root)]) == 0
+    corpus = root / "papers"
+    first = write_file(corpus / "a.md")
+    failed = write_file(corpus / "b.md")
+
+    def fake_add(root: Path, locator: str, **kwargs):  # noqa: ANN003
+        path = Path(locator)
+        if path == failed:
+            raise AddPipelineError(stage="ingest", reason="boom")
+        return ok_result(path, status="already_applied")
+
+    monkeypatch.setattr(runner, "add_and_process_source", fake_add)
+    capsys.readouterr()
+
+    assert main(["corpus", "import", str(corpus), "--root", str(root)]) == 1
+    batch_id = latest_batch_id(root)
+    items = read_items(root, batch_id)
+    assert [item.status for item in items] == ["already_imported", "failed"]
+
+    assert main(["corpus", "skip", batch_id, items[1].item_id, "--root", str(root)]) == 0
+    items = read_items(root, batch_id)
+    assert items[0].source_path == first.resolve().as_posix()
+    assert [item.status for item in items] == ["already_imported", "skipped"]

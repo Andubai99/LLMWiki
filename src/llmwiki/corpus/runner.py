@@ -321,7 +321,6 @@ def matches_item(item: CorpusItem, value: str, root: Path) -> bool:
         candidates.add(path.resolve().as_posix())
     else:
         candidates.add((root / path).resolve().as_posix())
-        candidates.add(path.as_posix())
     return value in candidates
 
 
