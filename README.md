@@ -179,7 +179,7 @@ UI API 包括：
 /api/config
 ```
 
-当前 UI 响应使用 `schema_version="ui.v3.3"`，并且只报告 API key 是否存在，不返回 API key 值、`config/api-keys.toml` 内容、raw prompt、raw LLM response 或完整 parser logs。
+当前 UI 响应使用 `schema_version="ui.v3.4"`，并且只报告 API key 是否存在，不返回 API key 值、`config/api-keys.toml` 内容、raw prompt、raw LLM response 或完整 parser logs。
 
 ## V3.2 Source Library
 
@@ -206,6 +206,24 @@ POST /api/ask/<job-id>/synthesis/writeback
 Synthesis preview 是只读的：它只调用 synthesis planner，生成 preview job，不创建 staging，不写 `wiki/`、`sources/`、`state/catalog.sqlite`。Synthesis writeback 必须由用户显式触发，并且只通过现有 `create_synthesis_run(...)` staging/apply 路径执行。Planner output 和 synthesis plan output 都不是 evidence；UI 中的 Retrieved Evidence 和 Citations 只显示 catalog-backed claims。
 
 V3.3 job state 仍位于 `state/ui-jobs/`，schema 为 `ui_job.v3.3`。`POST /api/sources/add`、`POST /api/ask`、synthesis preview/writeback 都要求本进程 `X-LLMWiki-UI-Token`。GET endpoints 仍保持只读。
+
+## V3.4 Evidence And Wiki Browser
+
+V3.4 在 `llmwiki ui --root .` 中增加只读 Evidence/Wiki Browser。用户可以从 Ask citations 或 retrieved evidence 跳转到 claim detail，检查 `claim_id`、`source_id`、`page_id`、`citation_locator`、`confidence_status` 和 `relationship_type`，也可以浏览 source/concept/entity/synthesis/index 页面。
+
+V3.4 新增 read-only GET endpoints：
+
+```text
+GET /api/sources/<source-id>
+GET /api/pages/<page-id>
+GET /api/evidence/claims
+GET /api/evidence/claims/<claim-id>
+GET /api/evidence/relationships
+```
+
+这些 GET endpoints 只读取 catalog、catalog-referenced wiki markdown、`sources/metadata/`、`sources/blocks/`、`sources/chunks/` 和 UI job summaries。它们不得调用 LLM、embedding provider、MinerU、PDF parser、retrieve、ask、synthesis、add/ingest/apply、lint/eval/clean，也不得写 `wiki/`、`sources/`、`staging/`、`state/catalog.sqlite`、`state/embeddings/` 或 `state/ui-jobs/`。
+
+V3.4 中 page markdown 是页面文本，不是 formal evidence。只有 catalog-backed claims 和 catalog relationships 是 evidence；synthesis markdown 段落不会被升级为 claims。Markdown/text `line:N` 和 PDF `page:N;block:<block-id>` locator 可显示 bounded context；unsupported locator、missing sidecar、malformed sidecar 只产生 warning，不伪造证据。
 
 ### Internal/debug 命令
 
