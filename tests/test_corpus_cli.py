@@ -18,6 +18,9 @@ def test_cli_includes_corpus_command_group() -> None:
 
     assert "corpus" in COMMANDS
     assert "Manage corpus import batches." in help_text
+    args = parser.parse_args(["corpus", "inventory", "--root", ".", "--json"])
+    assert args.corpus_command == "inventory"
+    assert args.json is True
 
 
 def test_corpus_import_dry_run_is_read_only(monkeypatch, capsys) -> None:

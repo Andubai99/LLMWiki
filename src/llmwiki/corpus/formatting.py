@@ -4,6 +4,7 @@ import json
 from dataclasses import asdict
 from typing import Any
 
+from .inventory import CorpusInventory
 from .state import BatchManifest, CorpusAttempt, CorpusItem
 
 
@@ -23,6 +24,47 @@ def batch_payload(
 
 def format_json(payload: dict[str, Any]) -> str:
     return json.dumps(payload, ensure_ascii=False, indent=2)
+
+
+def inventory_payload(inventory: CorpusInventory) -> dict[str, Any]:
+    return inventory.to_dict()
+
+
+def format_inventory_summary(inventory: CorpusInventory) -> str:
+    payload = inventory.to_dict()
+    lines = [
+        "Corpus inventory",
+        f"Papers: {payload['paper_count']}",
+        f"Warnings: {payload['warning_count']}",
+    ]
+    papers = payload["papers"]
+    if papers:
+        lines.append("")
+        lines.append("source_id | year | title | arxiv_id | status")
+        for paper in papers:
+            year = str(paper["year"]) if paper["year"] is not None else ""
+            status = paper["applied_status"] or paper["identity_status"]
+            lines.append(
+                f"{paper['source_id']} | {year} | {paper['title']} | {paper['arxiv_id']} | {status}"
+            )
+    else:
+        lines.append("Papers: none")
+    warnings = list(payload["warnings"])
+    for paper in papers:
+        warnings.extend(f"{paper['source_id']}: {warning}" for warning in paper["warnings"])
+        warnings.extend(
+            f"{paper['source_id']}: {warning['reason']} with {warning['other_source_id']} ({warning['shared_value']})"
+            for warning in paper["duplicate_warnings"]
+        )
+    if warnings:
+        lines.append("")
+        lines.append("Warnings:")
+        for warning in warnings:
+            lines.append(f"- {warning}")
+    if payload["batch_items"]:
+        lines.append("")
+        lines.append(f"Batch items: {len(payload['batch_items'])}")
+    return "\n".join(lines)
 
 
 def format_import_summary(batch: BatchManifest, items: list[CorpusItem], *, dry_run: bool = False) -> str:

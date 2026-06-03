@@ -9,7 +9,15 @@ import tomllib
 from pathlib import Path
 
 from .ask.answer import AskOptions, AskResult, answer_question
-from .corpus.formatting import batch_payload, format_import_summary, format_json, format_status_summary
+from .corpus.formatting import (
+    batch_payload,
+    format_import_summary,
+    format_inventory_summary,
+    format_json,
+    format_status_summary,
+    inventory_payload,
+)
+from .corpus.inventory import build_inventory
 from .corpus.runner import import_corpus, retry_corpus, skip_item, status as corpus_status
 from .ingestion.apply import UnsafePatchError, apply_run
 from .db import catalog_path, schema_status
@@ -369,6 +377,20 @@ def cmd_corpus_skip(args: argparse.Namespace) -> int:
         print(format_json(batch_payload(result.batch, result.items, result.attempts)))  # type: ignore[arg-type]
     else:
         print(format_import_summary(result.batch, result.items))  # type: ignore[arg-type]
+    return 0
+
+
+def cmd_corpus_inventory(args: argparse.Namespace) -> int:
+    root = Path(args.root).resolve()
+    try:
+        result = build_inventory(root)
+    except (OSError, ValueError) as exc:
+        print(f"Corpus inventory failed: {sanitize_error(exc)}")
+        return 1
+    if args.json:
+        print(format_json(inventory_payload(result)))
+    else:
+        print(format_inventory_summary(result))
     return 0
 
 
@@ -764,6 +786,14 @@ def build_parser() -> argparse.ArgumentParser:
     corpus_skip_parser.add_argument("--reason", default="")
     corpus_skip_parser.add_argument("--json", action="store_true", help="Output stable machine-readable JSON.")
     corpus_skip_parser.set_defaults(func=cmd_corpus_skip)
+
+    corpus_inventory_parser = corpus_subparsers.add_parser(
+        "inventory",
+        help="Show read-only paper identity inventory for catalog sources.",
+    )
+    corpus_inventory_parser.add_argument("--root", default=".")
+    corpus_inventory_parser.add_argument("--json", action="store_true", help="Output stable machine-readable JSON.")
+    corpus_inventory_parser.set_defaults(func=cmd_corpus_inventory)
 
     clean_parser = subparsers.add_parser(
         "clean",
