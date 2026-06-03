@@ -22,6 +22,7 @@ GENERATED_CLEAR_DIRECTORIES = (
     "sources/chunks",
     "sources/parser-artifacts",
     "staging",
+    "state/corpus-batches",
     "state/embeddings",
     "state/ui-jobs",
     "wiki/sources",

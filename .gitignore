@@ -37,6 +37,7 @@ state/*.sqlite
 state/*.sqlite-*
 state/*.db
 state/*.db-*
+state/corpus-batches/
 state/embeddings/
 state/ui-jobs/
 

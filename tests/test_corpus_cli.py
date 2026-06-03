@@ -56,3 +56,29 @@ def test_corpus_status_without_batches_is_read_only(monkeypatch, capsys) -> None
 
     assert main(["corpus", "status", "--root", str(root)]) == 0
     assert "No corpus batches." in capsys.readouterr().out
+
+
+def test_corpus_dry_run_and_status_do_not_call_mutating_or_provider_surfaces(monkeypatch, capsys) -> None:
+    import llmwiki.cli as cli
+    import llmwiki.corpus.runner as runner
+
+    root = make_workspace()
+    assert main(["init", "--root", str(root)]) == 0
+    corpus = root / "papers"
+    write_file(corpus / "a.md")
+
+    def forbidden(*args, **kwargs):  # noqa: ANN002, ANN003
+        raise AssertionError("corpus dry-run/status must not call this surface")
+
+    monkeypatch.setattr(runner, "add_and_process_source", forbidden)
+    monkeypatch.setattr(cli, "add_and_process_source", forbidden)
+    monkeypatch.setattr(cli, "ingest_source", forbidden)
+    monkeypatch.setattr(cli, "apply_run", forbidden)
+    monkeypatch.setattr(cli, "evaluate_retrieval", forbidden)
+    monkeypatch.setattr(cli, "evaluate_pdf_quality", forbidden)
+    monkeypatch.setattr(cli, "probe_mineru_status", forbidden)
+    monkeypatch.setattr(cli, "create_provider", forbidden)
+    capsys.readouterr()
+
+    assert main(["corpus", "import", str(corpus), "--root", str(root), "--dry-run"]) == 0
+    assert main(["corpus", "status", "--root", str(root)]) == 0
