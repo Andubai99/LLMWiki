@@ -8,6 +8,7 @@ import mimetypes
 import secrets
 import socket
 import webbrowser
+from urllib.parse import parse_qs, unquote, urlsplit
 
 from .actions import UiActionError, enqueue_add_source_job, run_add_source_job
 from .api import (
@@ -29,6 +30,14 @@ from .ask_actions import (
     run_ask_job,
     run_synthesis_preview_job,
     run_synthesis_writeback_job,
+)
+from .browser_api import (
+    UiBrowserError,
+    get_claim_detail,
+    get_page_detail,
+    get_source_detail,
+    list_claims,
+    list_relationships,
 )
 from .jobs import UiJob, UiJobManager, mark_stale_running_jobs_interrupted
 from .models import UI_SCHEMA_VERSION, sanitize_ui_text
@@ -177,8 +186,24 @@ def handle_post(handler: BaseHTTPRequestHandler) -> None:
 
 
 def write_api(handler: BaseHTTPRequestHandler, path: str) -> None:
+    try:
+        write_api_inner(handler, path)
+    except UiBrowserError as exc:
+        write_json(
+            handler,
+            exc.status_code,
+            {
+                "schema_version": UI_SCHEMA_VERSION,
+                "error": exc.code,
+                "message": exc.message,
+            },
+        )
+
+
+def write_api_inner(handler: BaseHTTPRequestHandler, path: str) -> None:
     server = ui_server(handler)
     root = server.root
+    query = query_params(handler)
     routes = {
         "/api/status": lambda: get_workspace_status(root).to_dict(),
         "/api/session": lambda: {
@@ -199,6 +224,24 @@ def write_api(handler: BaseHTTPRequestHandler, path: str) -> None:
         "/api/config": lambda: get_config_status(root).to_dict(),
     }
     route = routes.get(path)
+    if route is None and path.startswith("/api/sources/"):
+        source_id = unquote(path.removeprefix("/api/sources/"))
+        write_json(handler, 200, get_source_detail(root, source_id).to_dict())
+        return
+    if route is None and path.startswith("/api/pages/"):
+        page_id = unquote(path.removeprefix("/api/pages/"))
+        write_json(handler, 200, get_page_detail(root, page_id).to_dict())
+        return
+    if route is None and path == "/api/evidence/claims":
+        write_json(handler, 200, list_claims(root, **query).to_dict())
+        return
+    if route is None and path.startswith("/api/evidence/claims/"):
+        claim_id = unquote(path.removeprefix("/api/evidence/claims/"))
+        write_json(handler, 200, get_claim_detail(root, claim_id).to_dict())
+        return
+    if route is None and path == "/api/evidence/relationships":
+        write_json(handler, 200, list_relationships(root, **query).to_dict())
+        return
     if route is None and path.startswith("/api/ask/jobs/"):
         job_id = path.removeprefix("/api/ask/jobs/")
         job = get_ask_job(root, job_id)
@@ -219,6 +262,12 @@ def write_api(handler: BaseHTTPRequestHandler, path: str) -> None:
         write_json(handler, 404, {"schema_version": UI_SCHEMA_VERSION, "error": "not_found"})
         return
     write_json(handler, 200, route())
+
+
+def query_params(handler: BaseHTTPRequestHandler) -> dict[str, str]:
+    parsed = urlsplit(handler.path)
+    values = parse_qs(parsed.query, keep_blank_values=True)
+    return {key: items[-1] if items else "" for key, items in values.items()}
 
 
 def write_post_api(handler: BaseHTTPRequestHandler, path: str) -> None:
