@@ -251,6 +251,19 @@ state/corpus-batches/<batch-id>/events.jsonl
 
 `corpus import --dry-run` 和 `corpus status` 是只读操作，不调用 LLM、parser、add/apply，也不写 `state/corpus-batches/`。真实 `corpus import` / `corpus retry` 只通过现有 `add_and_process_source(...)` 写正式知识；corpus layer 不直接写 `wiki/`、`staging/`、`sources/` 或 `state/catalog.sqlite`。URL batch import is out of scope；URL 仍使用单源 `llmwiki add`。
 
+## V4.2 Paper Identity And Corpus Inventory
+
+V4.2 新增只读语料清单命令，用于从本地 catalog、PDF metadata sidecars、normalized source 和 V4.1 batch state 汇总论文身份：
+
+```bash
+llmwiki corpus inventory --root .
+llmwiki corpus inventory --root . --json
+```
+
+JSON 输出使用 `schema_version="corpus_inventory.v4.2"`，每个 paper item 使用 `schema_version="paper_identity.v4.2"`。第一版不新增 catalog 表，`paper_id` 默认等于 `source_id`。
+
+Inventory 会报告 title、authors、year、DOI、arXiv id、parser backend、source/page path、applied run status 和 duplicate warnings。DOI/arXiv/year 只从本地可审计文本确定；缺失或 malformed metadata 会显示 warning，不伪造字段。`corpus inventory` 不调用 LLM、embedding、MinerU/parser、add/ingest/apply、ask/synthesis、lint/eval/clean，也不写 `wiki/`、`sources/`、`staging/`、`state/catalog.sqlite`、`state/corpus-batches/` 或 `state/embeddings/`。
+
 ### Internal/debug 命令
 
 ```bash

@@ -247,6 +247,10 @@ def test_docs_describe_v1_commands_and_constraints():
     assert "llmwiki corpus import docs/papers --root . --dry-run" in readme
     assert "state/corpus-batches/" in readme
     assert "URL batch import is out of scope" in readme
+    assert "V4.2 Paper Identity And Corpus Inventory" in readme
+    assert "llmwiki corpus inventory --root . --json" in readme
+    assert "corpus_inventory.v4.2" in readme
+    assert "paper_identity.v4.2" in readme
     assert "page markdown 是页面文本，不是 formal evidence" in readme
     assert "llmwiki eval pdf-quality --root ." in readme
     assert "defaults to `auto`" in readme
@@ -329,6 +333,11 @@ def test_docs_describe_v1_commands_and_constraints():
     assert "state/corpus-batches/" in agents
     assert "corpus_batch.v4.1" in agents
     assert "Failed corpus items must not invalidate successful items" in agents
+    assert "llmwiki corpus inventory" in agents
+    assert "corpus_inventory.v4.2" in agents
+    assert "paper_identity.v4.2" in agents
+    assert "paper_id` defaults to `source_id" in agents
+    assert "duplicate warnings must not merge, delete, overwrite" in agents
     assert "--scope generated" in agents
     assert "PDF source aliases must not include parser-created aliases or paper title aliases" in agents
     assert "LLM repair may only repair JSON syntax" in agents

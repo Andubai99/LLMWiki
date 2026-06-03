@@ -171,6 +171,12 @@
 - Batch state under `state/corpus-batches/` is generated cache and must not be committed. It uses `corpus_batch.v4.1`, `corpus_item.v4.1`, and `corpus_attempt.v4.1`.
 - Failed corpus items must not invalidate successful items. Retry must append attempts to the same batch instead of creating a replacement batch.
 - Duplicate detection may use local SHA-256 and applied catalog state, but uncertain duplicates must be reported as warnings instead of being silently skipped.
+- V4.2 `llmwiki corpus inventory` is read-only paper identity inventory over catalog sources, PDF metadata sidecars, normalized source text, and optional V4.1 batch state.
+- `llmwiki corpus inventory` must not call LLM providers, embedding providers, MinerU, parser execution, add/ingest/apply, ask, synthesis, lint/eval/clean, or any write path.
+- `llmwiki corpus inventory` must not write `wiki/`, `sources/`, `staging/`, `state/catalog.sqlite`, `state/corpus-batches/`, or `state/embeddings/`.
+- V4.2 inventory uses `corpus_inventory.v4.2` and `paper_identity.v4.2`; first-version `paper_id` defaults to `source_id` and no `paper_identities` catalog table is required.
+- DOI, arXiv id, year, authors, venue/status, parser backend, and duplicate warnings are metadata for inventory. They are not formal evidence and must not become claims without a later source-backed extraction spec.
+- V4.2 duplicate warnings must not merge, delete, overwrite, or silently skip sources.
 
 ## 12. Generated Files And Cleanup
 
