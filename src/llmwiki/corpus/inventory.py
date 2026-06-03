@@ -135,9 +135,13 @@ def build_paper_identity(
     run: dict[str, Any],
 ) -> PaperIdentity:
     source_id = str(source["source_id"])
+    source_type = str(source.get("source_type") or "")
     raw_path = workspace_relative(root, root / str(source["raw_path"]))
     normalized_path = workspace_relative(root, root / str(source["normalized_path"]))
-    metadata, metadata_status, metadata_warnings = read_metadata(root, source_id)
+    if source_type == "pdf":
+        metadata, metadata_status, metadata_warnings = read_metadata(root, source_id)
+    else:
+        metadata, metadata_status, metadata_warnings = {}, "not_applicable", []
     normalized_text, normalized_warning = read_bounded_text(root, normalized_path, root / "sources" / "normalized", limit=12000)
 
     warnings = [*metadata_warnings]
@@ -194,7 +198,7 @@ def build_paper_identity(
     return PaperIdentity(
         source_id=source_id,
         paper_id=source_id,
-        source_type=str(source.get("source_type") or ""),
+        source_type=source_type,
         title=str(source.get("title") or ""),
         title_source="catalog",
         title_confidence=title_confidence,

@@ -161,6 +161,24 @@ def test_inventory_warns_for_malformed_metadata_and_keeps_running() -> None:
     assert paper.arxiv_id == "2505.13909"
 
 
+def test_inventory_does_not_require_pdf_metadata_for_non_pdf_sources() -> None:
+    root = make_workspace()
+    assert main(["init", "--root", str(root)]) == 0
+    seed_source(
+        root,
+        source_id="src_markdown",
+        title="Markdown Notes",
+        raw_name="notes.md",
+        sha256="markdown",
+        source_type="markdown",
+    )
+
+    paper = build_inventory(root).papers[0]
+
+    assert paper.identity_status == "not_paper"
+    assert not any("Missing metadata sidecar" in warning for warning in paper.warnings)
+
+
 def test_inventory_emits_duplicate_warnings_for_same_arxiv_and_title() -> None:
     root = make_workspace()
     assert main(["init", "--root", str(root)]) == 0
