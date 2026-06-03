@@ -14,7 +14,7 @@
 
 ### Task 1: Save The Plan
 
-- [ ] Create this plan at `docs/superpowers/plans/2026-06-01-llmwiki-v2-9-4-parser-backend-mineru-adapter.md`.
+- [ ] Create this plan at `docs/plans/2026-06-01-llmwiki-v2-9-4-parser-backend-mineru-adapter.md`.
 - [ ] Run `git status --short`; expect only the plan file.
 - [ ] Commit with `git commit -m "docs: 保存 V2.9.4 执行计划"`.
 

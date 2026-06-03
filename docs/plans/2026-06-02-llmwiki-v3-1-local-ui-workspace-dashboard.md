@@ -4,7 +4,7 @@
 
 目标是实现 `llmwiki ui --root .`：启动一个绑定 `127.0.0.1` 的本地只读 Web dashboard，用 Python service 直接读取 workspace、catalog、staging、sidecars 和配置状态。V3.1 不执行 add/ingest/apply/ask/lint/eval/MinerU/embedding provider，不写 wiki/catalog/source/staging/state。
 
-计划文件目标路径：`docs/superpowers/plans/2026-06-02-llmwiki-v3-1-local-ui-workspace-dashboard.md`。
+计划文件目标路径：`docs/plans/2026-06-02-llmwiki-v3-1-local-ui-workspace-dashboard.md`。
 
 ## Key Changes
 
@@ -33,7 +33,7 @@
 
 ### Task 1: 保存执行计划
 
-- 新建 `docs/superpowers/plans/2026-06-02-llmwiki-v3-1-local-ui-workspace-dashboard.md`，内容使用本 plan。
+- 新建 `docs/plans/2026-06-02-llmwiki-v3-1-local-ui-workspace-dashboard.md`，内容使用本 plan。
 - 运行 `git status --short`，确认只新增计划文件。
 - 提交：`docs: 保存 V3.1 UI dashboard 执行计划`。
 

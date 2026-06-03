@@ -33,10 +33,10 @@
 
 ### Task 1: 保存执行计划
 
-- [ ] Create `docs/superpowers/plans/2026-06-01-llmwiki-v2-9-3-pdf-ingest-robustness-identity.md` with this plan.
+- [ ] Create `docs/plans/2026-06-01-llmwiki-v2-9-3-pdf-ingest-robustness-identity.md` with this plan.
 - [ ] Run `git status --short`; expect only the plan file.
 - [ ] Commit:
-  - `git add docs/superpowers/plans/2026-06-01-llmwiki-v2-9-3-pdf-ingest-robustness-identity.md`
+  - `git add docs/plans/2026-06-01-llmwiki-v2-9-3-pdf-ingest-robustness-identity.md`
   - `git commit -m "docs: 保存 V2.9.3 执行计划"`
 
 ### Task 2: JSON Repair Core
@@ -168,7 +168,7 @@
   - retrieval PDF foundation eval remains stable.
 - [ ] If a real acceptance bug appears, write the failing test first, fix, rerun affected tests, then commit.
 - [ ] Optional sanitized note:
-  - `docs/superpowers/specs/2026-06-01-llmwiki-v2-9-3-pdf-acceptance-observations.md`
+  - `docs/specs/2026-06-01-llmwiki-v2-9-3-pdf-acceptance-observations.md`
   - Commit with `git commit -m "test: 记录 V2.9.3 PDF 验收结果"`.
 
 ### Task 10: Final Verification And Cleanup

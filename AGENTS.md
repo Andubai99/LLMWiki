@@ -18,7 +18,7 @@
 
 ## 2. 后续路线
 
-后续开发按 V3/V4/V5 推进，具体 spec 见 `docs/superpowers/specs/2026-06-02-llmwiki-v3-v5-product-roadmap-design.md`。
+后续开发按 V3/V4/V5 推进，具体 spec 见 `docs/specs/2026-06-02-llmwiki-v3-v5-product-roadmap-design.md`。
 
 ### V3: User Interaction And Product Shell
 
@@ -38,6 +38,7 @@
 
 - Production Python package code lives under `src/llmwiki/`. Do not add new runtime modules under a root-level `llmwiki/` directory.
 - Tests live under `tests/`; committed documentation/specs/plans live under `docs/`.
+- New implementation plans must be saved under `docs/plans/`; new specs must be saved under `docs/specs/`. Do not create new plan/spec files under `docs/superpowers/`.
 - Do not modify files under `sources/raw/`.
 - Do not write final wiki pages directly during ingest. Write candidate changes under `staging/<run-id>/`.
 - Codex/LLM must not bypass staging; proposed knowledge changes must be inspectable before apply.

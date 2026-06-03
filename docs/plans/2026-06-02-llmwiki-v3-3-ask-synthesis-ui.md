@@ -28,7 +28,7 @@ V3.3 adds the research loop to the local UI:
 
 ### Task 1: Save Plan
 
-- [ ] Create this file at `docs/superpowers/plans/2026-06-02-llmwiki-v3-3-ask-synthesis-ui.md`.
+- [ ] Create this file at `docs/plans/2026-06-02-llmwiki-v3-3-ask-synthesis-ui.md`.
 - [ ] Run `git status --short`; expect only this plan file.
 - [ ] Commit: `docs: 保存 V3.3 执行计划`.
 

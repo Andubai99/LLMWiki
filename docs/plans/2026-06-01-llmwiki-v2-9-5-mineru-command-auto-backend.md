@@ -14,7 +14,7 @@
 
 ### Task 1: Save The Plan
 
-- [ ] Create this plan at `docs/superpowers/plans/2026-06-01-llmwiki-v2-9-5-mineru-command-auto-backend.md`.
+- [ ] Create this plan at `docs/plans/2026-06-01-llmwiki-v2-9-5-mineru-command-auto-backend.md`.
 - [ ] Run `git status --short`; expect only the plan file.
 - [ ] Commit with `git commit -m "docs: 保存 V2.9.5 执行计划"`.
 

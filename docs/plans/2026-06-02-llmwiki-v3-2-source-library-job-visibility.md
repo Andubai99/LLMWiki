@@ -32,9 +32,9 @@ V3.2 不做批量导入、Ask UI、synthesis UI、claim browser、新 PDF 能力
 
 ### Task 1: Save Implementation Plan
 
-- [ ] 新建 `docs/superpowers/plans/2026-06-02-llmwiki-v3-2-source-library-job-visibility.md`，内容使用本 plan。
+- [ ] 新建 `docs/plans/2026-06-02-llmwiki-v3-2-source-library-job-visibility.md`，内容使用本 plan。
 - [ ] 运行 `git status --short`，预期只新增 plan 文件。
-- [ ] 提交：`git add docs/superpowers/plans/2026-06-02-llmwiki-v3-2-source-library-job-visibility.md && git commit -m "docs: 保存 V3.2 执行计划"`
+- [ ] 提交：`git add docs/plans/2026-06-02-llmwiki-v3-2-source-library-job-visibility.md && git commit -m "docs: 保存 V3.2 执行计划"`
 
 ### Task 2: UI Job Model And Persistence
 
