@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from threading import Thread
+from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 import hashlib
 import json
@@ -77,6 +78,18 @@ def post_ask(server, question: str):
         return response.status, json.loads(response.read().decode("utf-8"))
 
 
+def post_json(server, path: str):
+    host, port = server.server_address
+    request = Request(
+        f"http://{host}:{port}{path}",
+        data=b"{}",
+        headers={"Content-Type": "application/json", "X-LLMWiki-UI-Token": "token"},
+        method="POST",
+    )
+    with urlopen(request, timeout=5) as response:
+        return response.status, json.loads(response.read().decode("utf-8"))
+
+
 def forbid_direct_write_surfaces(monkeypatch) -> None:
     def forbidden(*args, **kwargs):  # noqa: ANN002, ANN003
         raise AssertionError("UI action layer must not call this surface directly")
@@ -130,6 +143,35 @@ def test_post_ask_only_creates_ui_job_file(monkeypatch) -> None:
     assert after["ui_jobs"] != before["ui_jobs"]
     for key in ["catalog", "wiki", "staging", "sources"]:
         assert after[key] == before[key]
+
+
+def test_v3_4_browser_routes_are_not_mutating_post_routes(monkeypatch) -> None:
+    from tests.test_ui_browser_api import seed_browser_catalog
+
+    forbid_direct_write_surfaces(monkeypatch)
+    root = make_workspace()
+    seed_browser_catalog(root)
+    server, thread = start_test_server(root)
+    try:
+        for route in [
+            "/api/evidence/claims",
+            "/api/evidence/claims/clm_line",
+            "/api/evidence/relationships",
+            "/api/sources/src_text",
+            "/api/pages/concept:fruit",
+        ]:
+            try:
+                post_json(server, route)
+            except HTTPError as exc:
+                payload = json.loads(exc.read().decode("utf-8"))
+                assert exc.code == 404
+                assert payload["error"] == "not_found"
+            else:  # pragma: no cover - defensive
+                raise AssertionError(f"Expected browser POST route to be rejected: {route}")
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
 
 
 def test_ask_worker_mutation_is_limited_to_ui_job_state(monkeypatch) -> None:

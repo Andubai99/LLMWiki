@@ -66,6 +66,7 @@ def forbid_runtime_work(monkeypatch) -> None:
     monkeypatch.setattr("llmwiki.ui.ask_actions.answer_question", forbidden)
     monkeypatch.setattr("llmwiki.ui.ask_actions.plan_synthesis_writeback", forbidden)
     monkeypatch.setattr("llmwiki.ui.ask_actions.create_synthesis_run", forbidden)
+    monkeypatch.setattr("llmwiki.retrieval.retrieve", forbidden, raising=False)
 
 
 def start_test_server(root: Path):
@@ -112,6 +113,30 @@ def test_ui_api_functions_do_not_mutate_workspace(monkeypatch) -> None:
     assert workspace_fingerprint(root) == before
 
 
+def test_ui_browser_api_functions_do_not_mutate_workspace(monkeypatch) -> None:
+    from tests.test_ui_browser_api import seed_browser_catalog
+    from llmwiki.ui.browser_api import (
+        get_claim_detail,
+        get_page_detail,
+        get_source_detail,
+        list_claims,
+        list_relationships,
+    )
+
+    forbid_runtime_work(monkeypatch)
+    root = make_workspace()
+    seed_browser_catalog(root)
+    before = workspace_fingerprint(root)
+
+    get_source_detail(root, "src_pdf")
+    get_page_detail(root, "concept:fruit")
+    list_claims(root, query="storage")
+    get_claim_detail(root, "clm_pdf")
+    list_relationships(root, claim_id="clm_pdf")
+
+    assert workspace_fingerprint(root) == before
+
+
 def test_ui_http_api_routes_do_not_mutate_workspace(monkeypatch) -> None:
     from llmwiki.ui.ask_models import AskUiRequest
     from llmwiki.ui.jobs import create_add_source_job, create_ask_job
@@ -136,6 +161,34 @@ def test_ui_http_api_routes_do_not_mutate_workspace(monkeypatch) -> None:
             f"/api/jobs/{job.job_id}",
             "/api/ask/jobs",
             f"/api/ask/jobs/{ask_job.job_id}",
+        ]:
+            with urlopen(f"http://{host}:{port}{route}", timeout=5) as response:
+                assert response.status == 200
+                response.read()
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+    assert workspace_fingerprint(root) == before
+
+
+def test_ui_browser_http_routes_do_not_mutate_workspace(monkeypatch) -> None:
+    from tests.test_ui_browser_api import seed_browser_catalog
+
+    forbid_runtime_work(monkeypatch)
+    root = make_workspace()
+    seed_browser_catalog(root)
+    before = workspace_fingerprint(root)
+    server, thread = start_test_server(root)
+    host, port = server.server_address
+    try:
+        for route in [
+            "/api/sources/src_pdf",
+            "/api/pages/concept:fruit",
+            "/api/evidence/claims?query=storage",
+            "/api/evidence/claims/clm_pdf",
+            "/api/evidence/relationships?claim_id=clm_pdf",
         ]:
             with urlopen(f"http://{host}:{port}{route}", timeout=5) as response:
                 assert response.status == 200
