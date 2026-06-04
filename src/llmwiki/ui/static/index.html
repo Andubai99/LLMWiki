@@ -1,0 +1,437 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>LLMWiki 工作台</title>
+    <link rel="stylesheet" href="/static/styles.css">
+  </head>
+  <body>
+    <main id="dashboard-root">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">本地工作区</p>
+          <h1>LLMWiki 工作台</h1>
+          <p id="workspace-root" class="muted">正在加载工作区...</p>
+        </div>
+        <button id="refresh-button" type="button" title="刷新工作台数据">刷新</button>
+      </header>
+
+      <section class="status-strip" aria-label="工作区摘要">
+        <article class="metric">
+          <span class="label">状态</span>
+          <strong id="status-value">加载中</strong>
+        </article>
+        <article class="metric">
+          <span class="label">资料源</span>
+          <strong id="sources-count">0</strong>
+        </article>
+        <article class="metric">
+          <span class="label">声明</span>
+          <strong id="claims-count">0</strong>
+        </article>
+        <article class="metric">
+          <span class="label">页面</span>
+          <strong id="pages-count">0</strong>
+        </article>
+        <article class="metric">
+          <span class="label">最近运行</span>
+          <strong id="latest-run">无</strong>
+        </article>
+      </section>
+
+      <section class="config-grid" aria-label="配置状态">
+        <article>
+          <h2>LLM</h2>
+          <p id="llm-status">加载中</p>
+        </article>
+        <article>
+          <h2>Embedding</h2>
+          <p id="embedding-status">加载中</p>
+        </article>
+        <article>
+          <h2>解析器</h2>
+          <p id="parser-status">加载中</p>
+        </article>
+        <article>
+          <h2>向量索引</h2>
+          <p id="vector-status">加载中</p>
+        </article>
+      </section>
+
+      <section class="warnings-panel" aria-label="警告">
+        <h2>警告</h2>
+        <ul id="warnings-list">
+          <li class="muted">尚未加载警告。</li>
+        </ul>
+      </section>
+
+      <section class="action-section" aria-label="资料源库">
+        <div class="section-heading">
+          <h2>资料源库</h2>
+          <span id="add-source-status" class="muted">就绪</span>
+        </div>
+        <form id="add-source-form" class="source-form">
+          <label for="source-input">资料源路径或 URL</label>
+          <div class="source-form-row">
+            <input id="source-input" name="source" type="text" autocomplete="off" placeholder="docs/papers/example.pdf">
+            <select id="parser-select" name="parser" aria-label="PDF 解析器">
+              <option value="">默认</option>
+              <option value="auto">auto</option>
+              <option value="pypdf">pypdf</option>
+              <option value="mineru">mineru</option>
+            </select>
+            <button id="add-source-button" type="submit">添加资料源</button>
+          </div>
+        </form>
+        <div id="active-job-strip" class="active-job-strip muted">没有运行中的任务。</div>
+      </section>
+
+      <section class="action-section research-section" aria-label="研究问答">
+        <div class="section-heading">
+          <h2>研究问答</h2>
+          <span id="ask-status" class="muted">就绪</span>
+        </div>
+        <form id="ask-form" class="ask-form">
+          <label for="ask-question">问题</label>
+          <textarea id="ask-question" name="question" rows="4" placeholder="这个工作区里有哪些本地证据？"></textarea>
+          <div class="ask-form-row">
+            <label>
+              数量上限
+              <input id="ask-limit" name="limit" type="number" min="1" max="20" value="8">
+            </label>
+            <label>
+              资料源
+              <input id="ask-source-id" name="source_id" type="text" autocomplete="off" placeholder="可选 source_id">
+            </label>
+            <label>
+              页面类型
+              <input id="ask-page-type" name="page_type" type="text" autocomplete="off" placeholder="可选">
+            </label>
+            <label>
+              置信状态
+              <select id="ask-confidence" name="confidence">
+                <option value="">任意</option>
+                <option value="cited">cited</option>
+                <option value="weak">weak</option>
+              </select>
+            </label>
+            <button id="ask-button" type="submit">提问</button>
+          </div>
+        </form>
+      </section>
+
+      <section id="answer-panel" class="data-section" aria-label="回答">
+        <div class="section-heading">
+          <h2>回答</h2>
+          <span id="answer-status" class="muted">暂无回答。</span>
+        </div>
+        <p id="answer-text" class="answer-text muted">提交问题后会显示基于本地证据的回答。</p>
+        <h3>分析</h3>
+        <p id="analysis-text" class="answer-text muted">暂无分析。</p>
+        <div class="answer-columns">
+          <div>
+            <h3>警告</h3>
+            <ul id="answer-warnings" class="compact-list"></ul>
+          </div>
+          <div>
+            <h3>不确定性</h3>
+            <ul id="answer-uncertainties" class="compact-list"></ul>
+          </div>
+          <div>
+            <h3>冲突</h3>
+            <ul id="answer-conflicts" class="compact-list"></ul>
+          </div>
+        </div>
+      </section>
+
+      <section class="data-section" aria-label="检索证据">
+        <div class="section-heading">
+          <h2>检索证据</h2>
+          <span class="muted">仅显示 catalog-backed contexts</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>声明</th>
+                <th>资料源</th>
+                <th>定位符</th>
+                <th>页面</th>
+              </tr>
+            </thead>
+            <tbody id="evidence-table"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="data-section" aria-label="引用">
+        <div class="section-heading">
+          <h2>引用</h2>
+          <span class="muted">回答引用来自检索证据</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>声明</th>
+                <th>资料源</th>
+                <th>定位符</th>
+                <th>页面</th>
+              </tr>
+            </thead>
+            <tbody id="citations-table"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="data-section" aria-label="查询规划诊断">
+        <details id="planning-diagnostics">
+          <summary>查询规划诊断</summary>
+          <pre id="planning-json">暂无查询规划诊断。</pre>
+        </details>
+      </section>
+
+      <section id="synthesis-panel" class="action-section" aria-label="综合写回">
+        <div class="section-heading">
+          <h2>综合预览</h2>
+          <span id="synthesis-status" class="muted">需要先完成一次成功回答。</span>
+        </div>
+        <div class="synthesis-actions">
+          <select id="writeback-mode" aria-label="写回模式">
+            <option value="auto">auto</option>
+            <option value="create">create</option>
+            <option value="update">update</option>
+          </select>
+          <button id="synthesis-preview-button" type="button">生成预览</button>
+          <button id="synthesis-writeback-button" type="button">创建写回草稿</button>
+        </div>
+        <pre id="synthesis-preview-text">暂无综合预览。</pre>
+      </section>
+
+      <section class="data-section browser-section" aria-label="证据浏览">
+        <div class="section-heading">
+          <h2>证据浏览</h2>
+          <span id="claim-browser-count" class="muted">0 行</span>
+        </div>
+        <form id="claim-browser-form" class="browser-form">
+          <div class="browser-form-row">
+            <label>
+              查询
+              <input id="claim-query" name="query" type="text" autocomplete="off" placeholder="声明文本或定位符">
+            </label>
+            <label>
+              资料源
+              <input id="claim-filter-source" name="source_id" type="text" autocomplete="off" placeholder="source_id">
+            </label>
+            <label>
+              页面类型
+              <input id="claim-filter-page-type" name="page_type" type="text" autocomplete="off" placeholder="page_type">
+            </label>
+            <label>
+              置信状态
+              <select id="claim-filter-confidence" name="confidence">
+                <option value="">任意</option>
+                <option value="cited">cited</option>
+                <option value="weak">weak</option>
+              </select>
+            </label>
+            <label>
+              关系
+              <select id="claim-filter-relationship" name="relationship_type">
+                <option value="">任意</option>
+                <option value="supports">supports</option>
+                <option value="contradicts">contradicts</option>
+                <option value="refines">refines</option>
+                <option value="contains">contains</option>
+                <option value="similar_to">similar_to</option>
+              </select>
+            </label>
+            <button id="claim-browser-button" type="submit">筛选</button>
+          </div>
+        </form>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>声明</th>
+                <th>资料源</th>
+                <th>置信状态</th>
+                <th>关系</th>
+                <th>定位符</th>
+              </tr>
+            </thead>
+            <tbody id="claim-browser-table"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="data-section browser-section" aria-label="Wiki 浏览">
+        <div class="section-heading">
+          <h2>Wiki 浏览</h2>
+          <span id="wiki-browser-count" class="muted">0 行</span>
+        </div>
+        <form id="wiki-browser-form" class="browser-form">
+          <div class="wiki-browser-row">
+            <label>
+              查询
+              <input id="wiki-query" name="query" type="text" autocomplete="off" placeholder="页面标题或路径">
+            </label>
+            <label>
+              页面类型
+              <select id="wiki-page-type" name="page_type">
+                <option value="">全部</option>
+                <option value="source">source</option>
+                <option value="concept">concept</option>
+                <option value="entity">entity</option>
+                <option value="synthesis">synthesis</option>
+                <option value="index">index</option>
+              </select>
+            </label>
+            <button id="wiki-browser-button" type="submit">筛选</button>
+          </div>
+        </form>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>页面</th>
+                <th>类型</th>
+                <th>路径</th>
+                <th>声明</th>
+              </tr>
+            </thead>
+            <tbody id="wiki-browser-table"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="browser-detail-panel" class="data-section detail-panel" aria-label="浏览详情">
+        <div class="section-heading">
+          <h2 id="browser-detail-title">声明详情</h2>
+          <span id="browser-detail-status" class="muted">选择一条声明、资料源或页面查看详情。</span>
+        </div>
+        <p class="muted detail-mode-labels">声明详情 / 资料源详情 / 页面详情</p>
+        <div id="browser-detail-meta" class="detail-meta"></div>
+        <pre id="browser-detail-text">暂无详情。</pre>
+        <div class="detail-grid">
+          <div>
+            <h3>关系</h3>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>subject</th>
+                    <th>type</th>
+                    <th>object</th>
+                    <th>evidence</th>
+                  </tr>
+                </thead>
+                <tbody id="browser-relationships-table"></tbody>
+              </table>
+            </div>
+          </div>
+          <div>
+            <h3>相关声明</h3>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>声明</th>
+                    <th>资料源</th>
+                    <th>定位符</th>
+                  </tr>
+                </thead>
+                <tbody id="browser-related-claims-table"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="data-section">
+        <div class="section-heading">
+          <h2>资料源</h2>
+          <span id="sources-table-count" class="muted">0 行</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>资料源</th>
+                <th>类型</th>
+                <th>状态</th>
+                <th>解析器</th>
+                <th>最近运行</th>
+              </tr>
+            </thead>
+            <tbody id="sources-table"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="data-section">
+        <div class="section-heading">
+          <h2>任务</h2>
+          <span id="jobs-table-count" class="muted">0 行</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>任务</th>
+                <th>资料源/问题</th>
+                <th>状态</th>
+                <th>阶段</th>
+                <th>结果</th>
+              </tr>
+            </thead>
+            <tbody id="jobs-table"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="data-section">
+        <div class="section-heading">
+          <h2>最近运行</h2>
+          <span id="runs-table-count" class="muted">0 行</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>运行</th>
+                <th>资料源</th>
+                <th>状态</th>
+                <th>阶段</th>
+                <th>声明</th>
+              </tr>
+            </thead>
+            <tbody id="runs-table"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="data-section">
+        <div class="section-heading">
+          <h2>Wiki 页面</h2>
+          <span id="pages-table-count" class="muted">0 行</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>页面</th>
+                <th>类型</th>
+                <th>路径</th>
+                <th>声明</th>
+              </tr>
+            </thead>
+            <tbody id="pages-table"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+    <script src="/static/app.js"></script>
+  </body>
+</html>

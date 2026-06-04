@@ -197,7 +197,21 @@ def test_docs_describe_v1_commands_and_constraints():
     readme = (root / "README.md").read_text(encoding="utf-8")
     agents = (root / "AGENTS.md").read_text(encoding="utf-8")
 
-    for command in ("init", "add", "ingest", "review", "apply", "query", "retrieve", "ask", "lint", "doctor"):
+    for command in (
+        "init",
+        "add",
+        "ingest",
+        "review",
+        "apply",
+        "query",
+        "retrieve",
+        "ask",
+        "lint",
+        "doctor",
+        "clean",
+        "ui",
+        "corpus",
+    ):
         assert f"llmwiki {command}" in readme
     assert "--json" in readme
     assert "--format prompt" in readme
@@ -209,12 +223,48 @@ def test_docs_describe_v1_commands_and_constraints():
     assert "Synthesis planning output is not evidence" in readme
     assert "V2.9.2 PDF Quality" in readme
     assert "V2.9.3 PDF Ingest Robustness" in readme
+    assert "V2.9.4 Parser Backend And MinerU Adapter" in readme
+    assert "V2.9.5 MinerU Auto Parser Notes" in readme
+    assert "V2.9.6 MinerU Operational Hardening" in readme
     assert "sources/metadata/" in readme
+    assert "sources/parser-artifacts/" in readme
     assert "page/block locators" in readme
+    assert "llmwiki parsers status --root ." in readme
+    assert "V3.1 Local UI" in readme
+    assert "read-only dashboard" in readme
+    assert "V3.2 Source Library" in readme
+    assert "POST /api/sources/add" in readme
+    assert "state/ui-jobs/" in readme
+    assert "schema_version=\"ui.v3.4\"" in readme
+    assert "V3.3 Ask And Synthesis UI" in readme
+    assert "POST /api/ask" in readme
+    assert "POST /api/ask/<job-id>/synthesis/preview" in readme
+    assert "POST /api/ask/<job-id>/synthesis/writeback" in readme
+    assert "ui_job.v3.3" in readme
+    assert "V3.4 Evidence And Wiki Browser" in readme
+    assert "GET /api/evidence/claims/<claim-id>" in readme
+    assert "V4.1 Corpus Import Queue" in readme
+    assert "llmwiki corpus import docs/papers --root . --dry-run" in readme
+    assert "state/corpus-batches/" in readme
+    assert "URL batch import is out of scope" in readme
+    assert "V4.2 Paper Identity And Corpus Inventory" in readme
+    assert "llmwiki corpus inventory --root . --json" in readme
+    assert "corpus_inventory.v4.2" in readme
+    assert "paper_identity.v4.2" in readme
+    assert "V4.3 Metric And Result Claim Extraction" in readme
+    assert "metric-results.jsonl" in readme
+    assert "state/catalog.sqlite metric_results" in readme
+    assert "does not add `llmwiki metric timeline`" in readme
+    assert "page markdown 是页面文本，不是 formal evidence" in readme
     assert "llmwiki eval pdf-quality --root ." in readme
+    assert "defaults to `auto`" in readme
+    assert "tries MinerU first" in readme
+    assert "mineru_command_source" in readme
+    assert "parser_backend_attempts" in readme
     assert "content_role=\"ignored\"" in readme
     assert "JSON repair" in readme
     assert "formal alias" in readme
+    assert "Parser backend output is not wiki knowledge" in readme
     assert "tests/evals/retrieval_v2_9_1_pdf_foundation.jsonl" in readme
     assert "RAG/Agent evidence layer" in readme
     assert "LLM Provider" in readme
@@ -263,12 +313,48 @@ def test_docs_describe_v1_commands_and_constraints():
     assert "page/block locators" in agents
     assert "PDF chunk boundaries are deterministic" in agents
     assert "`llmwiki eval pdf-quality` is local" in agents
+    assert "PDF parser backends produce source artifacts, not wiki knowledge" in agents
+    assert "defaults PDF parsing to `auto`" in agents
+    assert "Explicit `--parser mineru` is strict" in agents
+    assert "Parser artifacts must not be returned as retrieval evidence" in agents
+    assert "The LLM must not choose parser backend" in agents
+    assert "`llmwiki parsers status` is read-only" in agents
+    assert "workspace `.venv`" in agents
+    assert "parser_backend_attempts" in agents
+    assert "Parser attempt diagnostics are not evidence" in agents
+    assert "llmwiki clean --root ." in agents
+    assert "`llmwiki ui` starts a local dashboard" in agents
+    assert "UI GET/status endpoints must not call LLM providers" in agents
+    assert "POST /api/sources/add" in agents
+    assert "POST /api/ask" in agents
+    assert "create_synthesis_run" in agents
+    assert "state/ui-jobs/" in agents
+    assert "V3.4 UI adds these read-only browser endpoints" in agents
+    assert "Only catalog-backed claims and catalog relationships count as evidence" in agents
+    assert "V3.4 UI supports single-source add jobs, ask/synthesis jobs, and read-only Evidence/Wiki Browser" in agents
+    assert "Corpus Import Queue Rules" in agents
+    assert "llmwiki corpus import" in agents
+    assert "state/corpus-batches/" in agents
+    assert "corpus_batch.v4.1" in agents
+    assert "Failed corpus items must not invalidate successful items" in agents
+    assert "llmwiki corpus inventory" in agents
+    assert "corpus_inventory.v4.2" in agents
+    assert "paper_identity.v4.2" in agents
+    assert "paper_id` defaults to `source_id" in agents
+    assert "duplicate warnings must not merge, delete, overwrite" in agents
+    assert "V4.3 metric/result claim extraction" in agents
+    assert "metric_result_claim.v4.3" in agents
+    assert "staging/<run-id>/metric-results.jsonl" in agents
+    assert "catalog `metric_results` table" in agents
+    assert "Weak, ambiguous, unsupported, invalid-locator" in agents
+    assert "full 20-paper corpus" in agents
+    assert "--scope generated" in agents
     assert "PDF source aliases must not include parser-created aliases or paper title aliases" in agents
     assert "LLM repair may only repair JSON syntax" in agents
     assert "content_role=\"ignored\"" in agents
     assert "MinerU" in agents
     assert "vector" in agents
-    assert "Web UI" in agents
+    assert "V3.4 local Source Library, Ask/Synthesis UI, and read-only Evidence/Wiki Browser are allowed" in agents
 
 
 def test_gitignore_excludes_virtualenv_and_python_caches():
@@ -294,9 +380,13 @@ def test_gitignore_excludes_generated_workspace_content():
         "!sources/blocks/.gitkeep",
         "sources/chunks/*",
         "!sources/chunks/.gitkeep",
+        "sources/parser-artifacts/*",
+        "!sources/parser-artifacts/.gitkeep",
         "staging/*",
         "!staging/.gitkeep",
         "state/*.sqlite",
+        "state/corpus-batches/",
+        "state/ui-jobs/",
         "wiki/sources/*.md",
         "wiki/concepts/*.md",
         "wiki/entities/*.md",

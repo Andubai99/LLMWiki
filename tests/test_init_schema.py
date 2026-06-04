@@ -42,6 +42,7 @@ def test_init_creates_workspace_files_and_schema():
         "links",
         "relationships",
         "ingest_runs",
+        "metric_results",
     }.issubset(table_names(db_path))
 
     assert table_columns(db_path, "sources") == [
@@ -61,6 +62,37 @@ def test_init_creates_workspace_files_and_schema():
         "relationship_type",
         "evidence_claim_id",
         "source_id",
+    ]
+    assert table_columns(db_path, "metric_results") == [
+        "result_id",
+        "schema_version",
+        "claim_id",
+        "source_id",
+        "paper_id",
+        "claim_text",
+        "citation_locator",
+        "confidence_status",
+        "evidence_block_ids",
+        "evidence_pages",
+        "evidence_section_path",
+        "evidence_block_roles",
+        "extraction_origin",
+        "method",
+        "dataset",
+        "task",
+        "metric_name",
+        "metric_value",
+        "metric_unit",
+        "metric_raw_value",
+        "metric_direction",
+        "baseline",
+        "comparison_value",
+        "setting",
+        "reported_year",
+        "is_main_result",
+        "value_normalization_status",
+        "warnings",
+        "created_at",
     ]
 
 

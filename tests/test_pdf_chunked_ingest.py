@@ -9,10 +9,10 @@ from typing import Any
 import pytest
 
 from llmwiki.cli import main
-from llmwiki.llm_ingest import create_llm_ingest_proposal
-from llmwiki.pdf_blocks import load_blocks_jsonl
+from llmwiki.llm_ingest import create_llm_ingest_proposal, render_chunk_evidence
+from llmwiki.pdf_blocks import SourceBlock, load_blocks_jsonl
 from llmwiki.providers.base import LLMProviderError
-from llmwiki.source_chunks import load_chunks_jsonl
+from llmwiki.source_chunks import SourceChunk, load_chunks_jsonl
 from llmwiki.sources import import_source
 from tests.helpers import make_workspace
 
@@ -521,6 +521,9 @@ def test_pdf_add_exposes_parse_diagnostics_in_staging_and_source_page(monkeypatc
     manifest = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
     assert manifest["source_parse_schema"] == "source_block.v2.9.2"
     assert manifest["source_chunk_schema"] == "source_chunk.v2.9.2"
+    assert manifest["parser_backend"] == "pypdf"
+    assert manifest["parser_artifact_count"] == 0
+    assert "structured_block_counts" in manifest
     assert manifest["title_quality"]["selected_source"] in {"metadata", "block"}
     assert manifest["parser_quality"]["page_count"] == 1
     assert manifest["page_count"] == 1
@@ -535,6 +538,7 @@ def test_pdf_add_exposes_parse_diagnostics_in_staging_and_source_page(monkeypatc
     assert "- page_count: 1" in triage
     assert "- metadata_path: `sources/metadata/" in triage
     assert "- chunks_path: `sources/chunks/" in triage
+    assert "- parser_backend: `pypdf`" in triage
 
     proposal = json.loads((run_dir / "llm-proposal.json").read_text(encoding="utf-8"))
     raw_content = json.loads(proposal["content"])
@@ -549,4 +553,36 @@ def test_pdf_add_exposes_parse_diagnostics_in_staging_and_source_page(monkeypatc
     assert f"- metadata_path: `sources/metadata/{source_id}.json`" in source_page
     assert f"- blocks_path: `sources/blocks/{source_id}.jsonl`" in source_page
     assert f"- chunks_path: `sources/chunks/{source_id}.jsonl`" in source_page
+    assert "- parser_backend: `pypdf`" in source_page
     assert "page:1;block:" in source_page
+
+
+def test_render_chunk_evidence_includes_structured_payloads():
+    block = SourceBlock(
+        source_id="src_pdf",
+        block_id="src_pdf_p001_b0001",
+        block_type="table",
+        page_start=1,
+        page_end=1,
+        order=1,
+        text_raw="Table 1",
+        text_clean="Table 1: Results.",
+        content_role="table_like",
+        table_markdown="| Metric | Value |",
+    )
+    chunk = SourceChunk(
+        source_id="src_pdf",
+        chunk_id="src_pdf_c0001",
+        chunk_type="section_claim_extraction",
+        block_ids=[block.block_id],
+        context_block_ids=[],
+        section_path=[],
+        page_start=1,
+        page_end=1,
+        token_estimate=10,
+    )
+
+    evidence = render_chunk_evidence(chunk, {block.block_id: block})
+
+    assert "Table 1: Results." in evidence
+    assert "| Metric | Value |" in evidence

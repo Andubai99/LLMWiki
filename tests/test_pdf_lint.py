@@ -247,3 +247,154 @@ def test_lint_reports_invalid_sidecar_schema_and_parser_warning_threshold(capsys
     assert "pdf invalid sidecar schema: 1" in out
     assert "pdf high parser warnings: 1" in out
     assert "pdf low content block ratio: 1" in out
+
+
+def test_lint_reports_unknown_parser_backend_and_missing_artifact(capsys):
+    root = make_workspace()
+    assert main(["init", "--root", str(root)]) == 0
+    source_id = seed_pdf_source(root)
+    write_pdf_sidecars(root, source_id)
+    metadata_path = root / "sources" / "metadata" / f"{source_id}.json"
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    metadata["parser_backend"] = "unknown-parser"
+    metadata["parser_artifact_paths"] = ["sources/parser-artifacts/src_pdf/missing.json"]
+    metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+    capsys.readouterr()
+
+    assert main(["lint", "--root", str(root)]) == 1
+    out = capsys.readouterr().out
+
+    assert "pdf unknown parser backends: 1" in out
+    assert "pdf missing parser artifacts: 1" in out
+
+
+def test_lint_reports_missing_mineru_content_list_and_secret_parser_snippet(capsys):
+    root = make_workspace()
+    assert main(["init", "--root", str(root)]) == 0
+    source_id = seed_pdf_source(root)
+    write_pdf_sidecars(root, source_id)
+    metadata_path = root / "sources" / "metadata" / f"{source_id}.json"
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    metadata["parser_backend"] = "mineru"
+    metadata["parser_content_list_path"] = "sources/parser-artifacts/src_pdf/missing/content_list.json"
+    metadata["parser_command_stdout_snippet"] = "sk-should-not-be-stored"
+    metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+    capsys.readouterr()
+
+    assert main(["lint", "--root", str(root)]) == 1
+    out = capsys.readouterr().out
+
+    assert "pdf missing parser content lists: 1" in out
+    assert "pdf parser secret snippets: 1" in out
+
+
+def test_lint_reports_auto_fallback_missing_attempt_diagnostics(capsys):
+    root = make_workspace()
+    assert main(["init", "--root", str(root)]) == 0
+    source_id = seed_pdf_source(root)
+    write_pdf_sidecars(root, source_id)
+    metadata_path = root / "sources" / "metadata" / f"{source_id}.json"
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    metadata["parser_backend"] = "pypdf"
+    metadata["parser_backend_fallback_from"] = "mineru"
+    metadata["parser_backend_fallback_reason"] = "MinerU parser failed; falling back to pypdf"
+    metadata["parser_backend_attempts"] = []
+    metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+    capsys.readouterr()
+
+    assert main(["lint", "--root", str(root)]) == 1
+    out = capsys.readouterr().out
+
+    assert "pdf auto fallback missing attempt diagnostics: 1" in out
+
+
+def test_lint_reports_secret_parser_attempt_snippet(capsys):
+    root = make_workspace()
+    assert main(["init", "--root", str(root)]) == 0
+    source_id = seed_pdf_source(root)
+    write_pdf_sidecars(root, source_id)
+    metadata_path = root / "sources" / "metadata" / f"{source_id}.json"
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    metadata["parser_backend_attempts"] = [
+        {
+            "backend": "mineru",
+            "status": "failed",
+            "command_invoked": True,
+            "command": ["mineru"],
+            "command_source": "PATH",
+            "returncode": 1,
+            "timed_out": False,
+            "duration_seconds": 0.1,
+            "stdout_snippet": "ok",
+            "stderr_snippet": "api_key=should-not-be-stored",
+            "content_list_candidates": [],
+            "content_list_discovery_count": 0,
+            "failure_stage": "command",
+            "failure_reason": "failed",
+            "warnings": [],
+        }
+    ]
+    metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+    capsys.readouterr()
+
+    assert main(["lint", "--root", str(root)]) == 1
+    out = capsys.readouterr().out
+
+    assert "pdf parser secret snippets: 1" in out
+
+
+def test_lint_reports_ignored_blocks_in_chunks(capsys):
+    root = make_workspace()
+    assert main(["init", "--root", str(root)]) == 0
+    source_id = seed_pdf_source(root)
+    write_pdf_sidecars(root, source_id)
+    blocks_path = root / "sources" / "blocks" / f"{source_id}.jsonl"
+    blocks_path.write_text(
+        json.dumps(
+            {
+                "schema_version": "source_block.v2.9.2",
+                "source_id": source_id,
+                "block_id": "src_pdf_p001_b0001",
+                "block_type": "header",
+                "page_start": 1,
+                "page_end": 1,
+                "order": 1,
+                "text_raw": "Header",
+                "text_clean": "Header",
+                "section_path": [],
+                "warnings": [],
+                "content_role": "ignored",
+                "cleaning_operations": [],
+                "quality_flags": [],
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    chunks_path = root / "sources" / "chunks" / f"{source_id}.jsonl"
+    chunks_path.write_text(
+        json.dumps(
+            {
+                "schema_version": "source_chunk.v2.9.2",
+                "source_id": source_id,
+                "chunk_id": "src_pdf_c0001",
+                "chunk_type": "section_claim_extraction",
+                "block_ids": ["src_pdf_p001_b0001"],
+                "context_block_ids": [],
+                "section_path": [],
+                "page_start": 1,
+                "page_end": 1,
+                "token_estimate": 1,
+                "warnings": [],
+                "diagnostics": {},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    capsys.readouterr()
+
+    assert main(["lint", "--root", str(root)]) == 1
+    out = capsys.readouterr().out
+
+    assert "pdf ignored blocks in chunks: 1" in out

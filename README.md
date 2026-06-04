@@ -1,100 +1,362 @@
 # LLM Wiki
 
-## V2.7.1 Retrieval Fix Notes
+LLM Wiki 是一个本地优先、source-backed 的研究 wiki 编译器。它不是自由笔记文件夹，而是把资料导入、解析、LLM 抽取、staging 校验、Markdown wiki 生成、SQLite catalog 索引、检索问答和 synthesis 写回串起来的知识工作流。
 
-V2.7.1 refines evidence selection without adding domain-specific rules. The selector now uses generic modes: `focused`, `comparison`, `conflict`, and `broad`. A focused single-subject question should not force unrelated source diversity when enough cited evidence exists for the dominant subject; comparison and conflict questions still preserve multi-source coverage and explicit `contradicts` visibility.
+核心原则：
 
-Planner filter validation remains strict. Invalid values such as `confidence = "high"` are not silently mapped to `cited`; `ask` may request one schema repair from the configured LLM, and the repaired plan must use only allowed filter values.
+- 原始资料保留在 `sources/raw/`，导入后不应被修改。
+- LLM 不能直接写正式 `wiki/` 页面。
+- 所有候选知识变化先进入 `staging/<run-id>/`。
+- 只有通过安全校验的 `apply` 才能写入 `wiki/`、`wiki/index.md`、`wiki/log.md` 和 `state/catalog.sqlite`。
+- 每条正式 claim 必须能追溯到 source locator。Markdown/text 使用 `line:N`，PDF 使用 page/block locators，例如 `page:1;block:src_xxx_p001_b0004;section:Abstract`。
+- `weak/uncited` evidence 必须保留可见，但不能升级成强结论。
+- `contradicts` 只表示 source-backed claims 之间的真实 disagreement。否定句、限制句、提醒句本身不是 contradiction。
 
-LLM ingest normalizes locator-backed claims before staging. A claim with a valid `line:N` locator is treated as `cited`; claims without a valid locator remain weak/uncited and cannot become formal conclusions.
+## 快速开始
 
-## V2.8 Synthesis Quality Notes
+安装：
 
-`llmwiki ask --writeback` now plans synthesis writeback before applying it. The plan decides whether to create a new synthesis page, update an existing synthesis page, or stop with `needs_review` when multiple targets are plausible. The plan is inspectable in CLI output, JSON output, and `staging/<run-id>/synthesis-plan.json`.
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -e ".[dev]"
+```
+
+如果只运行 CLI，可以使用：
+
+```powershell
+python -m pip install -e .
+```
+
+初始化工作区：
 
 ```bash
-llmwiki ask "RAG 为什么需要引用锚点？" --root . --preview-writeback
-llmwiki ask "RAG 为什么需要引用锚点？" --root . --writeback
-llmwiki ask "RAG 为什么需要引用锚点？" --root . --writeback --writeback-mode update
+llmwiki init --root .
 ```
 
-`--preview-writeback` is read-only: it answers the question and shows the proposed synthesis structure without creating staging runs, wiki pages, or catalog rows. `--writeback` is explicit approval to apply the validated synthesis plan through staging/apply.
+配置 API Key：
 
-Synthesis pages are living wiki pages, not saved chat transcripts. V2.8 pages use `Scope`, `Current Answer`, `Evidence Map`, `Analysis`, `Conflicts And Limits`, `Open Questions`, `Related Pages`, and `Revision History`. Repeated questions about the same topic should update the same synthesis page instead of creating near-duplicates.
-
-Synthesis planning output is not evidence. Evidence maps may only cite existing catalog claims with real `claim_id`, `source_id`, `citation_locator`, and `page_path`. Synthesis writeback does not create derived formal claims; `claims.jsonl` remains empty for synthesis runs.
-
-## V2.9.3 PDF Ingest Robustness
-
-PDF chunk ingest and PDF consolidation now get one schema-aware JSON repair attempt when the configured LLM returns malformed JSON. The repair step can only repair JSON syntax/shape; it cannot create evidence, invent block ids, add citations, or bypass staging validation. If repair still fails, the source fails safely with a sanitized diagnostic.
-
-Malformed LLM JSON is not persisted. `llm-proposal.json`, `run.json`, `triage.md`, and `review --detail` record repair counts and sanitized repair events, but they do not store API keys, `config/api-keys.toml`, full prompts, or the raw malformed response.
-
-For PDF source pages, the paper title is title metadata, not a formal alias. The source page formal alias list only keeps the `source_id`; retrieval still matches the paper through `sources.title` and `pages.title`. `llmwiki eval pdf-quality` and `llmwiki lint` report source-title alias collisions, parser-created aliases, identity overlaps, and observed JSON repair counts.
-
-## V2.9.2 PDF Quality Notes
-
-Text PDFs are now parsed into source metadata, stable blocks, and deterministic chunks before LLM ingest. Generated sidecars live under `sources/metadata/`, `sources/blocks/`, and `sources/chunks/`; these files are local generated artifacts and are ignored by Git like `sources/raw/` and `sources/normalized/`.
-
-PDF normalized Markdown is rendered from blocks and uses block anchors such as:
-
-```markdown
-<!-- block:src_xxx_p001_b0004; page:1; type:abstract; section:Abstract -->
+```powershell
+Copy-Item config\api-keys.example.toml config\api-keys.toml
+notepad config\api-keys.toml
 ```
 
-PDF claims must cite page/block locators, for example `page:1;block:src_xxx_p001_b0004;section:Abstract`. A bare `line:N` locator is still valid for Markdown/text sources, but it is not enough for PDF claims. `llmwiki lint` reports parser-marker titles, missing PDF sidecars, missing page/block locators, invalid block references, extraction warnings, title quality issues, invalid sidecar schemas, high parser warning counts, low content-block ratios, and parser-created aliases.
+`config/api-keys.toml` 是本地忽略文件，不要提交。示例：
 
-V2.9.2 adds a local parser-quality layer. PDF sidecars now use `source_metadata.v2.9.2`, `source_block.v2.9.2`, and `source_chunk.v2.9.2`. Metadata records title candidates, paper identity, and parser quality; blocks keep raw and cleaned text plus `content_role`, `cleaning_operations`, and `quality_flags`. Repeated headers, footers, page numbers, and other `content_role="ignored"` blocks remain in sidecars for auditability but are excluded from normalized body text and chunk claim prompts.
+```toml
+[llm]
+api_key = "你的 DeepSeek API Key"
+
+[embedding]
+api_key = "你的 DashScope Embedding API Key"
+```
+
+测试 LLM Provider：
 
 ```bash
-llmwiki eval pdf-quality --root .
-llmwiki eval pdf-quality --root . --json
+llmwiki llm-test --root .
 ```
 
-`llmwiki eval pdf-quality` is deterministic and read-only. It reads catalog and PDF sidecars, reports title pass rate, sidecar completeness, block locator validity, content block ratio, and parser-created alias counts, and does not call LLM, embedding, network, or write workspace files.
-
-V2.9.2 still uses `pypdf` only. MinerU, OCR for scanned PDFs, structured table extraction, figure caption extraction, and equation object extraction are deferred to later rich parsing work.
-
-## Retrieval Layer v2.7（混合本地检索 + 向量召回 + reranking）
-
-`llmwiki retrieve` 是外部 RAG 系统、Agent 和 LLM prompt 调用 LLMWiki 的稳定证据接口。它从本地 SQLite catalog 检索 source-backed claims，并返回 citation、page path、relationship type、score、retrieval reasons 和 warning。这个命令使用确定性的混合本地检索，不会调用外部 LLM API。
-
-V2.4 的本地检索信号包括 SQLite FTS/BM25、catalog title/alias/source title、one-hop graph relationship、exact formula/symbol span，并用 RRF 做融合排序。V2.6 在此基础上增加本地可重建 vector index：当 `[embedding].enabled = true` 且 `state/embeddings/` 已存在时，`retrieve` 会调用 embedding provider 生成 query vector，把 vector candidates 作为另一个召回信号参与 RRF。vector 只能帮助召回候选，最终返回的 evidence 仍必须映射回 catalog 中真实存在的 `claim_id`、`source_id`、`citation_locator` 和 `page_path`。
-V2.7 在召回候选之后增加 reranking 和 evidence selection。默认 reranker 使用本地 embedding/vector index；如果 index、key 或 provider 不可用，会自动退回 deterministic reranker。selector 会控制多 source 覆盖、去重、weak evidence 和 explicit `contradicts` 暴露。reranker/selector 只处理 catalog-backed candidates，不是新的 evidence 来源，也不能伪造 claim、source、page、locator 或 relationship。
-
-如果 vector index 缺失、过期、维度不匹配或 query embedding 调用失败，`retrieve` 会回退到 BM25/catalog/exact/graph 检索，并在 diagnostics/warnings 中暴露原因。它会做 Unicode-aware normalization，尽量保留中文、多语种、公式、符号和 emoji 查询特征。
-
-面向工具的 JSON 输出：
+导入资料并生成 wiki：
 
 ```bash
-llmwiki retrieve "RAG 为什么需要引用锚点？" --root . --json
+llmwiki add docs/example.md --root .
+llmwiki add docs/papers/example.pdf --root .
 ```
 
-面向 LLM 的 prompt 输出：
+提问：
 
 ```bash
-llmwiki retrieve "RAG 为什么需要引用锚点？" --root . --format prompt
+llmwiki ask "这个资料说明了什么？" --root .
 ```
 
-常用过滤参数：
+预览或写回 synthesis：
 
 ```bash
-llmwiki retrieve "retrieval citation anchors" --root . --json --limit 5
-llmwiki retrieve "retrieval citation anchors" --root . --json --source-id src_xxx
-llmwiki retrieve "retrieval citation anchors" --root . --json --page-type concept
-llmwiki retrieve "retrieval citation anchors" --root . --json --confidence cited
+llmwiki ask "这个资料说明了什么？" --root . --preview-writeback
+llmwiki ask "这个资料说明了什么？" --root . --writeback
+llmwiki ask "这个资料说明了什么？" --root . --writeback --writeback-mode update
 ```
 
-Python API：
+检索 evidence：
+
+```bash
+llmwiki retrieve "retrieval citation anchors" --root . --json
+llmwiki retrieve "retrieval citation anchors" --root . --format prompt
+llmwiki query "retrieval citation anchors" --root .
+```
+
+维护检查：
+
+```bash
+llmwiki lint --root .
+llmwiki doctor --root .
+llmwiki clean --root .
+llmwiki clean --root . --scope all
+```
+
+本地只读 dashboard：
+
+```bash
+llmwiki ui --root .
+llmwiki ui --root . --no-open --port 8765
+```
+
+## 工作区结构
+
+- `config/config.toml`：工作区主配置。
+- `config/api-keys.example.toml`：API key 示例，可提交。
+- `config/api-keys.toml`：本地 API key，已被 `.gitignore` 忽略。
+- `sources/raw/`：原始 Markdown、文本 PDF、纯文本和网页快照。
+- `sources/normalized/`：规范化 Markdown，包含 line/page/block anchors。
+- `sources/metadata/`：PDF metadata sidecars，本地生成态，不提交。
+- `sources/blocks/`：PDF block JSONL sidecars，本地生成态，不提交。
+- `sources/chunks/`：PDF chunk JSONL sidecars，本地生成态，不提交。
+- `sources/parser-artifacts/`：MinerU 等 parser backend 的原生产物，本地生成态，不提交。
+- `staging/<run-id>/`：候选 claims、triage、patches、LLM proposal 和 run manifest。
+- `state/catalog.sqlite`：可重建 catalog 缓存。
+- `state/embeddings/`：可重建本地 vector index 缓存。
+- `wiki/sources/`：source 摘要页。
+- `wiki/concepts/`：concept 页面。
+- `wiki/entities/`：entity 页面。
+- `wiki/syntheses/`：synthesis 页面。
+- `wiki/index.md`：wiki 索引。
+- `wiki/log.md`：append-only apply 日志。
+- `llmwiki/`：CLI 和核心实现。
+- `tests/`：测试、fixtures 和 eval datasets。
+
+## 正常数据流
+
+`llmwiki add <source> --root .` 是正常资料导入入口：
+
+1. 复制资料到 `sources/raw/`。
+2. 生成 `sources/normalized/`。
+3. 对 PDF 生成 metadata、blocks、chunks sidecars。
+4. 调用配置好的 LLM 做 ingest。
+5. 生成 `staging/<run-id>/claims.jsonl`、`triage.md`、`llm-proposal.json`、`run.json` 和 `patches/`。
+6. 运行安全校验。
+7. apply 到 `wiki/` 和 `state/catalog.sqlite`。
+
+`run.json` 会记录 `proposal_engine=llm`、provider、model 和 `trigger=add`。PDF source 还会记录 `source_parse_schema`、`source_chunk_schema`、page/block/chunk counts、sidecar paths、parser backend diagnostics 和 `parser_backend_attempts`。
+
+`llm-proposal.json` 保存 LLM Ingest Proposal 的调试信息，但不能包含 API key、完整敏感 prompt 或未脱敏日志。
+
+## CLI 命令
+
+### 正常命令
+
+```bash
+llmwiki init --root .
+llmwiki add docs/example.md --root .
+llmwiki ask "问题" --root .
+llmwiki retrieve "问题" --root . --json
+llmwiki query "问题" --root .
+llmwiki lint --root .
+llmwiki doctor --root .
+llmwiki clean --root .
+llmwiki ui --root .
+```
+
+`llmwiki ask` 会先调用 LLM query planning，再使用本地 retrieve 从 wiki/catalog 检索证据，最后只基于 retrieved evidence 生成 grounded answer。默认不写回 wiki。
+
+`llmwiki retrieve` 是外部 RAG 系统、Agent 和 LLM prompt 的标准 evidence API。`llmwiki query` 是同一路径的人类可读输出，不维护另一套弱检索。
+
+`llmwiki clean --root .` 默认只清理测试缓存和临时验收工作区；`llmwiki clean --root . --scope generated` 清理生成态 source/wiki/staging/state/vector cache；`--scope all` 同时清理两类内容。`--dry-run` 可先预览将删除的路径。该命令会保留 `.gitkeep`、`config/api-keys.toml`、`docs/papers/`、`.venv/` 和用户资料。
+
+## V3.1 Local UI
+
+`llmwiki ui --root .` 启动绑定 `127.0.0.1` 的本地 read-only dashboard。它直接读取 workspace skeleton、catalog、staging runs、PDF sidecars、parser 状态、LLM/embedding 配置状态和 vector index 状态，用于快速判断当前 workspace 是否 ready、有哪些 sources、最近 runs 和 wiki pages。
+
+V3.1 UI 只提供观察面，不提供操作面。Dashboard/API 不执行 `add`、`ingest`、`apply`、`ask`、`lint`、`eval`、`clean`，不运行 LLM、embedding provider、MinerU 文档解析或 PDF parser，也不写 `wiki/`、`staging/`、`sources/`、`state/catalog.sqlite` 或 `state/embeddings/`。
+
+UI API 包括：
+
+```text
+/api/status
+/api/sources
+/api/runs
+/api/pages
+/api/config
+```
+
+当前 UI 响应使用 `schema_version="ui.v3.4"`，并且只报告 API key 是否存在，不返回 API key 值、`config/api-keys.toml` 内容、raw prompt、raw LLM response 或完整 parser logs。
+
+## V3.2 Source Library
+
+V3.2 在 `llmwiki ui --root .` 中增加 Source Library。用户可以在 dashboard 中提交一个 source path 或 URL，UI 会创建 `add_source` job，并在 Jobs 表中展示 `pending`、`running`、`applied`、`failed`、`interrupted` 状态。Job state 是 generated local state，位于 `state/ui-jobs/`，schema 为 `ui_job.v3.2`。
+
+V3.2 唯一可写 UI endpoint 是 `POST /api/sources/add`。它要求 `/api/session` 返回的本进程 `X-LLMWiki-UI-Token`，只负责校验输入、写入 UI job，并由 FIFO worker 顺序调用现有 `add_and_process_source(...)` pipeline。UI 层不得直接写正式 `wiki/` 或 `state/catalog.sqlite`；formal knowledge 仍必须通过 source import、LLM ingest、staging validation 和 apply。
+
+V3.2 只支持单个 source path/URL。批量/目录导入、retry/cancel、claim browser 和细粒度 parser/LLM/apply progress 留给后续 V3/V4 spec。
+
+## V3.3 Ask And Synthesis UI
+
+V3.3 在 `llmwiki ui --root .` 中增加 Ask And Synthesis UI。用户可以在本地 dashboard 中提交问题，UI 会创建 `ask_question` job，由 FIFO worker 调用既有 `answer_question(...)`，并展示 answer、analysis、citations、retrieved evidence、warnings、uncertainties、conflicts 和 query planning diagnostics。
+
+V3.3 新增 token-protected endpoints：
+
+```text
+POST /api/ask
+GET /api/ask/jobs
+GET /api/ask/jobs/<job-id>
+POST /api/ask/<job-id>/synthesis/preview
+POST /api/ask/<job-id>/synthesis/writeback
+```
+
+Synthesis preview 是只读的：它只调用 synthesis planner，生成 preview job，不创建 staging，不写 `wiki/`、`sources/`、`state/catalog.sqlite`。Synthesis writeback 必须由用户显式触发，并且只通过现有 `create_synthesis_run(...)` staging/apply 路径执行。Planner output 和 synthesis plan output 都不是 evidence；UI 中的 Retrieved Evidence 和 Citations 只显示 catalog-backed claims。
+
+V3.3 job state 仍位于 `state/ui-jobs/`，schema 为 `ui_job.v3.3`。`POST /api/sources/add`、`POST /api/ask`、synthesis preview/writeback 都要求本进程 `X-LLMWiki-UI-Token`。GET endpoints 仍保持只读。
+
+## V3.4 Evidence And Wiki Browser
+
+V3.4 在 `llmwiki ui --root .` 中增加只读 Evidence/Wiki Browser。用户可以从 Ask citations 或 retrieved evidence 跳转到 claim detail，检查 `claim_id`、`source_id`、`page_id`、`citation_locator`、`confidence_status` 和 `relationship_type`，也可以浏览 source/concept/entity/synthesis/index 页面。
+
+V3.4 新增 read-only GET endpoints：
+
+```text
+GET /api/sources/<source-id>
+GET /api/pages/<page-id>
+GET /api/evidence/claims
+GET /api/evidence/claims/<claim-id>
+GET /api/evidence/relationships
+```
+
+这些 GET endpoints 只读取 catalog、catalog-referenced wiki markdown、`sources/metadata/`、`sources/blocks/`、`sources/chunks/` 和 UI job summaries。它们不得调用 LLM、embedding provider、MinerU、PDF parser、retrieve、ask、synthesis、add/ingest/apply、lint/eval/clean，也不得写 `wiki/`、`sources/`、`staging/`、`state/catalog.sqlite`、`state/embeddings/` 或 `state/ui-jobs/`。
+
+V3.4 中 page markdown 是页面文本，不是 formal evidence。只有 catalog-backed claims 和 catalog relationships 是 evidence；synthesis markdown 段落不会被升级为 claims。Markdown/text `line:N` 和 PDF `page:N;block:<block-id>` locator 可显示 bounded context；unsupported locator、missing sidecar、malformed sidecar 只产生 warning，不伪造证据。
+
+## V4.1 Corpus Import Queue
+
+V4.1 新增 CLI-first 的语料导入队列，用于把同领域论文或资料按顺序批量交给现有 `add_and_process_source(...)` pipeline。它只做 batch orchestration，不改变 ingest、staging、apply 语义，不新增 UI，也不做 metric/result extraction。
+
+常用命令：
+
+```bash
+llmwiki corpus import docs/papers --root . --dry-run
+llmwiki corpus import docs/papers --root . --recursive --parser auto
+llmwiki corpus status --root .
+llmwiki corpus status <batch-id> --root . --json
+llmwiki corpus retry <batch-id> --root . --failed-only
+llmwiki corpus skip <batch-id> <item-id-or-path> --root . --reason "out of scope"
+```
+
+Batch state 是 generated cache，位于 `state/corpus-batches/`：
+
+```text
+state/corpus-batches/<batch-id>/batch.json
+state/corpus-batches/<batch-id>/items.jsonl
+state/corpus-batches/<batch-id>/attempts.jsonl
+state/corpus-batches/<batch-id>/events.jsonl
+```
+
+`corpus import --dry-run` 和 `corpus status` 是只读操作，不调用 LLM、parser、add/apply，也不写 `state/corpus-batches/`。真实 `corpus import` / `corpus retry` 只通过现有 `add_and_process_source(...)` 写正式知识；corpus layer 不直接写 `wiki/`、`staging/`、`sources/` 或 `state/catalog.sqlite`。URL batch import is out of scope；URL 仍使用单源 `llmwiki add`。
+
+## V4.2 Paper Identity And Corpus Inventory
+
+V4.2 新增只读语料清单命令，用于从本地 catalog、PDF metadata sidecars、normalized source 和 V4.1 batch state 汇总论文身份：
+
+```bash
+llmwiki corpus inventory --root .
+llmwiki corpus inventory --root . --json
+```
+
+JSON 输出使用 `schema_version="corpus_inventory.v4.2"`，每个 paper item 使用 `schema_version="paper_identity.v4.2"`。第一版不新增 catalog 表，`paper_id` 默认等于 `source_id`。
+
+Inventory 会报告 title、authors、year、DOI、arXiv id、parser backend、source/page path、applied run status 和 duplicate warnings。DOI/arXiv/year 只从本地可审计文本确定；缺失或 malformed metadata 会显示 warning，不伪造字段。`corpus inventory` 不调用 LLM、embedding、MinerU/parser、add/ingest/apply、ask/synthesis、lint/eval/clean，也不写 `wiki/`、`sources/`、`staging/`、`state/catalog.sqlite`、`state/corpus-batches/` 或 `state/embeddings/`。
+
+## V4.3 Metric And Result Claim Extraction
+
+V4.3 extends PDF ingest with structured metric/result claim extraction for research papers. Formal `claims` remain the evidence source of truth; every durable result row must reference a real `claim_id`, `source_id`, and citation locator.
+
+V4.3 writes review-time result metadata to:
+
+```text
+staging/<run-id>/metric-results.jsonl
+```
+
+After `llmwiki apply <run-id>`, cited applied result records are persisted to the catalog table:
+
+```text
+state/catalog.sqlite metric_results
+```
+
+`metric_results` is a structured query surface for later V4.4 metric timelines. It is not a replacement for `claims`, and parser artifacts/logs/diagnostics are not evidence. V4.3 does not add UI, does not add `llmwiki metric timeline`, and does not add a relationship classifier.
+
+V4.3 real acceptance must use the configured real LLM provider on a declared `docs/papers/` subset followed by the full 20-paper corpus. Generated acceptance workspaces, raw prompts, raw LLM responses, parser logs, parser artifacts, catalogs, staging files, wiki output, and API keys must not be committed.
+
+### Internal/debug 命令
+
+```bash
+llmwiki ingest <source-id> --root .
+llmwiki review <run-id> --root .
+llmwiki review <run-id> --detail --root .
+llmwiki review <run-id> --patches --root .
+llmwiki apply <run-id> --root .
+```
+
+这些命令用于内部调试和恢复。正常用户不需要手工运行 `ingest/review/apply`。
+
+review/apply v2 状态包括 `staged`、`reviewed`、`applied`。`review` 是只读检查命令；`apply` 会做安全校验并在更新已有页面前写入 `backups`。
+
+### Embeddings 命令
+
+```bash
+llmwiki embeddings status --root .
+llmwiki embeddings test --root . --text "草莓应该怎么保存？"
+llmwiki embeddings rebuild --root . --batch-size 16
+```
+
+`embeddings rebuild` 从 catalog 构建 claim/page/source title chunks，调用 embedding provider，并写入 `state/embeddings/`。这是可重建缓存，不是 durable knowledge。
+
+### Parser 命令
+
+```bash
+llmwiki parsers status --root .
+llmwiki parsers status --root . --json
+```
+
+`llmwiki parsers status` 是只读环境检查。它不会解析 PDF，不调用 LLM，不调用 embedding provider，不运行 MinerU 文档解析，也不写 workspace。
+
+## LLM Provider
+
+LLM Provider 读取 `config/config.toml` 的 `[llm]`：
+
+```toml
+[llm]
+enabled = true
+provider = "openai"
+model = "deepseek-v4-flash"
+base_url = "https://api.deepseek.com"
+api_key_file = "config/api-keys.toml"
+timeout_seconds = 60
+```
+
+`config/api-keys.toml` 中的 `[llm].api_key` 才是真实密钥位置。不要把密钥写进 `config/config.toml`、README、测试、源码、日志、staging artifact 或提交历史。
+
+代码层统一接口是：
 
 ```python
-from pathlib import Path
-from llmwiki.retrieval import retrieve_context
-
-context = retrieve_context(Path("."), "RAG 为什么需要引用锚点？", limit=8)
+provider.complete(messages, schema=None)
 ```
 
-JSON schema 会保持稳定，便于外部程序直接解析：
+当传入 `schema` 时，会要求 JSON object 输出，但仍需要项目自己的 schema validation 和 repair。
+
+## Retrieval Layer v2.7
+
+`llmwiki retrieve` 是 RAG/Agent evidence layer。它返回本地 catalog 中真实存在的 claims、citations、page paths、relationships、scores、retrieval reasons、reranking diagnostics 和 selection diagnostics。
+
+检索信号包括：
+
+- SQLite FTS/BM25。
+- catalog title、alias、source title matching。
+- one-hop graph relationships。
+- exact formula/symbol spans。
+- V2.6 local vector recall。
+- RRF fusion。
+- V2.7 reranking。
+- V2.7 evidence selection。
+
+JSON 示例：
 
 ```json
 {
@@ -128,18 +390,7 @@ JSON schema 会保持稳定，便于外部程序直接解析：
     "returned_count": 0,
     "failure_stage": null,
     "query_features": {},
-    "retrievers": {
-      "vector": {
-        "enabled": true,
-        "index_present": false,
-        "query_embedded": false,
-        "candidate_count": 0,
-        "provider": "dashscope_multimodal",
-        "model": "tongyi-embedding-vision-flash-2026-03-06",
-        "dimension": 768,
-        "failure_stage": "missing_index"
-      }
-    },
+    "retrievers": {},
     "fusion": {},
     "reranking": {},
     "selection": {}
@@ -147,79 +398,129 @@ JSON schema 会保持稳定，便于外部程序直接解析：
 }
 ```
 
-作为 RAG/Agent evidence layer，LLMWiki 应该在生成前被调用。调用方把返回的 evidence 交给模型，并要求回答中的关键结论引用 `source_id + citation_locator`。如果 `warnings` 提示证据不足、weak/uncited claim 或 `contradicts` relationship，模型应暴露这种不确定性，而不是编造答案。
+Python API：
 
-`contradicts` 表示 source-backed claims 之间存在真实 disagreement。否定句、提醒句、限制句本身不是矛盾，例如“不建议多吃”“不需要提前清洗”这类 claim 会作为普通 evidence 保留，不会因为包含否定词自动变成 `contradicts` relationship。`retrieve` 只暴露 catalog 中已有的 relationships，不负责从文本关键词判断矛盾。
+```python
+from pathlib import Path
+from llmwiki.retrieval import retrieve_context
 
-当前检索限制：V2.7 有本地 JSONL vector index 和 reranker/evidence selector，但没有外部 hosted vector DB、默认 chat LLM reranker 或 vector-only answer generation。`retrieve`、`query`、`eval retrieval` 不调用 chat LLM；在 embedding 启用且本地 index 存在时，它们可能调用 embedding provider 做 query embedding。LLM query planning 只接入 `ask`。`query` 是 `retrieve` 的人类可读输出，不另起一套弱检索。
+context = retrieve_context(Path("."), "RAG 为什么需要引用锚点？", limit=8)
+```
 
-## Retrieval Evaluation v2.3+（检索评测）
+`retrieve/query/eval retrieval` 默认不调用 chat LLM。启用 embedding 且存在本地 vector index 时，它们可能调用 embedding provider 生成 query embedding；失败时会 fallback 并给出 warning。
 
-`llmwiki eval retrieval` 是开发和质量检查命令，用 committed JSONL 数据集评测当前检索层的召回、排序、证据契约和失败阶段。它默认不调用 LLM，不写 `wiki/`、`staging/`、`sources/` 或 catalog，只读取本地 workspace。
+## Retrieval Evaluation
+
+`llmwiki eval retrieval` 是检索改造的质量检查命令：
 
 ```bash
 llmwiki eval retrieval --root . --dataset tests/evals/retrieval_v2_3.jsonl
-llmwiki eval retrieval --root . --dataset tests/evals/retrieval_v2_3.jsonl --json
 llmwiki eval retrieval --root . --dataset tests/evals/retrieval_v2_4_fruits.jsonl
 llmwiki eval retrieval --root . --dataset tests/evals/retrieval_v2_6_semantic_fruits.jsonl
 llmwiki eval retrieval --root . --dataset tests/evals/retrieval_v2_7_evidence_selection_fruits.jsonl
 llmwiki eval retrieval --root . --dataset tests/evals/retrieval_v2_9_1_pdf_foundation.jsonl
 ```
 
-评测输出包含 `hit@5`、`recall@5`、`precision@5`、`MRR`、`nDCG@5`、`MAP@5`、coverage、source diversity、redundancy rate、selected conflict exposure 和 weak evidence visibility，并继续包含 LLMWiki 特有的 `claim_id_validity`、`source_id_validity`、`citation_locator_presence`、`page_path_validity`、`relationship_validity` 和 `contradiction_exposure_rate`。
+它读本地 catalog 和 committed JSONL 数据集，不调用 LLM，不写 `wiki/`、`staging/`、`sources/` 或 catalog。
 
-V2.3 建立了测量层；V2.4 在此基础上替换为混合本地检索；V2.6 增加 vector diagnostics 和语义检索回归数据；V2.7 增加 reranking/evidence selection 质量指标。后续修改检索、query planning、vector search 或 reranker 前后，都应该运行该 eval 命令并比较结果。
+指标包括 hit@5、recall@5、precision@5、MRR、nDCG@5、MAP@5、coverage、source diversity、redundancy rate、selected conflict exposure、weak evidence visibility，以及 claim/source/page/locator/relationship validity。
 
-## LLM Provider v1
+## Ask + Query Planning + Synthesis
 
-LLM Provider 层用于让 LLMWiki 调用真实 LLM。当前默认启用 DeepSeek OpenAI-compatible API，主配置来自 `config/config.toml` 的 `[llm]`：
+`llmwiki ask` 的流程：
 
-```toml
-[llm]
-enabled = true
-provider = "openai"
-model = "deepseek-v4-flash"
-base_url = "https://api.deepseek.com"
-api_key_file = "config/api-keys.toml"
-timeout_seconds = 60
+```text
+question
+-> LLM query planner
+-> local retrieve_context
+-> grounded answer LLM
+-> optional synthesis writeback
 ```
 
-API Key 必须放在本地专用配置文件 `config/api-keys.toml` 中。这个文件已被 `.gitignore` 忽略，不能提交到仓库、代码、README、测试文件或日志。仓库只提交示例文件 `config/api-keys.example.toml`：
+Planner output is not evidence。它只能提供 intent、entities、concepts、subqueries、filters 和 required evidence 描述。`claim_id`、`source_id`、`citation_locator`、`page_path`、relationship 和 score 只能来自本地 catalog/retrieve。
 
-```powershell
-Copy-Item config\api-keys.example.toml config\api-keys.toml
-notepad config\api-keys.toml
+Synthesis planning output is not evidence。Evidence map 只能引用已有 catalog claims。
+
+Synthesis pages are living wiki pages，不是聊天记录归档。V2.8 synthesis 页面包含：
+
+- `Scope`
+- `Current Answer`
+- `Evidence Map`
+- `Analysis`
+- `Conflicts And Limits`
+- `Open Questions`
+- `Related Pages`
+- `Revision History`
+
+重复问题应更新已有 synthesis 页面，而不是创建近重复页面。
+
+## PDF 解析
+
+### V2.9.2 PDF Quality
+
+文本 PDF 会被解析为 metadata、blocks、chunks：
+
+- `sources/metadata/<source_id>.json`
+- `sources/blocks/<source_id>.jsonl`
+- `sources/chunks/<source_id>.jsonl`
+
+PDF normalized Markdown 从 blocks 渲染，使用稳定 block anchors：
+
+```markdown
+<!-- block:src_xxx_p001_b0004; page:1; type:abstract; section:Abstract -->
 ```
 
-`config/api-keys.toml` 格式如下：
+PDF claims 必须使用 page/block locators。裸 `line:N` 对 Markdown/text 仍有效，但不能作为 PDF claim 的正式引用。
 
-```toml
-[llm]
-api_key = "你的真实 DeepSeek API Key"
+`content_role="ignored"` 的 blocks 会保留在 sidecar 里用于审计，但不会进入 normalized body 或 LLM chunk claim-extraction prompts。
 
-[embedding]
-api_key = "你的真实 DashScope Embedding API Key"
+```bash
+llmwiki eval pdf-quality --root .
+llmwiki eval pdf-quality --root . --json
 ```
 
-设置后可以测试 provider：
+`llmwiki eval pdf-quality` 是 deterministic、read-only、no-LLM、no-embedding、no-network、no-MinerU-execution 的质量检查。
 
-```powershell
-llmwiki llm-test --root .
-```
+### V2.9.3 PDF Ingest Robustness
 
-`llmwiki llm-test --root .` 会读取 `[llm]` 配置并真实调用 DeepSeek API，输出 provider、model、base_url、`real_call=true` 和返回内容摘要，但不会输出 API Key。可临时覆盖模型、base URL 或超时：
+PDF chunk ingest 和 consolidation 有一次 schema-aware JSON repair。JSON repair 只能修复 JSON syntax/shape，不能创建 evidence、block ids、locators、claims 或 citations。
 
-```powershell
-llmwiki llm-test --root . --model deepseek-v4-flash --base-url https://api.deepseek.com --timeout 60
-```
+Malformed LLM JSON 不会持久化。`llm-proposal.json`、`run.json`、`triage.md` 和 `review --detail` 只记录 repair counts 和脱敏 repair events。
 
-代码层统一接口是 `provider.complete(messages, schema=None)`，其中 `messages` 使用 OpenAI Chat Completions 风格。provider 默认请求 `thinking = {type = "disabled"}`，避免普通抽取任务进入长推理路径；当传入 `schema` 时会请求 `response_format = {"type": "json_object"}`，但不声称强制执行完整 JSON Schema。
+PDF source title 是 metadata，不是 formal alias。source page 的 formal alias 只保留 `source_id`；论文标题通过 `sources.title` 和 `pages.title` 被检索。
 
-本阶段只建立真实 LLM 调用层。LLM 输出不得直接修改正式 wiki 页面；正常导入由 `llmwiki add` 自动生成 staging、执行安全验证、再通过 `apply` 写入 wiki/catalog。当前没有 mock provider，也没有 no-network 测试路径。
+### V2.9.4 Parser Backend And MinerU Adapter
 
-## Embeddings + Vector Store v2.6
+PDF import 有 parser backend 边界。Parser backend output is not wiki knowledge。MinerU 的 tables、formulas、images、captions 和 layout data 可以被规范化为 LLMWiki blocks/chunks，但只有经过 LLM ingest 抽取、带合法 page/block locator 的 catalog claims 才是 evidence。
 
-V2.6 增加独立的 `[embedding]` 配置和 DashScope multimodal embedding provider。默认模型是 `tongyi-embedding-vision-flash-2026-03-06`，使用 DashScope 原生 multimodal endpoint，不使用 OpenAI-compatible `/embeddings` endpoint。
+V2.9.4 不实现 scanned PDF OCR、table cell-level evidence、figure understanding、equation semantic interpretation、新数据库表或 `page_type="paper"`。
+
+### V2.9.5 MinerU Auto Parser Notes
+
+PDF parser defaults to `auto`。当 MinerU 可用且启用时，`llmwiki add <pdf> --root .` tries MinerU first；如果 MinerU 不可用或失败，auto 会 fallback 到 `pypdf` 并记录可见 warning。
+
+显式 `--parser mineru` 是 strict，失败时不 fallback。显式 `--parser pypdf` 是 debug/fallback path，会跳过 MinerU。
+
+### V2.9.6 MinerU Operational Hardening
+
+`llmwiki parsers status --root . --json` 输出 `parser_status.v2.9.6`，包含 `mineru_command_source`。
+
+命令发现顺序：
+
+1. 显式配置的 command path。
+2. PATH。
+3. workspace `.venv`。
+4. repo `.venv`。
+
+它不会修改 PATH，不会自动安装 MinerU。
+
+当 auto 先尝试 MinerU 后 fallback 到 pypdf，PDF metadata 会记录 `parser_backend_attempts`：失败的 MinerU attempt 和成功的 pypdf attempt。它们会出现在 `run.json`、`triage.md`、source pages、`llmwiki lint` 和 `llmwiki eval pdf-quality` 中，但只是 diagnostics，不是 evidence。
+
+Parser stdout/stderr snippets 必须 bounded and secret-safe。API key、`config/api-keys.toml`、完整 parser logs 和 backend-native artifacts 都不能提交。
+
+## Embeddings + Vector Store
+
+V2.6 增加 `[embedding]` 配置和 DashScope multimodal embedding provider：
 
 ```toml
 [embedding]
@@ -232,253 +533,42 @@ dimension = 768
 timeout_seconds = 60
 ```
 
-embedding key 只放在本地忽略文件 `config/api-keys.toml` 的 `[embedding].api_key`。不要写入 `config/config.toml`、README、测试、日志或 staging artifact。
+Vector retrieval 是召回信号，不是 evidence 来源。命中的 vector chunk 必须映射回真实 catalog claim，才能进入 `retrieve/query/ask` 输出。
 
-```bash
-llmwiki embeddings test --root . --text "草莓应该怎么保存？"
-llmwiki embeddings rebuild --root . --batch-size 16
-llmwiki embeddings status --root .
-```
+## Obsidian 和 Git
 
-`embeddings rebuild` 会从 catalog 构建 claim/page/source title chunks，调用 embedding provider，并把可重建缓存写到 `state/embeddings/manifest.json`、`chunks.jsonl`、`vectors.jsonl`。这些文件不是 durable knowledge，已被 `.gitignore` 忽略，可以随时删除后重建。
-
-vector retrieval 是召回信号，不是证据来源。向量相似度命中的 chunk 必须先映射回 catalog 中真实 claim，才能进入 `retrieve/query/ask` 返回结果；answer citation 仍然只能引用 retrieved claim ids、source ids 和 locators。
-
-## Reranking + Evidence Selection v2.7
-
-V2.7 在 hybrid/vector recall 后增加 reranking 和 evidence selection。默认配置如下：
-
-```toml
-[reranking]
-enabled = true
-default_method = "embedding"
-fallback_method = "deterministic"
-candidate_pool_limit = 80
-max_contexts_per_source = 3
-llm_reranker_enabled = false
-```
-
-embedding reranker 使用本地 `state/embeddings/` 中的 claim vectors 和 query embedding 重新排序；如果 index、key、provider 或维度不可用，会退回 deterministic reranker。selector 会在最终 `contexts` 中控制多 source 覆盖、去重、weak/uncited 可见性和 explicit `contradicts` 暴露。reranker/selector 不能创建新 evidence，返回的 citation 仍然只能来自 catalog。
-
-## LLM Ingest Proposal v1
-
-`llmwiki add <source> --root .` 现在是正常资料导入入口。它会导入并 normalize source，然后调用真实 DeepSeek API，让 LLM 参与 claim 抽取、source summary、concept/entity proposal、duplicate/conflict candidates 生成。LLM 的输出仍然只能先写入 `staging/<run-id>/`：
-
-```text
-staging/<run-id>/
-  claims.jsonl
-  triage.md
-  llm-proposal.json
-  run.json
-  patches/
-```
-
-`run.json` 会记录 `proposal_engine=llm`、provider、model 和 `trigger=add`；PDF source 还会记录 `source_parse_schema`、`source_chunk_schema`、page/block/chunk counts 和 sidecar paths。`triage.md` 会包含 `## LLM Proposal` 调试信息；PDF run 还会包含 `## PDF Parse Diagnostics`。`add` 不会让 LLM 直接写正式 `wiki/`，也不会在 ingest 阶段修改 `sources/raw/`。只有内部 `apply` 安全校验通过后，候选 patch 才能落入正式 wiki 和 SQLite catalog。
-
-LLM claims 必须带有效 source locator。Markdown/text source 使用合法 `line:N` locator；PDF source 使用合法 `page:N;block:<block_id>` locator。没有合法 locator 的 claim 会被标记为 weak/uncited，不能进入正式 patch 结论。内部/调试场景仍可直接运行 `llmwiki ingest <source-id> --root .`。需要运行旧的规则化 ingest 时，可以在工作区 `config/config.toml` 中设置：
-
-V2.5.1 禁用自动关键词/否定词矛盾检测。LLM 或人工提出的 conflict candidate 会保留在 triage/open questions 中，只有能够被验证为真实 source-backed claim disagreement 的内容才应成为正式 `contradicts` relationship。
-
-```toml
-[llm]
-enabled = false
-```
-
-## Ask + Query Planning + Synthesis Writeback v2.5
-
-`llmwiki ask` 是正常问答入口。V2.5 中，它先调用配置好的 LLM 生成结构化 query plan，再把 plan 里的 subqueries 交给本地 `retrieve_context` 从 `wiki/` 和 `state/catalog.sqlite` 检索 evidence，最后只基于 retrieved evidence 调用 LLM 生成 grounded answer。答案必须引用 retrieved claim id、source id 和 citation locator；如果证据不足、存在 weak/uncited evidence 或 `contradicts` relationship，输出必须暴露这种不确定性。
-
-```bash
-llmwiki ask "RAG 为什么需要引用锚点？" --root .
-```
-
-默认情况下，`ask` 只输出答案，不写 wiki。用户确认答案值得保存时，可以显式写回：
-
-```bash
-llmwiki ask "RAG 为什么需要引用锚点？" --root . --writeback
-```
-
-写回会创建 `staging/<run-id>/`，生成 synthesis patch，并通过 `apply` 安全校验后写入 `wiki/syntheses/*.md`、刷新 `wiki/index.md`、追加 `wiki/log.md`、同步 catalog。LLM 不能直接写正式 wiki 页面。
-
-Planner output 不是 evidence。它只能提供 intent、entities、concepts、subqueries、filters 和 required evidence 描述；claim id、source id、citation locator、page path、relationship 和 score 仍只能来自本地 catalog 检索结果。V2.5 不通过领域关键词规则或 term boost 来修补检索。
-
-机器可读输出：
-
-```bash
-llmwiki ask "RAG 为什么需要引用锚点？" --root . --json
-```
-
-`retrieve` 仍然是外部系统使用的稳定 evidence API；`query` 是同一 evidence API 的人类可读输出，不调用 LLM。`eval retrieval` 也保持本地确定性。
-
-LLM Wiki 是一个本地优先的个人研究库：用 Python CLI 管理资料导入、claim 抽取、staging 审阅、Markdown wiki 落盘和 SQLite 索引。它的定位是 source-backed knowledge compiler，而不是自由笔记文件夹。
-
-核心原则是：`sources/raw/` 下的原始资料不可变；LLM ingest 只能在 `staging/<run-id>/` 里提出候选 claims 和 wiki patch；只有内部 `apply` 安全校验通过后，内容才能写入 `wiki/` 并同步 `state/catalog.sqlite`。
-
-## 目录结构
-
-- `config/config.toml`：工作区主配置。
-- `config/api-keys.example.toml`：API key 配置示例，可提交。
-- `config/api-keys.toml`：本地 API key 配置，已被 `.gitignore` 忽略，不应提交。
-- `sources/raw/`：原始 Markdown、文本 PDF、纯文本和网页快照。
-- `sources/normalized/`：带行号、页码或段落锚点的规范化 Markdown。
-- `sources/metadata/`：V2.9.2 PDF metadata sidecars，本地生成态，不提交。
-- `sources/blocks/`：V2.9.2 PDF block JSONL sidecars，本地生成态，不提交。
-- `sources/chunks/`：V2.9.2 PDF chunk JSONL sidecars，本地生成态，不提交。
-- `state/catalog.sqlite`：可重建的索引和审计缓存，保存 source、claim、alias、page、link、relationship、ingest run。
-- `state/embeddings/`：V2.6 本地可重建 vector index 缓存，不提交。
-- `wiki/index.md`：wiki 入口索引。
-- `wiki/log.md`：append-only apply 日志。
-- `wiki/sources/`：单篇资料摘要页。
-- `wiki/concepts/`：概念页。
-- `wiki/entities/`：实体页。
-- `wiki/syntheses/`：综合分析页。
-- `staging/<run-id>/`：每次 ingest 的 `triage.md`、`claims.jsonl` 和 `patches/`。
-- `llmwiki/`：CLI 和核心实现。
-- `tests/`：自动化测试和回归样例。
-
-## 安装
-
-需要 Python 3.10 或更高版本。在仓库根目录执行：
-
-```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install -e ".[dev]"
-```
-
-后续本项目的开发、测试和运行都应先激活 `.venv`，再执行 `llmwiki`、`pytest`、`doctor`、`lint` 或其他项目命令。`.[dev]` 会安装运行依赖和测试依赖；如果只运行 CLI，可以使用 `python -m pip install -e .`。
-
-第一版只使用小型依赖集合。`pypdf` 用于文本 PDF 抽取；`pytest` 是开发/测试依赖；扫描版 PDF OCR 不支持。
-
-## CLI 用法
-
-```bash
-llmwiki init --root .
-```
-
-创建工作区目录、默认配置、agent contract、wiki index/log 和 SQLite schema。
-
-```bash
-llmwiki add tests/fixtures/minimal_source.md --root .
-```
-
-正常导入入口。该命令会把资料复制到 `sources/raw/`，在 `sources/normalized/` 生成带引用锚点的规范化 Markdown，调用 LLM 生成 staging proposal，自动验证并 apply 到 `wiki/` 和 `state/catalog.sqlite`。成功输出会包含 source id、run id、proposal engine、claims、patches、写入页面和 warnings。
-
-重复导入已完成 apply 的同一 source 时，`add` 会直接提示 wiki 已是最新，不创建重复 run 或重复页面。
-
-```bash
-llmwiki ask "retrieval citation anchors" --root .
-```
-
-正常问答入口。该命令只从本地 wiki/catalog 检索 evidence，再调用 LLM 生成带 citations 的 answer；默认不写回 wiki。
-
-```bash
-llmwiki ask "retrieval citation anchors" --root . --writeback
-```
-
-把用户认可的问题结果写回为 synthesis 页面。写回仍然必须经过 `staging/<run-id>/` 和内部 apply 安全校验。
-
-### Advanced/debug commands
-
-```bash
-llmwiki ingest <source-id> --root .
-```
-
-内部/调试命令。先抽取带引用的 claims，再执行简单的 identity/conflict 检查，只写入 `staging/<run-id>/`，不会修改正式 `wiki/`。
-
-```bash
-llmwiki review <run-id> --root .
-```
-
-advanced/debug review/apply v2 中，`review` 是只读检查命令：展示 run_id、source_id、状态、创建时间、claim 数、patch 数、citation 覆盖率、triage 摘要、claims 表、patch 表、新增/更新页面、duplicate candidates、conflict candidates 和 weak/uncited claims。它只读取 `staging/` 和 SQLite，不会修改 `wiki/`、`wiki/index.md`、`wiki/log.md` 或 `state/catalog.sqlite`。
-
-```bash
-llmwiki review <run-id> --detail --root .
-```
-
-展示完整 claims、triage 细节和引用覆盖情况。
-
-```bash
-llmwiki review <run-id> --patches --root .
-```
-
-展示每个候选 Markdown patch 的完整内容，方便在 apply 前审阅页面正文。
-
-```bash
-llmwiki apply <run-id> --root .
-```
-
-内部/调试命令。校验 staged patch 安全性，写入 `wiki/` 下的 Markdown 页面，刷新 `wiki/index.md`，追加 `wiki/log.md`，并同步 SQLite 中的 claims、pages、links、relationships 和 runs。当前实现允许 `staged` 或 `reviewed` 状态进入 apply；正常用户不需要手动运行它。apply 成功后，SQLite 和 staging manifest 中的 run 状态会变为 `applied`。
-
-apply 安全校验包括：
-
-- 只能写入 `wiki/`，不能写入 `sources/raw/` 或 `sources/normalized/`。
-- 不能删除页面，不能重写 `wiki/log.md` 历史。
-- Markdown 必须有合法 frontmatter，包含 `page_type`、`title`、`aliases`、`source_count`、`claim_ids`、`updated_at`。
-- `page_type` 必须是 `source`、`concept`、`entity` 或 `synthesis`。
-- 页面必须包含该类型要求的章节。
-- patch 引用的 `claim_ids` 必须存在于 staging claims 或数据库。
-- 重要内容不能全部来自 weak/uncited claim；没有 cited claim 的 patch 会被拒绝。
-- 目标页已存在时，apply 会先把旧页面写入 `staging/<run-id>/backups/`，再执行更新。第一版采用 recoverable backups，不做语义级合并。
-
-```bash
-llmwiki query "retrieval citation anchors" --root .
-```
-
-复用 `retrieve` 的混合本地检索结果，输出带 `claim_id`、`source_id`、citation locator、page path、relationship type 和 score 的 retrieval context。该命令是确定性的本地上下文命令，不调用外部 LLM API。
-
-```bash
-llmwiki embeddings status --root .
-llmwiki embeddings test --root . --text "草莓应该怎么保存？"
-llmwiki embeddings rebuild --root . --batch-size 16
-```
-
-V2.6 embedding 维护命令。`status` 只读本地配置和 `state/embeddings/`，不调用 provider；`test` 真实调用 embedding provider 一次；`rebuild` 从 catalog 重新生成本地 vector index。输出不会打印 API key。
-
-```bash
-llmwiki lint --root .
-```
-
-检查断链、孤页、重复 alias、无引用 claim、source hash drift、缺 citation 状态，以及 PDF parser sidecar/page-block locator 质量。
-
-lint 是独立维护动作，不属于 `add` 的默认流程。用户可以显式要求 LLM 运行 `llmwiki lint --root .`，或手动运行。lint 会报告已经记录的 `contradicts` relationships；这些记录是审计信息，不会自动让 lint 失败。V2.5.1 不再用 `not`、`不`、`不需要`、`不建议` 这类词面规则推断未处理矛盾。
-
-```bash
-llmwiki doctor --root .
-```
-
-检查 Python、依赖、工作区目录、配置、数据库 schema 和 wiki index/log。
-
-## Obsidian 与 Git
-
-可以在 Obsidian 中打开仓库根目录或 `wiki/` 目录来浏览 Markdown 页面。建议始终用 Git 管理仓库，这样 raw sources、normalized sources、staging review 和已 apply 的 Markdown 历史都可审计。
+可以用 Obsidian 打开仓库根目录或 `wiki/` 目录浏览 Markdown。建议始终使用 Git 管理仓库，这样 raw sources、normalized sources、staging review 和已 apply 的 wiki 历史都可审计。
 
 ## 支持内容
 
 - Markdown 和纯文本资料导入。
-- 可访问 `http`/`https` URL 的网页快照导入。
-- 通过 `pypdf` 导入文本 PDF。
-- 文本 PDF 会生成 metadata/block/chunk sidecars，并以 page/block locator 追踪 claims。
-- 默认通过 OpenAI-compatible provider 调用 DeepSeek 真实 API。
-- `llmwiki add` 自动完成单个资料的导入、LLM ingest、staging 验证和 apply。
-- `llmwiki ask` 使用 LLM query planning 生成 subqueries，再基于本地 evidence 调用 LLM 生成带 citation 的回答。
+- 可访问 HTTP/HTTPS URL 的网页快照导入。
+- 文本 PDF 导入。
+- PDF metadata/block/chunk sidecars。
+- MinerU auto parser backend 和 pypdf fallback。
+- DeepSeek OpenAI-compatible LLM Provider。
+- `llmwiki add` 自动完成导入、LLM ingest、staging validation 和 apply。
+- `llmwiki ask` 使用 LLM query planning + local retrieve + grounded answer。
 - `llmwiki ask --writeback` 通过 staging/apply 生成 synthesis 页面。
-- `llmwiki eval retrieval` 用本地 committed eval 数据集检查 retrieval 质量和 evidence contract。
+- `llmwiki retrieve` / `llmwiki query` 混合检索和 citation-backed evidence。
+- `llmwiki ui` 本地 workspace dashboard、Source Library、Ask UI 和 synthesis preview/writeback UI。
+- `llmwiki eval retrieval` 本地评测检索质量。
 - `llmwiki embeddings test/rebuild/status` 管理本地可重建 vector index。
-- `llmwiki retrieve` / `llmwiki query` 使用混合检索，覆盖 BM25、catalog title/alias、graph relationship、formula/symbol exact match、可选 vector recall，以及 V2.7 reranking/evidence selection。
-- claim-first staging，并为重要 claim 保留引用。
-- weak/uncited claim 可以进入 triage，但不能直接成为正式结论。
-- 生成 source summary、concept 和 entity Markdown 页面。
-- 用 SQLite 索引 source、claim、page、link 和 relationship。
+- claim-first staging。
+- source summary、concept、entity 和 synthesis Markdown 页面。
+- SQLite catalog 索引 source、claim、page、link 和 relationship。
 
 ## 不支持内容 (not supported)
 
-- 外部托管向量数据库或团队级 vector DB 服务。
+- 外部 hosted vector DB 作为默认基础设施。
 - MCP server 集成。
-- Web UI 或 Obsidian 插件。
+- 批量 source import / retry / cancel 的交互式 Web UI。
+- Obsidian plugin。
 - 云同步。
-- 团队权限或多人审阅流程。
+- 团队权限系统。
 - 扫描 PDF OCR。
-- MinerU、表格结构化抽取、图注抽取和公式对象抽取。
-- 自动裁决资料之间的冲突。
-- LLM 直接绕过 staging/apply 修改正式 wiki 页面。
+- table cell-level evidence。
+- figure understanding。
+- equation semantic interpretation。
+- 自动裁决来源冲突。
+- LLM 绕过 staging/apply 直接修改正式 wiki。

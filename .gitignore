@@ -30,12 +30,16 @@ sources/blocks/*
 !sources/blocks/.gitkeep
 sources/chunks/*
 !sources/chunks/.gitkeep
+sources/parser-artifacts/*
+!sources/parser-artifacts/.gitkeep
 
 state/*.sqlite
 state/*.sqlite-*
 state/*.db
 state/*.db-*
+state/corpus-batches/
 state/embeddings/
+state/ui-jobs/
 
 # Staging runs are review workspaces; keep the directory but do not commit runs by default.
 staging/*

@@ -1,0 +1,112 @@
+from __future__ import annotations
+
+from pathlib import Path
+import re
+
+
+STATIC_ROOT = Path("src/llmwiki/ui/static")
+
+
+def read_static(name: str) -> str:
+    return (STATIC_ROOT / name).read_text(encoding="utf-8")
+
+
+def test_index_references_dashboard_assets() -> None:
+    html = read_static("index.html")
+
+    assert 'id="dashboard-root"' in html
+    assert 'id="add-source-form"' in html
+    assert 'id="source-input"' in html
+    assert 'id="parser-select"' in html
+    assert 'id="jobs-table"' in html
+    assert 'id="active-job-strip"' in html
+    assert 'id="ask-form"' in html
+    assert 'id="ask-question"' in html
+    assert 'id="ask-limit"' in html
+    assert 'id="answer-panel"' in html
+    assert 'id="citations-table"' in html
+    assert 'id="evidence-table"' in html
+    assert 'id="planning-diagnostics"' in html
+    assert 'id="synthesis-panel"' in html
+    assert 'id="claim-browser-form"' in html
+    assert 'id="claim-query"' in html
+    assert 'id="claim-browser-table"' in html
+    assert 'id="wiki-browser-form"' in html
+    assert 'id="wiki-browser-table"' in html
+    assert 'id="browser-detail-panel"' in html
+    assert 'id="browser-detail-text"' in html
+    assert 'id="browser-relationships-table"' in html
+    assert "/static/app.js" in html
+    assert "/static/styles.css" in html
+    assert "LLMWiki 工作台" in html
+
+
+def test_index_uses_chinese_dashboard_copy() -> None:
+    html = read_static("index.html")
+
+    for text in (
+        "本地工作区",
+        "资料源库",
+        "研究问答",
+        "综合预览",
+        "检索证据",
+        "证据浏览",
+        "Wiki 浏览",
+        "声明详情",
+        "资料源详情",
+        "页面详情",
+        "引用",
+        "查询规划诊断",
+        "任务",
+        "最近运行",
+        "Wiki 页面",
+    ):
+        assert text in html
+
+
+def test_app_js_fetches_dashboard_api_endpoints() -> None:
+    js = read_static("app.js")
+
+    for endpoint in [
+        "/api/session",
+        "/api/status",
+        "/api/sources",
+        "/api/runs",
+        "/api/pages",
+        "/api/config",
+        "/api/jobs",
+        "/api/sources/add",
+        "/api/ask",
+        "/api/ask/jobs",
+        "/api/evidence/claims",
+        "/api/evidence/relationships",
+        "/api/sources/",
+        "/api/pages/",
+        "/synthesis/preview",
+        "/synthesis/writeback",
+    ]:
+        assert endpoint in js
+    assert "X-LLMWiki-UI-Token" in js
+    assert "setInterval" in js
+    assert "escapeHtml" in js
+    assert "loadClaimDetail" in js
+    assert "loadSourceDetail" in js
+    assert "loadPageDetail" in js
+    assert "data-claim-id" in js
+    assert "综合预览失败" in js
+    assert "暂无警告。" in js
+    assert "无数据。" in js
+
+
+def test_parser_select_contains_supported_options() -> None:
+    html = read_static("index.html")
+
+    for value in ['value=""', 'value="auto"', 'value="pypdf"', 'value="mineru"']:
+        assert value in html
+
+
+def test_static_assets_do_not_embed_secret_markers() -> None:
+    combined = "\n".join(read_static(name) for name in ["index.html", "app.js", "styles.css"])
+
+    assert "config/api-keys.toml" not in combined
+    assert re.search(r"sk-[A-Za-z0-9_-]*\d[A-Za-z0-9_-]{6,}", combined) is None

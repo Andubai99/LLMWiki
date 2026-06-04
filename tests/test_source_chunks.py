@@ -78,6 +78,42 @@ def test_chunker_excludes_ignored_blocks_and_records_diagnostics():
     assert all(chunk.diagnostics["ignored_block_count"] == 2 for chunk in chunks)
 
 
+def test_chunker_counts_structured_blocks_in_diagnostics():
+    blocks = [
+        block(1, "title", "Structured Paper"),
+        SourceBlock(
+            source_id="src_pdf",
+            block_id="src_pdf_p001_b0002",
+            block_type="table",
+            page_start=1,
+            page_end=1,
+            order=2,
+            text_raw="Table 1",
+            text_clean="Table 1",
+            content_role="table_like",
+            table_markdown="| Task | Accuracy |",
+        ),
+        SourceBlock(
+            source_id="src_pdf",
+            block_id="src_pdf_p001_b0003",
+            block_type="equation",
+            page_start=1,
+            page_end=1,
+            order=3,
+            text_raw="E = mc^2",
+            text_clean="E = mc^2",
+            content_role="equation_like",
+            latex="E = mc^2",
+        ),
+    ]
+
+    chunks = build_source_chunks("src_pdf", blocks)
+
+    assert chunks[0].diagnostics["structured_block_count"] == 2
+    assert chunks[0].diagnostics["table_like_block_count"] == 1
+    assert chunks[0].diagnostics["equation_like_block_count"] == 1
+
+
 def test_chunker_splits_long_section_by_paragraph_order():
     blocks = [
         block(1, "title", "Long Paper"),
@@ -134,4 +170,8 @@ def test_v2_9_1_chunks_load_with_default_diagnostics(tmp_path: Path):
         "total_block_count": 0,
         "content_block_count": 0,
         "ignored_block_count": 0,
+        "structured_block_count": 0,
+        "table_like_block_count": 0,
+        "equation_like_block_count": 0,
+        "image_or_caption_block_count": 0,
     }

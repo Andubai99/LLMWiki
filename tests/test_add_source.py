@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+import json
 from pathlib import Path
 
 from llmwiki.cli import main
@@ -12,6 +13,15 @@ def fetch_rows(db_path: Path, sql: str) -> list[sqlite3.Row]:
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
         return conn.execute(sql).fetchall()
+
+
+def force_missing_mineru(root: Path) -> None:
+    config_path = root / "config" / "config.toml"
+    config_path.write_text(
+        config_path.read_text(encoding="utf-8").replace('mineru_command = "mineru"', 'mineru_command = "missing-mineru"'),
+        encoding="utf-8",
+        newline="\n",
+    )
 
 
 def test_import_source_markdown_writes_raw_normalized_and_deduplicates(capsys):
@@ -61,6 +71,7 @@ def test_import_source_markdown_writes_raw_normalized_and_deduplicates(capsys):
 def test_import_pdf_writes_metadata_blocks_and_block_normalized_source(monkeypatch, capsys):
     root = make_workspace()
     assert main(["init", "--root", str(root)]) == 0
+    force_missing_mineru(root)
     capsys.readouterr()
 
     def fake_read_pdf_pages(content: bytes):
@@ -110,6 +121,129 @@ def test_import_pdf_writes_metadata_blocks_and_block_normalized_source(monkeypat
     assert "<!-- block:" in normalized
     assert "<!-- page:1 -->" not in normalized
     assert "# OSWorld: Benchmarking Multimodal Agents" in normalized
+
+
+def test_import_pdf_records_auto_fallback_pypdf_backend(monkeypatch, capsys):
+    root = make_workspace()
+    assert main(["init", "--root", str(root)]) == 0
+    force_missing_mineru(root)
+    capsys.readouterr()
+    monkeypatch.setattr("shutil.which", lambda command: None)
+
+    monkeypatch.setattr(
+        "llmwiki.pdf_blocks.read_pdf_pages",
+        lambda content: ({"title": "Default Backend Paper"}, ["Default Backend Paper\n\nAbstract\nEvidence."]),
+    )
+
+    source = root / "default.pdf"
+    source.write_bytes(b"%PDF fake")
+
+    result = import_source(root, str(source))
+    metadata = json.loads((root / "sources" / "metadata" / f"{result.source_id}.json").read_text(encoding="utf-8"))
+
+    assert metadata["parser_backend"] == "pypdf"
+    assert metadata["parser_backend_fallback_from"] == "mineru"
+    assert "falling back to pypdf" in metadata["parser_backend_fallback_reason"]
+    assert metadata["parser_backend_attempts"][0]["backend"] == "pypdf"
+    assert metadata["parser_backend_attempts"][0]["status"] == "succeeded"
+
+
+def test_import_pdf_auto_uses_mineru_command_and_records_diagnostics(monkeypatch, capsys):
+    root = make_workspace()
+    assert main(["init", "--root", str(root)]) == 0
+    capsys.readouterr()
+    fixture = Path("tests/fixtures/mineru")
+    monkeypatch.setattr("shutil.which", lambda command: "C:/Tools/mineru.exe")
+
+    def fake_run_mineru(request):
+        nested = request.output_root / "paper" / "auto"
+        nested.mkdir(parents=True)
+        content_list = nested / "content_list.json"
+        content_list.write_text((fixture / "content_list.json").read_text(encoding="utf-8"), encoding="utf-8")
+        from llmwiki.mineru_runner import MinerUCommandResult
+
+        return MinerUCommandResult(
+            command=["mineru", "-p", str(request.raw_path), "-o", str(request.output_root)],
+            output_root=request.output_root,
+            returncode=0,
+            duration_seconds=0.5,
+            stdout_snippet="parsed",
+            stderr_snippet="",
+            content_list_candidates=[content_list],
+        )
+
+    monkeypatch.setattr("llmwiki.mineru_runner.run_mineru_command", fake_run_mineru)
+
+    source = root / "auto-mineru.pdf"
+    source.write_bytes(b"%PDF fake")
+
+    result = import_source(root, str(source))
+    metadata = json.loads((root / "sources" / "metadata" / f"{result.source_id}.json").read_text(encoding="utf-8"))
+
+    assert metadata["parser_backend"] == "mineru"
+    assert metadata["parser_command_invoked"] is True
+    assert metadata["parser_command_returncode"] == 0
+    assert metadata["parser_command_stdout_snippet"] == "parsed"
+    assert metadata["parser_content_list_path"].endswith("content_list.json")
+    assert metadata["parser_content_list_discovery_count"] == 1
+    assert metadata["parser_backend_attempts"][0]["backend"] == "mineru"
+    assert metadata["parser_backend_attempts"][0]["status"] == "succeeded"
+
+
+def test_import_pdf_can_use_mineru_fixture_backend(capsys):
+    root = make_workspace()
+    assert main(["init", "--root", str(root)]) == 0
+    capsys.readouterr()
+    source = root / "mineru.pdf"
+    source.write_bytes(b"%PDF fake")
+
+    result = import_source(
+        root,
+        str(source),
+        parser_backend="mineru",
+        parser_output_dir=Path("tests/fixtures/mineru"),
+    )
+
+    metadata = (root / "sources" / "metadata" / f"{result.source_id}.json").read_text(encoding="utf-8")
+    normalized = (root / result.normalized_path).read_text(encoding="utf-8")
+    assert result.title == "MinerU Structured Parsing Paper"
+    assert '"parser_backend": "mineru"' in metadata
+    assert "Table 1: Accuracy by task." in normalized
+    assert "E = mc^2" in normalized
+
+
+def test_import_pdf_explicit_mineru_without_output_or_config_fails(capsys):
+    root = make_workspace()
+    assert main(["init", "--root", str(root)]) == 0
+    force_missing_mineru(root)
+    capsys.readouterr()
+    source = root / "mineru.pdf"
+    source.write_bytes(b"%PDF fake")
+
+    assert main(["add", str(source), "--root", str(root), "--parser", "mineru"]) == 1
+    out = capsys.readouterr().out
+    assert "Add pipeline failed at: import" in out
+    assert "MinerU parser backend is unavailable" in out
+
+
+def test_import_pdf_auto_backend_records_fallback_warning(monkeypatch, capsys):
+    root = make_workspace()
+    assert main(["init", "--root", str(root)]) == 0
+    force_missing_mineru(root)
+    monkeypatch.setattr("shutil.which", lambda command: None)
+    monkeypatch.setattr(
+        "llmwiki.pdf_blocks.read_pdf_pages",
+        lambda content: ({"title": "Fallback Paper"}, ["Fallback Paper\n\nAbstract\nEvidence."]),
+    )
+    source = root / "fallback.pdf"
+    source.write_bytes(b"%PDF fake")
+
+    result = import_source(root, str(source))
+    metadata = (root / "sources" / "metadata" / f"{result.source_id}.json").read_text(encoding="utf-8")
+
+    assert '"parser_backend": "pypdf"' in metadata
+    assert '"parser_backend_fallback_from": "mineru"' in metadata
+    assert "falling back to pypdf" in metadata
 
 
 def test_add_missing_file_returns_nonzero(capsys):

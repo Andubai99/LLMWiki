@@ -28,6 +28,12 @@ def test_init_writes_default_llm_config():
     assert 'default_method = "embedding"' in config
     assert 'fallback_method = "deterministic"' in config
     assert "candidate_pool_limit = 80" in config
+    assert "[pdf_parser]" in config
+    assert 'default_backend = "auto"' in config
+    assert 'fallback_backend = "pypdf"' in config
+    assert "mineru_enabled = true" in config
+    assert 'mineru_command = "mineru"' in config
+    assert 'artifact_dir = "sources/parser-artifacts"' in config
     assert (root / "config" / "api-keys.toml").exists()
     assert (root / "config" / "api-keys.example.toml").exists()
     api_keys = (root / "config" / "api-keys.toml").read_text(encoding="utf-8")
@@ -54,6 +60,12 @@ def test_repository_config_has_default_llm_settings():
     assert 'default_method = "embedding"' in config
     assert 'fallback_method = "deterministic"' in config
     assert "candidate_pool_limit = 80" in config
+    assert "[pdf_parser]" in config
+    assert 'default_backend = "auto"' in config
+    assert 'fallback_backend = "pypdf"' in config
+    assert "mineru_enabled = true" in config
+    assert 'mineru_command = "mineru"' in config
+    assert 'artifact_dir = "sources/parser-artifacts"' in config
     assert "[llm]" in api_keys_example
     assert "api_key" in api_keys_example
     assert "[embedding]" in api_keys_example

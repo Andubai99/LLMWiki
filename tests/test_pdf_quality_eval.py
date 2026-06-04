@@ -18,7 +18,17 @@ def snapshot_files(root: Path) -> dict[str, bytes]:
     }
 
 
+def force_missing_mineru(root: Path) -> None:
+    config_path = root / "config" / "config.toml"
+    config_path.write_text(
+        config_path.read_text(encoding="utf-8").replace('mineru_command = "mineru"', 'mineru_command = "missing-mineru"'),
+        encoding="utf-8",
+        newline="\n",
+    )
+
+
 def seed_pdf_source(root: Path, monkeypatch) -> str:
+    force_missing_mineru(root)
     monkeypatch.setattr(
         "llmwiki.pdf_blocks.read_pdf_pages",
         lambda content: (
@@ -49,6 +59,9 @@ def test_evaluate_pdf_quality_summarizes_pdf_sidecars(monkeypatch, capsys):
     assert summary.title_pass_rate == 1.0
     assert summary.sidecar_completeness == 1.0
     assert summary.block_locator_validity == 1.0
+    assert summary.parser_backend_distribution == {"pypdf": 1}
+    assert summary.backend_artifact_completeness == 1.0
+    assert summary.block_locator_validity_by_backend == {"pypdf": 1.0}
     assert "PDF quality evaluation" in report
     assert "PDF sources: 1" in report
 
@@ -71,7 +84,98 @@ def test_cli_eval_pdf_quality_outputs_json_and_is_read_only(monkeypatch, capsys)
     payload = json.loads(out)
     assert payload["schema_version"] == "eval.pdf_quality.v2.9.2"
     assert payload["pdf_source_count"] == 1
+    assert payload["parser_backend_distribution"] == {"pypdf": 1}
+    assert "backend_artifact_completeness" in payload
     assert before == after
+
+
+def test_evaluate_pdf_quality_reports_parser_backend_structured_counts(capsys):
+    root = make_workspace()
+    assert main(["init", "--root", str(root)]) == 0
+    capsys.readouterr()
+    pdf = root / "mineru.pdf"
+    pdf.write_bytes(b"%PDF fake")
+    import_source(root, str(pdf), parser_backend="mineru", parser_output_dir=Path("tests/fixtures/mineru"))
+
+    payload = evaluate_pdf_quality(root).to_dict()
+
+    assert payload["parser_backend_distribution"] == {"mineru": 1}
+    assert payload["mineru_source_count"] == 1
+    assert payload["pypdf_source_count"] == 0
+    assert payload["structured_block_count"] >= 3
+    assert payload["table_like_block_count"] == 1
+    assert payload["equation_like_block_count"] == 1
+    assert payload["image_or_caption_block_count"] == 1
+    assert payload["block_locator_validity_by_backend"] == {"mineru": 1.0}
+
+
+def test_evaluate_pdf_quality_reports_mineru_command_counters(capsys):
+    root = make_workspace()
+    assert main(["init", "--root", str(root)]) == 0
+    capsys.readouterr()
+    pdf = root / "mineru.pdf"
+    pdf.write_bytes(b"%PDF fake")
+    source_id = import_source(root, str(pdf), parser_backend="mineru", parser_output_dir=Path("tests/fixtures/mineru")).source_id
+    metadata_path = root / "sources" / "metadata" / f"{source_id}.json"
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    metadata["parser_command_invoked"] = True
+    metadata["parser_command_returncode"] = 1
+    metadata["parser_backend_fallback_from"] = "mineru"
+    metadata["parser_backend_fallback_reason"] = "MinerU command timed out"
+    metadata["parser_content_list_path"] = "sources/parser-artifacts/missing/content_list.json"
+    metadata["parser_backend_attempts"] = [
+        {
+            "backend": "mineru",
+            "status": "failed",
+            "command_invoked": True,
+            "command": ["mineru"],
+            "command_source": "PATH",
+            "returncode": -1,
+            "timed_out": True,
+            "duration_seconds": 10.0,
+            "stdout_snippet": "",
+            "stderr_snippet": "timeout",
+            "content_list_candidates": [],
+            "content_list_discovery_count": 0,
+            "failure_stage": "content_list_discovery",
+            "failure_reason": "MinerU content-list output was not found",
+            "warnings": ["MinerU content-list output was not found"],
+        },
+        {
+            "backend": "pypdf",
+            "status": "succeeded",
+            "command_invoked": False,
+            "command": [],
+            "command_source": "",
+            "returncode": None,
+            "timed_out": False,
+            "duration_seconds": None,
+            "stdout_snippet": "",
+            "stderr_snippet": "",
+            "content_list_candidates": [],
+            "content_list_discovery_count": 0,
+            "failure_stage": "",
+            "failure_reason": "",
+            "warnings": [],
+        },
+    ]
+    metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+
+    payload = evaluate_pdf_quality(root).to_dict()
+
+    assert payload["mineru_command_invoked_count"] == 1
+    assert payload["mineru_command_failure_count"] == 1
+    assert payload["mineru_timeout_count"] == 1
+    assert payload["mineru_content_list_missing_count"] == 1
+    assert payload["auto_fallback_count"] == 1
+    assert payload["mineru_command_discovered_count"] == 1
+    assert payload["mineru_command_source_distribution"] == {"PATH": 1}
+    assert payload["mineru_attempt_count"] == 1
+    assert payload["mineru_attempt_failure_count"] == 1
+    assert payload["mineru_attempt_timeout_count"] == 1
+    assert payload["mineru_attempt_missing_content_list_count"] == 1
+    assert payload["auto_fallback_with_attempt_diagnostics_count"] == 1
+    assert payload["auto_fallback_missing_attempt_diagnostics_count"] == 0
 
 
 def test_evaluate_pdf_quality_reports_identity_and_repair_counters(monkeypatch, capsys):

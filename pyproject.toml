@@ -17,4 +17,8 @@ dev = ["pytest>=7"]
 llmwiki = "llmwiki.cli:main"
 
 [tool.setuptools.packages.find]
+where = ["src"]
 include = ["llmwiki*"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]

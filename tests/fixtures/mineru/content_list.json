@@ -1,0 +1,61 @@
+[
+  {
+    "type": "text",
+    "text": "MinerU Structured Parsing Paper",
+    "text_level": 1,
+    "page_idx": 0,
+    "bbox": [10, 20, 300, 40]
+  },
+  {
+    "type": "text",
+    "text": "Abstract",
+    "text_level": 1,
+    "page_idx": 0,
+    "bbox": [10, 60, 120, 80]
+  },
+  {
+    "type": "text",
+    "text": "This paper includes text, tables, equations, and figures.",
+    "page_idx": 0,
+    "bbox": [10, 90, 500, 130]
+  },
+  {
+    "type": "table",
+    "table_caption": ["Table 1: Accuracy by task."],
+    "table_body": "| Task | Accuracy |\n| --- | --- |\n| Web | 72% |",
+    "page_idx": 1,
+    "bbox": [15, 100, 520, 240]
+  },
+  {
+    "type": "equation",
+    "text": "E = mc^2",
+    "latex": "E = mc^2",
+    "page_idx": 1,
+    "bbox": [40, 260, 300, 300]
+  },
+  {
+    "type": "image",
+    "img_path": "images/fig1.png",
+    "caption": ["Figure 1: System overview."],
+    "page_idx": 2,
+    "bbox": [30, 100, 400, 320]
+  },
+  {
+    "type": "header",
+    "text": "MinerU Structured Parsing Paper",
+    "page_idx": 1,
+    "bbox": [10, 5, 400, 20]
+  },
+  {
+    "type": "footer",
+    "text": "Draft",
+    "page_idx": 1,
+    "bbox": [10, 760, 120, 780]
+  },
+  {
+    "type": "page_number",
+    "text": "2",
+    "page_idx": 1,
+    "bbox": [300, 780, 320, 790]
+  }
+]

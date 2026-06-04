@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -135,6 +136,9 @@ def test_review_subprocess_stdout_is_utf8_for_unicode_claims(capsys):
     source_id = import_source(root, str(source)).source_id
     assert main(["ingest", source_id, "--root", str(root)]) == 0
     run_id = capsys.readouterr().out.split("run_id=", 1)[1].splitlines()[0].strip()
+    repo_root = Path(__file__).resolve().parents[1]
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(repo_root / "src")
 
     result = subprocess.run(
         [
@@ -147,7 +151,8 @@ def test_review_subprocess_stdout_is_utf8_for_unicode_claims(capsys):
             "--root",
             str(root),
         ],
-        cwd=Path(__file__).resolve().parents[1],
+        cwd=repo_root,
+        env=env,
         check=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -172,6 +177,98 @@ def test_review_patches_shows_candidate_markdown_content(capsys):
     assert "```markdown" in out
     assert "## Source Metadata" in out
     assert "## Key Claims" in out
+
+
+def test_pdf_mineru_command_diagnostics_surface_in_staging(monkeypatch, capsys):
+    root = make_workspace()
+    assert main(["init", "--root", str(root)]) == 0
+    fixture = Path("tests/fixtures/mineru")
+    monkeypatch.setattr("shutil.which", lambda command: "C:/Tools/mineru.exe")
+
+    def fake_run_mineru(request):
+        nested = request.output_root / "paper" / "auto"
+        nested.mkdir(parents=True)
+        content_list = nested / "content_list.json"
+        content_list.write_text((fixture / "content_list.json").read_text(encoding="utf-8"), encoding="utf-8")
+        from llmwiki.mineru_runner import MinerUCommandResult
+
+        return MinerUCommandResult(
+            command=["mineru", "-p", str(request.raw_path), "-o", str(request.output_root)],
+            output_root=request.output_root,
+            returncode=0,
+            duration_seconds=0.5,
+            stdout_snippet="parsed",
+            stderr_snippet="",
+            content_list_candidates=[content_list],
+        )
+
+    monkeypatch.setattr("llmwiki.mineru_runner.run_mineru_command", fake_run_mineru)
+    source = root / "mineru.pdf"
+    source.write_bytes(b"%PDF fake")
+    source_id = import_source(root, str(source)).source_id
+
+    def fake_create(root: Path, source: dict[str, str], normalized_text: str) -> LLMIngestProposal:
+        block_id = f"{source['source_id']}_p001_b0003"
+        return LLMIngestProposal(
+            claims=[
+                {
+                    "claim_id": f"clm_{source['source_id']}_001",
+                    "source_id": source["source_id"],
+                    "claim_text": "MinerU output is normalized into page and block cited evidence.",
+                    "citation_locator": f"page:1;block:{block_id};section:Abstract",
+                    "confidence_status": "cited",
+                }
+            ],
+            concept_title="MinerU Parser Diagnostics",
+            aliases=["MinerU diagnostics"],
+            entity_title=None,
+            entity_aliases=[],
+            duplicate_candidates=[],
+            conflict_candidates=[],
+            source_summary="MinerU parser diagnostics are visible in staging.",
+            concept_definition="MinerU parser diagnostics describe parser command and artifact state.",
+            provider="openai",
+            model="test",
+            raw_content="{}",
+            usage={},
+        )
+
+    monkeypatch.setattr("llmwiki.ingest.create_llm_ingest_proposal", fake_create)
+    capsys.readouterr()
+
+    assert main(["ingest", source_id, "--root", str(root)]) == 0
+    run_id = capsys.readouterr().out.split("run_id=", 1)[1].splitlines()[0].strip()
+    run_dir = root / "staging" / run_id
+    manifest = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
+    triage = (run_dir / "triage.md").read_text(encoding="utf-8")
+    source_patch = next(json.loads(path.read_text(encoding="utf-8")) for path in (run_dir / "patches").glob("*source*.json"))
+    source_content = source_patch["content"]
+
+    assert manifest["parser_backend"] == "mineru"
+    assert manifest["parser_command_invoked"] is True
+    assert manifest["parser_command_returncode"] == 0
+    assert manifest["parser_content_list_path"].endswith("content_list.json")
+    assert manifest["parser_content_list_discovery_count"] == 1
+    assert manifest["parser_backend_attempts"][0]["backend"] == "mineru"
+    assert manifest["parser_backend_attempts"][0]["status"] == "succeeded"
+    assert "parser_command_invoked: `true`" in triage
+    assert "parser_backend_attempt_count: 1" in triage
+    assert "- mineru: succeeded" in triage
+    assert "parser_content_list_path:" in triage
+    assert "parser_command_stdout_snippet: `parsed`" in triage
+    assert "parser_command_invoked: `true`" in source_content
+    assert "## Parser Attempts" in source_content
+    assert "- mineru: succeeded" in source_content
+    assert "parser_content_list_path:" in source_content
+
+    assert main(["review", run_id, "--detail", "--root", str(root)]) == 0
+    review = capsys.readouterr().out
+    assert "parser_command_invoked: `true`" in review
+    assert "parser_backend_attempt_count: 1" in review
+    assert "- mineru: succeeded" in review
+    assert "parsed" in review
+    assert "content_list.json" in review
+    assert "config/api-keys.toml" not in review
 
 
 def test_ingest_filters_non_claim_lines_and_adds_rich_locators(capsys):
