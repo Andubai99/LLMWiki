@@ -6,7 +6,7 @@ import re
 from pathlib import Path
 from typing import Any, Iterable
 
-from ..pdf.blocks import SourceBlock
+from ..pdf.blocks import SourceBlock, block_evidence_text
 
 
 METRIC_RESULT_SCHEMA_VERSION = "metric_result_claim.v4.3"
@@ -149,12 +149,32 @@ def normalize_metric_value(raw_value: Any) -> dict[str, str]:
     }
 
 
+def is_placeholder_metric_value(raw_value: Any) -> bool:
+    text = clean_string(raw_value).casefold()
+    if not text:
+        return False
+    normalized = re.sub(r"[\s._-]+", " ", text).strip()
+    return normalized in {
+        "see table",
+        "see figure",
+        "see caption",
+        "not reported",
+        "not specified",
+        "not available",
+        "n/a",
+        "na",
+        "none",
+        "unknown",
+    } or bool(re.match(r"^see\s+(table|figure|appendix|supplementary)\s*\d*", normalized))
+
+
 def validate_pdf_result_locator(
     locator: str,
     *,
     source_id: str,
     blocks_by_id: dict[str, SourceBlock],
     allowed_block_ids: set[str],
+    auxiliary_block_ids: Iterable[str] | None = None,
 ) -> MetricLocatorValidation:
     block_match = re.search(r"(?:^|;)block:([A-Za-z0-9_.-]+)(?:;|$)", str(locator or ""))
     if not block_match:
@@ -180,13 +200,41 @@ def validate_pdf_result_locator(
     if section:
         parts.append(f"section:{section}")
 
+    evidence_blocks = [block]
+    warnings: list[str] = []
+    for auxiliary_id in auxiliary_block_ids or []:
+        auxiliary_id = clean_string(auxiliary_id)
+        if not auxiliary_id or auxiliary_id == block_id or auxiliary_id in {item.block_id for item in evidence_blocks}:
+            continue
+        auxiliary = blocks_by_id.get(auxiliary_id)
+        if auxiliary is None:
+            warnings.append(f"invalid_auxiliary_block: unknown block {auxiliary_id}")
+            continue
+        if auxiliary.source_id != source_id:
+            warnings.append(f"invalid_auxiliary_block: source mismatch {auxiliary_id}")
+            continue
+        if auxiliary_id not in allowed_block_ids:
+            warnings.append(f"invalid_auxiliary_block: outside allowed chunk {auxiliary_id}")
+            continue
+        if getattr(auxiliary, "content_role", "content") == "ignored":
+            warnings.append(f"invalid_auxiliary_block: ignored block {auxiliary_id}")
+            continue
+        evidence_blocks.append(auxiliary)
+
+    pages: list[int] = []
+    for evidence_block in evidence_blocks:
+        page = int(evidence_block.page_start)
+        if page not in pages:
+            pages.append(page)
+
     return MetricLocatorValidation(
         valid=True,
         normalized_locator=";".join(parts),
-        evidence_block_ids=[block_id],
-        evidence_pages=[int(block.page_start)],
+        evidence_block_ids=[evidence_block.block_id for evidence_block in evidence_blocks],
+        evidence_pages=pages,
         evidence_section_path=list(block.section_path),
-        evidence_block_roles=[block_role(block)],
+        evidence_block_roles=[block_role(evidence_block) for evidence_block in evidence_blocks],
+        warnings=warnings,
     )
 
 
@@ -252,6 +300,21 @@ def metric_result_from_candidate(
         warnings=warnings,
         created_at=created_at,
     )
+
+
+def evidence_bundle_has_concrete_metric_value(
+    validation: MetricLocatorValidation,
+    blocks_by_id: dict[str, SourceBlock],
+) -> bool:
+    concrete_value = re.compile(
+        r"(?<![A-Za-z])[-+]?(?:\d+\.\d+|\d+\s*(?:%|points?|pts?|ms|milliseconds?|seconds?|secs?|s|x))(?![A-Za-z])",
+        flags=re.I,
+    )
+    for block_id in validation.evidence_block_ids:
+        block = blocks_by_id.get(block_id)
+        if block and concrete_value.search(block_evidence_text(block)):
+            return True
+    return False
 
 
 def assign_metric_result_ids(results: Iterable[MetricResultClaim]) -> list[MetricResultClaim]:
