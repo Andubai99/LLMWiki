@@ -92,6 +92,18 @@ errors: 0 -> 0
 
 This proves MinerU helps, but also shows the extraction layer is underusing the richer blocks: result count fell from 73 to 53 even though table/caption sidecars became much richer.
 
+Additional coverage inspection over the preserved comparison workspaces found a more precise extraction gap:
+
+```text
+MinerU candidate table blocks: 55
+MinerU candidate caption blocks: 79
+MinerU candidate result-text blocks: 93
+Referenced candidate table blocks: 3
+Referenced candidate caption blocks: 0
+```
+
+These candidate counts are conservative heuristics over the 5-paper MinerU sidecars, not formal evidence. They are useful as repair baselines: V4.5.1 should noticeably raise candidate table/caption coverage while preserving strict locator validation and avoiding over-extraction from dataset inventory or unrelated appendix/reference tables.
+
 ## 3. Problem Statement
 
 V4.5.1 must address three observed problems.
@@ -140,6 +152,8 @@ caption result context: 0
 ```
 
 V4.5.1 should make table/caption context a first-class extraction source without weakening citation validation.
+
+The most concrete evidence of underuse is that many MinerU table blocks already contain explicit values and metric headers, but they are not referenced by durable result rows. Examples include benchmark result tables for MMBench-GUI, ScreenSpot-Pro, OSWorld, WindowsAgentArena, and ablation settings. Some current table-backed rows also preserve a value as `See table`, which is not an acceptable final cited result value when the table contains visible numeric cells.
 
 ## 4. Product Goal
 
@@ -316,10 +330,13 @@ Validation should reject or downgrade candidates when:
 - cited block belongs to another source;
 - cited block was not included in the chunk evidence;
 - numeric value is absent from both claim text and bounded context;
+- `metric_raw_value`, `metric_value`, or the formal claim uses placeholder values such as `See table`, `see table`, `not reported`, or `N/A` while a concrete table cell value is visible in the cited context;
 - method/dataset/task are inferred from outside the chunk;
 - table row/column semantics are ambiguous.
 
 Validation should keep warning-bearing weak candidates visible in staging/triage, but only cited applied claims should become durable `metric_results`.
+
+For table candidates, "value visible" should be checked conservatively against the cited block text and paired context. If a concrete cell value cannot be localized, the candidate may remain weak or warning-bearing, but it should not become a cited durable result merely because the table exists.
 
 ### 8.4 Table/Caption Pairing
 
@@ -341,6 +358,27 @@ Not allowed:
 - fabricating table semantics.
 
 When pairing is used, `evidence_block_ids` should include both table and caption block ids when available.
+
+The primary `citation_locator` remains a single real block, but auxiliary evidence must not be discarded. If the LLM or deterministic pairing identifies valid table/caption/heading support blocks, validation should preserve them in `evidence_block_ids`, `evidence_pages`, and `evidence_block_roles` as long as every auxiliary block is:
+
+- from the same source;
+- present in the chunk evidence or a bounded paired context;
+- not ignored parser noise;
+- relevant to interpreting the cited metric/result.
+
+This specifically fixes the current behavior where caption support can disappear because the primary locator block overwrites auxiliary `evidence_block_ids`.
+
+### 8.4.1 Table Coverage Classification
+
+MinerU exposes many table-like blocks, but not every table is a metric/result target. V4.5.1 should classify table blocks before prioritizing extraction:
+
+- `result_table`: contains method/model rows or columns plus metric/value cells for an evaluation benchmark. Prioritize extraction.
+- `ablation_or_diagnostic_table`: contains metric/value cells for settings, variants, ablations, efficiency, or diagnostic slices. Extract when method/dataset/task/setting can be localized.
+- `dataset_inventory_table`: describes corpus size, platform coverage, sample counts, collection methods, or task taxonomy. Usually not a metric result unless it explicitly reports an evaluation metric.
+- `paper_metadata_or_reference_table`: appears in references, appendix metadata, or unrelated listings. Do not extract unless it explicitly reports evaluation results.
+- `ambiguous_table`: has numbers but unclear row/column semantics. Keep weak/warning-bearing candidates only.
+
+The classifier can be deterministic and heuristic in the first implementation. It is a prioritization aid, not evidence and not a durable catalog field unless a later spec says so.
 
 ### 8.5 Field Completeness
 
@@ -409,6 +447,8 @@ Quality targets, measured against the strict MinerU pre-repair baseline:
 metric_results_count: >= 53, target >= 70
 table_result_count: >= 12, target > 12
 caption_result_count: >= 0, target > 0 when captions support explicit results
+referenced_candidate_table_blocks: >= 10, from current 3/55 baseline
+referenced_candidate_caption_blocks: > 0 when captions contain benchmark/metric/result context
 missing_metric_value_count: <= 21
 missing_method_count: <= 15
 missing_dataset_count: <= 9
@@ -423,6 +463,8 @@ Stretch target against the pypdf/fallback baseline:
 - recover or exceed 73 durable `metric_results` rows while keeping MinerU table context and lower missing-field counts.
 
 Quality targets are not permission to over-extract. Unsupported or ambiguous table values should remain weak or warning-bearing.
+
+Coverage targets should be reported with examples. A target is not satisfied by extracting more rows from the same already-covered table while leaving obvious result tables untouched. The observation should show at least several newly covered table blocks and any newly preserved caption support blocks.
 
 ## 11. Testing Strategy
 
