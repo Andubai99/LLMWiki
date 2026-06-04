@@ -164,6 +164,8 @@ def create_chunked_pdf_ingest_proposal(
                 continue
             if is_placeholder_metric_value(raw_metric_value) and evidence_bundle_has_concrete_metric_value(validation, blocks_by_id):
                 continue
+            if not all(clean_optional_string(raw_candidate.get(name)) for name in ("method", "dataset", "task")):
+                continue
             claim_text = clean_optional_string(raw_candidate.get("claim_text")) or ""
             metric_name = clean_optional_string(raw_candidate.get("metric_name")) or ""
             if not claim_text or not metric_name:
@@ -335,6 +337,7 @@ def build_chunk_ingest_messages(source: dict[str, str], chunk: SourceChunk, chun
                 "- Relevant result regions include abstract headline results, method sections that report results, experiment/results sections, tables, captions, and conclusion or limitation sections.\n"
                 "- For tables, read visible cells and report concrete values such as 92.3%, not placeholders such as See table, N/A, or not reported when a concrete value is visible.\n"
                 "- For method, dataset, and task, use explicit row labels, table headers, captions, section headings, benchmark names, or nearby result text when they identify the evaluated method, benchmark/dataset, or task.\n"
+                "- If method, dataset, task, or metric value cannot be filled from explicit chunk evidence, keep the statement as a normal claim and do not create a metric_result_candidate for it.\n"
                 "- Do not create metric_result_candidates for taxonomy counts, survey category counts, paper metadata, dataset inventory, or generic descriptive statistics unless the chunk explicitly reports an evaluated method's performance, cost, efficiency, or quality result.\n"
                 "- Put related table, caption, heading, and result-text block ids in evidence_block_ids when they support the same metric result.\n"
                 "- Do not infer missing baselines, datasets, methods, metric directions, or values.\n"

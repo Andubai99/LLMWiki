@@ -189,10 +189,22 @@ def table_caption_blocks(source_id: str) -> tuple[SourceBlock, SourceBlock, Sour
 
 
 class TableCaptionMetricProvider:
-    def __init__(self, *, table_id: str, caption_id: str, raw_value: str = "92.3%") -> None:
+    def __init__(
+        self,
+        *,
+        table_id: str,
+        caption_id: str,
+        raw_value: str = "92.3%",
+        method: str = "MethodA",
+        dataset: str = "BenchmarkX",
+        task: str = "desktop task",
+    ) -> None:
         self.table_id = table_id
         self.caption_id = caption_id
         self.raw_value = raw_value
+        self.method = method
+        self.dataset = dataset
+        self.task = task
 
     def complete(self, messages: list[dict[str, str]], schema: dict[str, Any] | None = None) -> dict[str, Any]:
         user = messages[-1]["content"]
@@ -223,9 +235,9 @@ class TableCaptionMetricProvider:
                         "confidence_status": "cited",
                         "evidence_block_ids": [self.table_id, self.caption_id],
                         "extraction_origin": "table",
-                        "method": "MethodA",
-                        "dataset": "BenchmarkX",
-                        "task": "desktop task",
+                        "method": self.method,
+                        "dataset": self.dataset,
+                        "task": self.task,
                         "metric_name": "accuracy",
                         "metric_raw_value": self.raw_value,
                         "metric_direction": "higher_is_better",
@@ -312,6 +324,32 @@ def test_pdf_chunked_ingest_drops_empty_metric_value_candidates(monkeypatch, cap
     table = blocks[2]
     caption = blocks[3]
     provider = TableCaptionMetricProvider(table_id=table.block_id, caption_id=caption.block_id, raw_value="")
+    monkeypatch.setattr("llmwiki.llm_ingest.create_provider", lambda config, root=None: provider)
+
+    proposal = create_llm_ingest_proposal(
+        root,
+        source_row(root, imported.source_id),
+        (root / imported.normalized_path).read_text(encoding="utf-8"),
+    )
+
+    assert proposal.claims
+    assert proposal.metric_results == []
+
+
+def test_pdf_chunked_ingest_drops_candidates_missing_core_result_fields(monkeypatch, capsys) -> None:
+    root = make_workspace()
+    assert main(["init", "--root", str(root)]) == 0
+    capsys.readouterr()
+    monkeypatch.setattr("llmwiki.pdf_blocks.read_pdf_pages", lambda content: ({"title": "Metric Paper"}, ["Metric Paper"]))
+    pdf = root / "metric-paper.pdf"
+    pdf.write_bytes(b"%PDF fake")
+    imported = import_source(root, str(pdf))
+    blocks = list(table_caption_blocks(imported.source_id))
+    write_blocks_jsonl(root / "sources" / "blocks" / f"{imported.source_id}.jsonl", blocks)
+    write_chunks_jsonl(root / "sources" / "chunks" / f"{imported.source_id}.jsonl", build_source_chunks(imported.source_id, blocks))
+    table = blocks[2]
+    caption = blocks[3]
+    provider = TableCaptionMetricProvider(table_id=table.block_id, caption_id=caption.block_id, dataset="")
     monkeypatch.setattr("llmwiki.llm_ingest.create_provider", lambda config, root=None: provider)
 
     proposal = create_llm_ingest_proposal(

@@ -168,6 +168,9 @@ def result_context_block_ids(
             continue
         if candidate.block_id not in context:
             context.append(candidate.block_id)
+    for candidate in same_page_support_blocks(section_blocks, focus_index):
+        if candidate.block_id not in context:
+            context.append(candidate.block_id)
     return context
 
 
@@ -175,6 +178,31 @@ def nearby_blocks(section_blocks: list[SourceBlock], focus_index: int) -> list[S
     start = max(0, focus_index - 2)
     end = min(len(section_blocks), focus_index + 3)
     return section_blocks[start:focus_index] + section_blocks[focus_index + 1 : end]
+
+
+def same_page_support_blocks(section_blocks: list[SourceBlock], focus_index: int) -> list[SourceBlock]:
+    focus = section_blocks[focus_index]
+    focus_role = str(getattr(focus, "content_role", "") or "").casefold()
+    focus_type = str(getattr(focus, "block_type", "") or "").casefold()
+    support: list[SourceBlock] = []
+    for candidate in section_blocks:
+        if candidate.block_id == focus.block_id:
+            continue
+        if int(candidate.page_start) != int(focus.page_start):
+            continue
+        if abs(int(candidate.order) - int(focus.order)) > 8:
+            continue
+        candidate_role = str(getattr(candidate, "content_role", "") or "").casefold()
+        candidate_type = str(getattr(candidate, "block_type", "") or "").casefold()
+        if ("table" in focus_type or focus_role == "table_like") and (
+            "caption" in candidate_type or candidate_role in {"caption", "image"}
+        ):
+            support.append(candidate)
+        elif ("caption" in focus_type or focus_role in {"caption", "image"}) and (
+            "table" in candidate_type or candidate_role == "table_like"
+        ):
+            support.append(candidate)
+    return sorted(support, key=lambda block: (abs(int(block.order) - int(focus.order)), int(block.order)))
 
 
 def split_section_blocks(

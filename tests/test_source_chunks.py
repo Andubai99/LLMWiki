@@ -130,13 +130,18 @@ def test_chunker_adds_result_focused_table_caption_context():
         content_role="table_like",
         table_markdown="| Method | Dataset | Accuracy |\n| MethodA | BenchmarkX | 92.3% |",
     )
+    filler = [
+        block(5, "paragraph", "Auxiliary analysis text.", ["Results"]),
+        block(6, "paragraph", "Additional observation text.", ["Results"]),
+        block(7, "paragraph", "More discussion before the caption.", ["Results"]),
+    ]
     caption = SourceBlock(
         source_id="src_pdf",
-        block_id="src_pdf_p001_b0005",
+        block_id="src_pdf_p001_b0010",
         block_type="caption",
         page_start=1,
         page_end=1,
-        order=5,
+        order=10,
         text_raw="Caption",
         text_clean="Table 1: MethodA main result on BenchmarkX.",
         section_path=["Results"],
@@ -147,8 +152,9 @@ def test_chunker_adds_result_focused_table_caption_context():
         heading,
         result_text,
         table,
+        *filler,
         caption,
-        block(6, "paragraph", "The ablation confirms the result.", ["Results"]),
+        block(11, "paragraph", "The ablation confirms the result.", ["Results"]),
     ]
 
     chunks = build_source_chunks("src_pdf", blocks, target_tokens=80, max_tokens=160)
