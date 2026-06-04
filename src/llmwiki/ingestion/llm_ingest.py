@@ -10,6 +10,13 @@ from ..llm import create_provider, load_llm_config
 from ..pdf.blocks import SourceBlock, block_comment, block_evidence_text, load_blocks_jsonl, load_metadata_json
 from ..providers.base import LLMProviderError
 from ..pdf.chunks import SourceChunk, load_chunks_jsonl
+from .metric_results import (
+    MetricResultValidationError,
+    assign_metric_result_ids,
+    dedupe_metric_results,
+    metric_result_from_candidate,
+    validate_pdf_result_locator,
+)
 
 
 @dataclass(frozen=True)
@@ -28,6 +35,7 @@ class LLMIngestProposal:
     raw_content: str
     usage: dict[str, Any]
     repair_events: list[LLMJsonRepairEvent] = field(default_factory=list)
+    metric_results: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -108,6 +116,7 @@ def create_chunked_pdf_ingest_proposal(
         raise LLMProviderError("PDF source has no chunks for LLM ingest")
 
     all_claims: list[dict[str, str]] = []
+    metric_candidate_records: list[dict[str, Any]] = []
     chunk_records: list[dict[str, Any]] = []
     repair_events: list[LLMJsonRepairEvent] = []
     usage = empty_usage()
@@ -129,7 +138,34 @@ def create_chunked_pdf_ingest_proposal(
         )
         repair_events.extend(events)
         chunk_proposal = normalize_payload({"claims": payload.get("claims") or []}, source_id, chunk_text)
-        all_claims.extend(cited_claims_only(chunk_proposal.claims))
+        chunk_claims = cited_claims_only(chunk_proposal.claims)
+        all_claims.extend(chunk_claims)
+        allowed_block_ids = set(chunk.block_ids) | set(chunk.context_block_ids)
+        for raw_candidate in payload.get("metric_result_candidates") or []:
+            if not isinstance(raw_candidate, dict):
+                continue
+            try:
+                validation = validate_pdf_result_locator(
+                    str(raw_candidate.get("citation_locator") or ""),
+                    source_id=source_id,
+                    blocks_by_id=blocks_by_id,
+                    allowed_block_ids=allowed_block_ids,
+                )
+            except MetricResultValidationError:
+                continue
+            claim_text = clean_optional_string(raw_candidate.get("claim_text")) or ""
+            metric_name = clean_optional_string(raw_candidate.get("metric_name")) or ""
+            if not claim_text or not metric_name:
+                continue
+            metric_candidate_records.append(
+                {
+                    "raw": raw_candidate,
+                    "claim_text": claim_text,
+                    "citation_locator": validation.normalized_locator,
+                    "confidence_status": str(raw_candidate.get("confidence_status") or "cited"),
+                    "locator_validation": validation,
+                }
+            )
         add_usage(usage, dict(response.get("usage") or {}))
         add_usage(usage, repair_usage)
         chunk_records.append(
@@ -138,6 +174,7 @@ def create_chunked_pdf_ingest_proposal(
                 "chunk_type": chunk.chunk_type,
                 "block_ids": chunk.block_ids,
                 "chunk_summary": clean_optional_string(payload.get("chunk_summary")) or "",
+                "metric_result_candidate_count": len(payload.get("metric_result_candidates") or []),
                 "raw_content": content,
             }
         )
@@ -161,6 +198,12 @@ def create_chunked_pdf_ingest_proposal(
     add_usage(usage, repair_usage)
 
     claims = dedupe_exact_claims(all_claims, source_id)
+    metric_results = metric_results_for_claims(
+        metric_candidate_records,
+        claims=claims,
+        source_id=source_id,
+        paper_id=source_id,
+    )
     if not any(claim["confidence_status"] == "cited" for claim in claims):
         raise LLMProviderError("LLM ingest proposal did not include any cited claims with valid source locators")
 
@@ -190,6 +233,7 @@ def create_chunked_pdf_ingest_proposal(
         raw_content=raw_content,
         usage=usage,
         repair_events=repair_events,
+        metric_results=[result.to_dict() for result in metric_results],
     )
 
 
@@ -259,10 +303,25 @@ def build_chunk_ingest_messages(source: dict[str, str], chunk: SourceChunk, chun
                 '  "claims": [\n'
                 '    {"claim_text": "...", "citation_locator": "block:<block_id>", "confidence_status": "cited"}\n'
                 "  ],\n"
+                '  "metric_result_candidates": [\n'
+                '    {\n'
+                '      "claim_text": "...",\n'
+                '      "citation_locator": "block:<block_id>",\n'
+                '      "confidence_status": "cited",\n'
+                '      "extraction_origin": "abstract|method|experiment|table|caption|conclusion|other",\n'
+                '      "method": "", "dataset": "", "task": "",\n'
+                '      "metric_name": "", "metric_raw_value": "", "metric_direction": "unknown",\n'
+                '      "baseline": "", "comparison_value": "", "setting": "",\n'
+                '      "is_main_result": null, "warnings": []\n'
+                "    }\n"
+                "  ],\n"
                 '  "chunk_summary": "..."\n'
                 "}\n\n"
                 "Rules:\n"
                 "- Every important claim must cite block:<block_id> from the evidence below.\n"
+                "- Extract metric_result_candidates only when this chunk explicitly reports a metric/result.\n"
+                "- Relevant result regions include abstract headline results, method sections that report results, experiment/results sections, tables, captions, and conclusion or limitation sections.\n"
+                "- Do not infer missing baselines, datasets, methods, metric directions, or values.\n"
                 "- Do not cite blocks outside this chunk.\n"
                 "- Do not invent sources, page paths, or citations.\n\n"
                 "Chunk evidence:\n"
@@ -328,9 +387,10 @@ def build_pdf_consolidation_messages(
 def chunk_proposal_schema() -> dict[str, Any]:
     return {
         "type": "object",
-        "required": ["claims", "chunk_summary"],
+        "required": ["claims", "metric_result_candidates", "chunk_summary"],
         "properties": {
             "claims": {"type": "array"},
+            "metric_result_candidates": {"type": "array"},
             "chunk_summary": {"type": "string"},
         },
     }
@@ -567,7 +627,42 @@ def normalize_payload(
         model="",
         raw_content="",
         usage={},
+        metric_results=[],
     )
+
+
+def metric_results_for_claims(
+    candidate_records: list[dict[str, Any]],
+    *,
+    claims: list[dict[str, str]],
+    source_id: str,
+    paper_id: str,
+) -> list[Any]:
+    claims_by_key = {
+        (claim.get("claim_text", "").strip(), claim.get("citation_locator", "").strip()): claim
+        for claim in claims
+        if claim.get("confidence_status") == "cited"
+    }
+    results = []
+    for record in candidate_records:
+        key = (record["claim_text"].strip(), record["citation_locator"].strip())
+        claim = claims_by_key.get(key)
+        if not claim:
+            continue
+        results.append(
+            metric_result_from_candidate(
+                record["raw"],
+                source_id=source_id,
+                paper_id=paper_id,
+                claim_id=claim["claim_id"],
+                claim_text=claim["claim_text"],
+                citation_locator=claim["citation_locator"],
+                confidence_status=claim["confidence_status"],
+                created_at="",
+                locator_validation=record["locator_validation"],
+            )
+        )
+    return assign_metric_result_ids(dedupe_metric_results(results))
 
 
 def line_locators(normalized_text: str) -> dict[str, str]:
