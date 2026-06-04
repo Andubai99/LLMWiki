@@ -12,6 +12,12 @@ from ..pdf.blocks import BLOCK_SCHEMA_VERSION, load_blocks_jsonl, load_metadata_
 from ..pdf.quality import detect_parser_created_alias
 from ..pdf.chunks import CHUNK_SCHEMA_VERSION, load_chunks_jsonl
 from ..workspace import utc_now
+from .metric_results import (
+    METRIC_RESULT_SCHEMA_VERSION,
+    metric_result_stats,
+    normalize_metric_result_dict,
+    write_metric_results_jsonl,
+)
 
 
 @dataclass(frozen=True)
@@ -62,6 +68,11 @@ def ingest_source(
     if not patch_claims:
         raise ValueError(f"no cited claims found for source {source_id}")
     parse_diagnostics = source_parse_diagnostics(root, source)
+    metric_results = prepare_staging_metric_results(
+        llm_proposal.metric_results if llm_proposal else [],
+        created_at=created_at,
+    )
+    metric_stats = metric_result_stats(metric_results)
 
     run_id = f"run_{source_id}_{created_at.replace(':', '').replace('+', 'Z')}_{uuid.uuid4().hex[:8]}"
     run_dir = root / "staging" / run_id
@@ -86,6 +97,8 @@ def ingest_source(
     coverage = citation_coverage(claims)
 
     write_jsonl(run_dir / "claims.jsonl", [claim.__dict__ for claim in claims])
+    if metric_results:
+        write_metric_results_jsonl(run_dir / "metric-results.jsonl", metric_results)
     write_run_manifest(
         run_dir / "run.json",
         run_id=run_id,
@@ -105,6 +118,7 @@ def ingest_source(
                 if llm_proposal
                 else {}
             ),
+            **metric_stats,
             **({"trigger": trigger} if trigger else {}),
             **parse_diagnostics,
         },
@@ -142,6 +156,7 @@ def ingest_source(
         llm_proposal=llm_proposal,
         proposal_engine=proposal_engine,
         source_diagnostics=parse_diagnostics,
+        metric_results=metric_results,
     )
     return IngestResult(
         run_id=run_id,
@@ -152,6 +167,16 @@ def ingest_source(
         citation_coverage=coverage,
         proposal_engine=proposal_engine,
     )
+
+
+def prepare_staging_metric_results(raw_results: list[dict[str, object]], *, created_at: str) -> list[dict[str, object]]:
+    results: list[dict[str, object]] = []
+    for raw in raw_results:
+        row = normalize_metric_result_dict(raw)
+        if not row.get("created_at"):
+            row["created_at"] = created_at
+        results.append(row)
+    return results
 
 
 def load_source(root: Path, source_id: str) -> dict[str, str]:
@@ -897,7 +922,9 @@ def write_triage(
     llm_proposal: LLMIngestProposal | None = None,
     proposal_engine: str = "heuristic",
     source_diagnostics: dict[str, object] | None = None,
+    metric_results: list[dict[str, object]] | None = None,
 ) -> None:
+    metric_results = metric_results or []
     lines = [
         f"# Triage: {run_id}",
         "",
@@ -924,12 +951,44 @@ def write_triage(
         "",
         *bullet_lines(conflict_candidates, "- None identified."),
         "",
+        "## Metric/Result Claims",
+        "",
+        *metric_result_triage_lines(metric_results),
+        "",
         "## Claims",
         "",
         *[format_claim_bullet(claim) for claim in claims],
         "",
     ]
     path.write_text("\n".join(lines), encoding="utf-8", newline="\n")
+
+
+def metric_result_triage_lines(metric_results: list[dict[str, object]]) -> list[str]:
+    if not metric_results:
+        return ["- None identified."]
+    lines = [
+        "claim_id | origin | method | dataset | task | metric | value | locator | warnings",
+        "--- | --- | --- | --- | --- | --- | --- | --- | ---",
+    ]
+    for result in metric_results:
+        warnings = ", ".join(str(warning) for warning in result.get("warnings", []) or [])
+        value = str(result.get("metric_raw_value") or result.get("metric_value") or "")
+        lines.append(
+            " | ".join(
+                [
+                    str(result.get("claim_id") or ""),
+                    str(result.get("extraction_origin") or ""),
+                    str(result.get("method") or ""),
+                    str(result.get("dataset") or ""),
+                    str(result.get("task") or ""),
+                    str(result.get("metric_name") or ""),
+                    value,
+                    str(result.get("citation_locator") or ""),
+                    warnings,
+                ]
+            )
+        )
+    return lines
 
 
 def pdf_parse_diagnostics_section(source_diagnostics: dict[str, object]) -> list[str]:
@@ -1056,6 +1115,7 @@ def write_llm_proposal(path: Path, proposal: LLMIngestProposal) -> None:
         "llm_json_repair_events": llm_json_repair_events(proposal),
         "content": proposal.raw_content,
         "claims": proposal.claims,
+        "metric_results": [normalize_metric_result_dict(result) for result in proposal.metric_results],
         "concept_title": proposal.concept_title,
         "aliases": proposal.aliases,
         "entity_title": proposal.entity_title,
