@@ -23,6 +23,7 @@ def test_cli_includes_metric_command_group() -> None:
 
 def test_metric_list_cli_outputs_json_and_human(capsys) -> None:
     root = workspace_with_metric_results()
+    capsys.readouterr()
 
     assert main(["metric", "list", "--root", str(root), "--json"]) == 0
     payload = json.loads(capsys.readouterr().out)
@@ -38,6 +39,7 @@ def test_metric_list_cli_outputs_json_and_human(capsys) -> None:
 
 def test_metric_timeline_cli_outputs_json_and_human(capsys) -> None:
     root = workspace_with_metric_results()
+    capsys.readouterr()
 
     assert main(["metric", "timeline", "success rate", "--root", str(root), "--json"]) == 0
     payload = json.loads(capsys.readouterr().out)
@@ -54,6 +56,7 @@ def test_metric_timeline_cli_outputs_json_and_human(capsys) -> None:
 
 def test_metric_timeline_cli_invalid_args_return_one(capsys) -> None:
     root = workspace_with_metric_results()
+    capsys.readouterr()
 
     assert main(["metric", "timeline", "success rate", "--root", str(root), "--limit", "0"]) == 1
     assert "Metric timeline failed:" in capsys.readouterr().out

@@ -25,6 +25,19 @@ from .ingestion.ingest import ingest_source, review_run
 from .lint import lint_workspace
 from .maintenance.clean import clean_workspace, format_clean_report
 from .llm import create_provider, load_llm_config, override_llm_config
+from .metrics.formatting import (
+    format_metric_json,
+    format_metric_list,
+    format_metric_timeline,
+    metric_list_payload,
+    metric_timeline_payload,
+)
+from .metrics.timeline import (
+    TimelineCatalogError,
+    TimelineFilterError,
+    build_metric_list,
+    build_metric_timeline,
+)
 from .ingestion.pipeline import AddPipelineError, add_and_process_source
 from .pdf.quality import evaluate_pdf_quality, format_pdf_quality_report
 from .pdf.parser_backends import load_pdf_parser_config
@@ -56,6 +69,7 @@ COMMANDS = (
     "ask",
     "eval",
     "corpus",
+    "metric",
     "clean",
     "embeddings",
     "parsers",
@@ -391,6 +405,53 @@ def cmd_corpus_inventory(args: argparse.Namespace) -> int:
         print(format_json(inventory_payload(result)))
     else:
         print(format_inventory_summary(result))
+    return 0
+
+
+def cmd_metric_list(args: argparse.Namespace) -> int:
+    root = Path(args.root).resolve()
+    try:
+        result = build_metric_list(
+            root,
+            query=args.query,
+            dataset=args.dataset,
+            task=args.task,
+            limit=args.limit,
+            offset=args.offset,
+        )
+    except (TimelineCatalogError, TimelineFilterError, OSError, ValueError) as exc:
+        print(f"Metric list failed: {sanitize_error(exc)}")
+        return 1
+    if args.json:
+        print(format_metric_json(metric_list_payload(result)))
+    else:
+        print(format_metric_list(result))
+    return 0
+
+
+def cmd_metric_timeline(args: argparse.Namespace) -> int:
+    root = Path(args.root).resolve()
+    try:
+        result = build_metric_timeline(
+            root,
+            metric=args.metric,
+            dataset=args.dataset,
+            task=args.task,
+            method=args.method,
+            source_id=args.source_id,
+            paper_id=args.paper_id,
+            year_from=args.year_from,
+            year_to=args.year_to,
+            limit=args.limit,
+            offset=args.offset,
+        )
+    except (TimelineCatalogError, TimelineFilterError, OSError, ValueError) as exc:
+        print(f"Metric timeline failed: {sanitize_error(exc)}")
+        return 1
+    if args.json:
+        print(format_metric_json(metric_timeline_payload(result)))
+    else:
+        print(format_metric_timeline(result))
     return 0
 
 
@@ -739,6 +800,39 @@ def build_parser() -> argparse.ArgumentParser:
     pdf_quality_eval_parser.add_argument("--root", default=".")
     pdf_quality_eval_parser.add_argument("--json", action="store_true", help="Output stable machine-readable JSON.")
     pdf_quality_eval_parser.set_defaults(func=cmd_eval_pdf_quality)
+
+    metric_parser = subparsers.add_parser("metric", help="Query metric result timelines.")
+    metric_subparsers = metric_parser.add_subparsers(dest="metric_command", required=True)
+    metric_list_parser = metric_subparsers.add_parser(
+        "list",
+        help="List available metric names from durable result claims.",
+    )
+    metric_list_parser.add_argument("--root", default=".")
+    metric_list_parser.add_argument("--query")
+    metric_list_parser.add_argument("--dataset")
+    metric_list_parser.add_argument("--task")
+    metric_list_parser.add_argument("--limit", type=int, default=None)
+    metric_list_parser.add_argument("--offset", type=int, default=None)
+    metric_list_parser.add_argument("--json", action="store_true", help="Output stable machine-readable JSON.")
+    metric_list_parser.set_defaults(func=cmd_metric_list)
+
+    metric_timeline_parser = metric_subparsers.add_parser(
+        "timeline",
+        help="Show a source-backed timeline for a metric.",
+    )
+    metric_timeline_parser.add_argument("metric")
+    metric_timeline_parser.add_argument("--root", default=".")
+    metric_timeline_parser.add_argument("--dataset")
+    metric_timeline_parser.add_argument("--task")
+    metric_timeline_parser.add_argument("--method")
+    metric_timeline_parser.add_argument("--source-id")
+    metric_timeline_parser.add_argument("--paper-id")
+    metric_timeline_parser.add_argument("--year-from", type=int, default=None)
+    metric_timeline_parser.add_argument("--year-to", type=int, default=None)
+    metric_timeline_parser.add_argument("--limit", type=int, default=None)
+    metric_timeline_parser.add_argument("--offset", type=int, default=None)
+    metric_timeline_parser.add_argument("--json", action="store_true", help="Output stable machine-readable JSON.")
+    metric_timeline_parser.set_defaults(func=cmd_metric_timeline)
 
     corpus_parser = subparsers.add_parser("corpus", help="Manage corpus import batches.")
     corpus_subparsers = corpus_parser.add_subparsers(dest="corpus_command", required=True)

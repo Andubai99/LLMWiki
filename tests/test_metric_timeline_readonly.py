@@ -37,6 +37,7 @@ def snapshot_workspace(root: Path) -> dict[str, tuple[int, int]]:
 
 def test_metric_commands_do_not_write_workspace_files(capsys) -> None:
     root = workspace_with_metric_results()
+    capsys.readouterr()
     before = snapshot_workspace(root)
 
     assert main(["metric", "list", "--root", str(root), "--json"]) == 0
@@ -50,30 +51,31 @@ def test_metric_commands_do_not_write_workspace_files(capsys) -> None:
 
 def test_metric_commands_do_not_call_mutating_or_provider_surfaces(monkeypatch, capsys) -> None:
     root = workspace_with_metric_results()
+    capsys.readouterr()
 
     def forbidden(*args, **kwargs):
         raise AssertionError("metric timeline/list must be read-only")
 
     import llmwiki.cli as cli
     import llmwiki.corpus.runner as corpus_runner
-    import llmwiki.ingestion.add_pipeline as add_pipeline
+    import llmwiki.ingestion.pipeline as pipeline
     import llmwiki.ingestion.apply as apply_mod
     import llmwiki.ingestion.ingest as ingest_mod
-    import llmwiki.pdf.mineru_backend as mineru_backend
-    import llmwiki.pdf.parser as pdf_parser
-    import llmwiki.providers.factory as provider_factory
-    import llmwiki.synthesis.engine as synthesis_engine
+    import llmwiki.pdf.mineru_runner as mineru_runner
+    import llmwiki.pdf.parser_backends as parser_backends
+    import llmwiki.llm as llm
+    import llmwiki.synthesis as synthesis_engine
     import llmwiki.vector.embeddings as embeddings
 
-    monkeypatch.setattr(add_pipeline, "add_and_process_source", forbidden)
+    monkeypatch.setattr(pipeline, "add_and_process_source", forbidden)
     monkeypatch.setattr(apply_mod, "apply_run", forbidden)
     monkeypatch.setattr(ingest_mod, "ingest_source", forbidden)
     monkeypatch.setattr(corpus_runner, "import_corpus", forbidden)
     monkeypatch.setattr(corpus_runner, "retry_corpus", forbidden)
-    monkeypatch.setattr(provider_factory, "create_provider", forbidden)
+    monkeypatch.setattr(llm, "create_provider", forbidden)
     monkeypatch.setattr(embeddings, "create_embedding_provider", forbidden)
-    monkeypatch.setattr(mineru_backend, "parse_pdf_with_mineru", forbidden, raising=False)
-    monkeypatch.setattr(pdf_parser, "parse_pdf", forbidden)
+    monkeypatch.setattr(mineru_runner, "run_mineru_command", forbidden)
+    monkeypatch.setattr(parser_backends, "select_pdf_parser_backend", forbidden)
     monkeypatch.setattr(synthesis_engine, "create_synthesis_run", forbidden)
     monkeypatch.setattr(cli, "cmd_ask", forbidden)
     monkeypatch.setattr(cli, "cmd_eval_retrieval", forbidden)
