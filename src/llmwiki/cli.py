@@ -497,6 +497,9 @@ def cmd_parsers_status(args: argparse.Namespace) -> int:
         "mineru_command": config.mineru_command,
         "mineru_command_path": mineru["mineru_command_path"],
         "mineru_command_source": mineru["mineru_command_source"],
+        "mineru_backend": mineru["mineru_backend"],
+        "mineru_method": mineru["mineru_method"],
+        "mineru_extra_args": mineru["mineru_extra_args"],
         "mineru_available": bool(mineru["mineru_available"]),
         "warnings": list(mineru.get("warnings", [])),
         "pypdf_available": True,
@@ -511,6 +514,9 @@ def cmd_parsers_status(args: argparse.Namespace) -> int:
     print(f"mineru_available={bool_text(bool(data['mineru_available']))}")
     print(f"mineru_command={data['mineru_command']}")
     print(f"mineru_command_source={data['mineru_command_source']}")
+    print(f"mineru_backend={data['mineru_backend']}")
+    print(f"mineru_method={data['mineru_method']}")
+    print(f"mineru_extra_args={json.dumps(data['mineru_extra_args'], ensure_ascii=False)}")
     if data["mineru_command_path"]:
         print(f"mineru_command_path={data['mineru_command_path']}")
     for warning in data["warnings"]:
