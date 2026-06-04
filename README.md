@@ -284,6 +284,23 @@ state/catalog.sqlite metric_results
 
 V4.3 real acceptance must use the configured real LLM provider on a declared `docs/papers/` subset followed by the full 20-paper corpus. Generated acceptance workspaces, raw prompts, raw LLM responses, parser logs, parser artifacts, catalogs, staging files, wiki output, and API keys must not be committed.
 
+## V4.4 Metric Timeline
+
+V4.4 新增 CLI-first、只读的指标时间线查询，用于把 durable `metric_results` 行展示为可审计的 metric evolution timeline。它不重新 ingest，不搜索 raw PDF chunks，不调用 LLM/embedding/parser，也不写 wiki 或 catalog。
+
+常用命令：
+
+```bash
+llmwiki metric list --root .
+llmwiki metric list --root . --json
+llmwiki metric timeline "success rate" --root .
+llmwiki metric timeline "success rate" --dataset "OSWorld" --task "computer use" --root . --json
+```
+
+JSON schema 使用 `metric_list.v4.4`、`metric_timeline.v4.4` 和 `metric_timeline_item.v4.4`。Timeline rows 只来自 `state/catalog.sqlite metric_results`，并必须 join 到 formal `claims` 和 `sources`；paper title/authors/year/DOI/arXiv/page_path 只作为显示和排序 metadata，不作为 result evidence。
+
+V4.4 不做 metric alias 自动合并、单位换算、ranking、trend/gap/synthesis、UI 或 writeback。空结果返回 `no_catalog_backed_result` warning，不编造 narrative。
+
 ### Internal/debug 命令
 
 ```bash

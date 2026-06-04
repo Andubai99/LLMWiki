@@ -211,6 +211,7 @@ def test_docs_describe_v1_commands_and_constraints():
         "clean",
         "ui",
         "corpus",
+        "metric",
     ):
         assert f"llmwiki {command}" in readme
     assert "--json" in readme
@@ -255,6 +256,13 @@ def test_docs_describe_v1_commands_and_constraints():
     assert "metric-results.jsonl" in readme
     assert "state/catalog.sqlite metric_results" in readme
     assert "does not add `llmwiki metric timeline`" in readme
+    assert "V4.4 Metric Timeline" in readme
+    assert "llmwiki metric list --root . --json" in readme
+    assert "llmwiki metric timeline \"success rate\"" in readme
+    assert "metric_list.v4.4" in readme
+    assert "metric_timeline.v4.4" in readme
+    assert "metric_timeline_item.v4.4" in readme
+    assert "no_catalog_backed_result" in readme
     assert "page markdown 是页面文本，不是 formal evidence" in readme
     assert "llmwiki eval pdf-quality --root ." in readme
     assert "defaults to `auto`" in readme
@@ -348,6 +356,12 @@ def test_docs_describe_v1_commands_and_constraints():
     assert "catalog `metric_results` table" in agents
     assert "Weak, ambiguous, unsupported, invalid-locator" in agents
     assert "full 20-paper corpus" in agents
+    assert "llmwiki metric list" in agents
+    assert "llmwiki metric timeline" in agents
+    assert "metric_list.v4.4" in agents
+    assert "metric_timeline.v4.4" in agents
+    assert "result_id`, `claim_id`, `source_id`, and `citation_locator" in agents
+    assert "substring metric matching" in agents
     assert "--scope generated" in agents
     assert "PDF source aliases must not include parser-created aliases or paper title aliases" in agents
     assert "LLM repair may only repair JSON syntax" in agents

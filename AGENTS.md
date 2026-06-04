@@ -183,6 +183,12 @@
 - Weak, ambiguous, unsupported, invalid-locator, or non-applied result candidates may appear in staging/triage but must not become durable `metric_results` rows.
 - Parser artifacts, parser logs, parser backend attempts, diagnostics, raw prompts, and raw LLM responses are not evidence for metric/result claims.
 - V4.3 real acceptance must use the configured real LLM provider on a declared `docs/papers/` subset followed by the full 20-paper corpus, and must record only sanitized observations under `docs/specs/`.
+- V4.4 `llmwiki metric list` and `llmwiki metric timeline` are CLI-first, read-only metric evolution queries over durable `metric_results`.
+- V4.4 metric timeline rows must come from `state/catalog.sqlite metric_results` joined to formal `claims` and `sources`; paper identity fields are display/sort metadata, not result evidence.
+- V4.4 uses `metric_list.v4.4`, `metric_timeline.v4.4`, and `metric_timeline_item.v4.4`; every non-warning timeline row must preserve real `result_id`, `claim_id`, `source_id`, and `citation_locator`.
+- `llmwiki metric list` and `llmwiki metric timeline` must not call LLM providers, embedding providers, MinerU, parser execution, add/import, ingest, apply, ask, synthesis, lint, eval, clean, or raw PDF chunk retrieval.
+- `llmwiki metric list` and `llmwiki metric timeline` must not write `wiki/`, `sources/`, `staging/`, `state/catalog.sqlite`, `state/corpus-batches/`, `state/embeddings/`, `state/ui-jobs/`, or `.tmp/`.
+- V4.4 does not implement UI, metric alias auto-merge, substring metric matching, unit conversion, ranking, trend/gap/synthesis, relationship classification, or wiki writeback.
 
 ## 12. Generated Files And Cleanup
 
