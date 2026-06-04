@@ -264,6 +264,26 @@ JSON 输出使用 `schema_version="corpus_inventory.v4.2"`，每个 paper item �
 
 Inventory 会报告 title、authors、year、DOI、arXiv id、parser backend、source/page path、applied run status 和 duplicate warnings。DOI/arXiv/year 只从本地可审计文本确定；缺失或 malformed metadata 会显示 warning，不伪造字段。`corpus inventory` 不调用 LLM、embedding、MinerU/parser、add/ingest/apply、ask/synthesis、lint/eval/clean，也不写 `wiki/`、`sources/`、`staging/`、`state/catalog.sqlite`、`state/corpus-batches/` 或 `state/embeddings/`。
 
+## V4.3 Metric And Result Claim Extraction
+
+V4.3 extends PDF ingest with structured metric/result claim extraction for research papers. Formal `claims` remain the evidence source of truth; every durable result row must reference a real `claim_id`, `source_id`, and citation locator.
+
+V4.3 writes review-time result metadata to:
+
+```text
+staging/<run-id>/metric-results.jsonl
+```
+
+After `llmwiki apply <run-id>`, cited applied result records are persisted to the catalog table:
+
+```text
+state/catalog.sqlite metric_results
+```
+
+`metric_results` is a structured query surface for later V4.4 metric timelines. It is not a replacement for `claims`, and parser artifacts/logs/diagnostics are not evidence. V4.3 does not add UI, does not add `llmwiki metric timeline`, and does not add a relationship classifier.
+
+V4.3 real acceptance must use the configured real LLM provider on a declared `docs/papers/` subset followed by the full 20-paper corpus. Generated acceptance workspaces, raw prompts, raw LLM responses, parser logs, parser artifacts, catalogs, staging files, wiki output, and API keys must not be committed.
+
 ### Internal/debug 命令
 
 ```bash

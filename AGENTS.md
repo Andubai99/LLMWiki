@@ -177,6 +177,12 @@
 - V4.2 inventory uses `corpus_inventory.v4.2` and `paper_identity.v4.2`; first-version `paper_id` defaults to `source_id` and no `paper_identities` catalog table is required.
 - DOI, arXiv id, year, authors, venue/status, parser backend, and duplicate warnings are metadata for inventory. They are not formal evidence and must not become claims without a later source-backed extraction spec.
 - V4.2 duplicate warnings must not merge, delete, overwrite, or silently skip sources.
+- V4.3 metric/result claim extraction extends research-paper ingest only; do not add UI, `llmwiki metric timeline`, metric aliases, relationship classification, or source page required sections in V4.3.
+- V4.3 uses `metric_result_claim.v4.3`, writes review metadata to `staging/<run-id>/metric-results.jsonl`, and persists only cited applied records to the catalog `metric_results` table during `apply_run`.
+- `claims` remain the evidence source of truth. `metric_results` rows must reference real `claim_id`, `source_id`, `paper_id`, `claim_text`, and citation locator; first-version `paper_id` defaults to `source_id`.
+- Weak, ambiguous, unsupported, invalid-locator, or non-applied result candidates may appear in staging/triage but must not become durable `metric_results` rows.
+- Parser artifacts, parser logs, parser backend attempts, diagnostics, raw prompts, and raw LLM responses are not evidence for metric/result claims.
+- V4.3 real acceptance must use the configured real LLM provider on a declared `docs/papers/` subset followed by the full 20-paper corpus, and must record only sanitized observations under `docs/specs/`.
 
 ## 12. Generated Files And Cleanup
 

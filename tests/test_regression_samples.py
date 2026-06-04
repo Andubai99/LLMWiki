@@ -251,6 +251,10 @@ def test_docs_describe_v1_commands_and_constraints():
     assert "llmwiki corpus inventory --root . --json" in readme
     assert "corpus_inventory.v4.2" in readme
     assert "paper_identity.v4.2" in readme
+    assert "V4.3 Metric And Result Claim Extraction" in readme
+    assert "metric-results.jsonl" in readme
+    assert "state/catalog.sqlite metric_results" in readme
+    assert "does not add `llmwiki metric timeline`" in readme
     assert "page markdown 是页面文本，不是 formal evidence" in readme
     assert "llmwiki eval pdf-quality --root ." in readme
     assert "defaults to `auto`" in readme
@@ -338,6 +342,12 @@ def test_docs_describe_v1_commands_and_constraints():
     assert "paper_identity.v4.2" in agents
     assert "paper_id` defaults to `source_id" in agents
     assert "duplicate warnings must not merge, delete, overwrite" in agents
+    assert "V4.3 metric/result claim extraction" in agents
+    assert "metric_result_claim.v4.3" in agents
+    assert "staging/<run-id>/metric-results.jsonl" in agents
+    assert "catalog `metric_results` table" in agents
+    assert "Weak, ambiguous, unsupported, invalid-locator" in agents
+    assert "full 20-paper corpus" in agents
     assert "--scope generated" in agents
     assert "PDF source aliases must not include parser-created aliases or paper title aliases" in agents
     assert "LLM repair may only repair JSON syntax" in agents
