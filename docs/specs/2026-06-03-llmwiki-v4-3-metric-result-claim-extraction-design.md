@@ -36,9 +36,14 @@ V4's wider goal is to turn a same-field research corpus into a local source-back
 - Which method, dataset, task, and setting produced a given result?
 - Which papers disagree or report incompatible values?
 
-V4.1 added corpus import orchestration. V4.2 added paper identity and corpus inventory. V4.3 adds the missing extraction layer: formal claims plus structured result metadata that can later feed V4.4 metric timeline queries.
+V4.1 added corpus import orchestration. V4.2 added paper identity and corpus inventory. V4.3 adds the missing extraction layer: formal claims plus structured result metadata that can feed V4.4 metric timeline queries.
 
 The older V3/V5 roadmap used a different V4.3 label for MinerU acceptance closure. This spec follows the current V4 research corpus direction and the user-facing V4.3 requirement: metric/result claim extraction.
+
+This spec is aligned with the paper-oriented V4/V5 roadmap dated 2026-06-04. That roadmap fixes two V4.3 decisions:
+
+- structured result metadata is reviewed in staging and persisted in a durable catalog `metric_results` table;
+- acceptance must include real LLM runs over `docs/papers/` or a declared subset followed by the full 20-paper corpus.
 
 ## 3. Non-Goals
 
@@ -55,7 +60,7 @@ V4.3 must not implement:
 - direct writes to `wiki/`, `state/catalog.sqlite`, or formal catalog tables outside existing apply paths;
 - metric/result claims without source-backed locators.
 
-V4.3 may introduce generated/staging artifacts for structured result metadata, but formal knowledge still flows through normal staging/apply.
+V4.3 introduces staging artifacts and a durable catalog table for structured result metadata, but formal knowledge still flows through normal staging/apply.
 
 ## 4. Core Terms
 
@@ -241,13 +246,56 @@ V4.3 should not replace `claims.jsonl`. Instead:
 - if a formal claim is rejected by validation, its structured result metadata must be rejected too;
 - if a metric result is useful but unsupported, it can appear as weak/uncited triage material but must not be applied as a cited result.
 
-Recommended staging artifact:
+Required staging artifact:
 
 ```text
 staging/<run-id>/metric-results.jsonl
 ```
 
-The implementation plan may decide whether to add a generated post-apply cache or a catalog table. The first version should avoid changing the existing `claims` table unless V4.4 timeline requirements force durable query support immediately.
+Required durable catalog surface:
+
+```text
+state/catalog.sqlite metric_results table
+```
+
+`metric-results.jsonl` is the review artifact. `metric_results` is the durable query surface for V4.4 metric timelines and V4/V5 corpus evaluation.
+
+V4.3 must not store structured result fields inside the existing `claims` table. Formal claims remain lightweight and evidence-focused. Apply should write `metric_results` rows only after the corresponding formal claims pass validation and are applied. If a result record references a claim that is not applied, that result record must not become durable catalog state.
+
+The `metric_results` table should preserve the `metric_result_claim.v4.3` fields needed by V4.4:
+
+```text
+result_id
+claim_id
+source_id
+paper_id
+claim_text
+citation_locator
+confidence_status
+evidence_block_ids
+evidence_pages
+evidence_section_path
+evidence_block_roles
+extraction_origin
+method
+dataset
+task
+metric_name
+metric_value
+metric_unit
+metric_raw_value
+metric_direction
+baseline
+comparison_value
+setting
+reported_year
+is_main_result
+value_normalization_status
+warnings
+created_at
+```
+
+List/dict fields may be stored as JSON text if the first implementation keeps the catalog schema simple. The storage shape must remain stable enough for V4.4 timeline queries without re-running ingest.
 
 ## 9. Ingest Flow
 
@@ -265,6 +313,7 @@ PDF blocks/chunks
 -> staging claims.jsonl + metric-results.jsonl + triage.md
 -> review
 -> apply
+-> catalog claims + metric_results
 ```
 
 The chunk prompt should expose enough bounded context for:
@@ -421,6 +470,8 @@ Recommended tests:
 - fake LLM tests where invalid locators are rejected or downgraded;
 - consolidation tests proving consolidation cannot invent new result claims;
 - staging tests proving `metric-results.jsonl` records reference real `claims.jsonl` claim ids;
+- apply tests proving `metric_results` rows are written only for applied formal claims;
+- catalog tests proving `metric_results` rows join back to `claims`, `sources`, and paper identity fields;
 - apply boundary tests proving extraction does not directly mutate `wiki/` or `state/catalog.sqlite`;
 - regression tests proving non-PDF ingest still works;
 - sanitizer tests proving warnings do not leak secrets, raw prompts, raw LLM responses, or full parser logs.
@@ -457,14 +508,30 @@ Hard gates:
 
 - cited result locator validity ratio must be 1.0 on test fixtures;
 - invalid PDF block locators must not become cited claims;
+- durable `metric_results` rows must join to real applied claims;
 - parser artifacts must not appear as evidence;
 - generated result metadata must not be committed as source material.
 
-## 19. Manual Acceptance
+## 19. Failure Observation Policy
 
-Use a small subset of `docs/papers` rather than the whole corpus by default.
+V4.3 should not add speculative fallback logic before observing actual paper-corpus failures.
 
-Suggested acceptance:
+When a real LLM, parser, table, locator, or metric extraction failure occurs during acceptance:
+
+1. Record the concrete command.
+2. Record the source file and source id when available.
+3. Record the error message or validation warning.
+4. Record relevant generated artifact paths, excluding secrets and raw prompts/responses.
+5. Fix the narrow observed blocker.
+6. Re-run the smallest command that proves the blocker is fixed.
+
+Each V4.3 acceptance pass should produce an observation file under `docs/specs/` summarizing real LLM corpus results and observed failures.
+
+## 20. Manual Acceptance
+
+Use a declared subset of `docs/papers` first when iterating, then run the full 20-paper corpus before declaring V4.3 accepted. Unit tests are necessary but not sufficient paper evidence.
+
+Suggested subset acceptance:
 
 ```powershell
 .\.venv\Scripts\python.exe -m llmwiki corpus import <tmp-corpus> --root . --parser auto
@@ -472,11 +539,20 @@ Suggested acceptance:
 .\.venv\Scripts\python.exe -m llmwiki review <run-id> --root .
 ```
 
+Suggested full-corpus acceptance:
+
+```powershell
+.\.venv\Scripts\python.exe -m llmwiki clean --root .tmp\paper-v4-acceptance --scope all --dry-run
+.\.venv\Scripts\python.exe -m llmwiki corpus import docs\papers --root .tmp\paper-v4-acceptance --recursive --parser auto
+.\.venv\Scripts\python.exe -m llmwiki corpus inventory --root .tmp\paper-v4-acceptance --json
+```
+
 Inspect:
 
 - `staging/<run-id>/claims.jsonl`;
 - `staging/<run-id>/metric-results.jsonl`;
 - `staging/<run-id>/triage.md`;
+- `state/catalog.sqlite` `metric_results` rows after apply;
 - generated source page after apply, if V4.3 implementation updates page rendering;
 - catalog-backed outputs after apply.
 
@@ -488,24 +564,26 @@ Acceptance checks:
 4. Ambiguous table values produce warnings instead of fake cited claims.
 5. Result records reference real formal claim ids.
 6. Weak candidates remain visible and are not silently upgraded.
-7. Running clean after acceptance removes generated staging/source/wiki/state outputs according to existing cleanup rules.
+7. Durable `metric_results` rows join to real applied claims, sources, and paper identity data.
+8. The full 20-paper run reports total structured result records, records per paper, cited result ratio, invalid locator count, and weak/unsupported candidate count.
+9. Running clean after acceptance removes generated staging/source/wiki/state outputs according to existing cleanup rules.
 
-## 20. Open Questions
+## 21. Open Questions
 
-1. Should V4.3 persist structured result metadata into a catalog table immediately, or should V4.4 introduce durable query storage for timelines?
-2. Should source pages show a "Reported Results" section in V4.3, or should this wait until metric timeline output exists?
-3. Should V4.3 support Markdown/text papers with `line:N` result claims, or should acceptance focus only on PDF sources?
-4. How much table structure must MinerU preserve before table-derived result claims are allowed?
-5. Should metric aliases be inferred locally from papers, curated manually, or deferred until V4.4?
-6. Should qualitative comparisons without numeric values become structured result claims or remain ordinary claims?
+1. Should source pages show a "Reported Results" section in V4.3, or should this wait until metric timeline output exists?
+2. Should V4.3 support Markdown/text papers with `line:N` result claims, or should acceptance focus only on PDF sources?
+3. How much table structure must MinerU preserve before table-derived result claims are allowed?
+4. Should metric aliases be inferred locally from papers, curated manually, or deferred until V4.4?
+5. Should qualitative comparisons without numeric values become structured result claims or remain ordinary claims?
 
-## 21. Success Criteria
+## 22. Success Criteria
 
 V4.3 is successful when:
 
 1. Research-paper ingest can propose metric/result claims from abstract, method, experiment, table, caption, and conclusion contexts.
 2. Cited PDF result claims retain valid page/block locators.
 3. Structured result metadata references formal claim ids and remains tied to source-backed evidence.
-4. Unsupported or ambiguous results remain weak or warning-bearing.
-5. Existing staging/apply safety boundaries remain intact.
-6. V4.4 can build metric timeline queries from the extracted result data without redefining the ingest contract.
+4. Applied structured result metadata is persisted in `metric_results` and joins to real formal claims.
+5. Unsupported or ambiguous results remain weak or warning-bearing.
+6. Existing staging/apply safety boundaries remain intact.
+7. V4.4 can build metric timeline queries from the extracted result data without redefining the ingest contract.
