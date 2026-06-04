@@ -189,6 +189,12 @@
 - `llmwiki metric list` and `llmwiki metric timeline` must not call LLM providers, embedding providers, MinerU, parser execution, add/import, ingest, apply, ask, synthesis, lint, eval, clean, or raw PDF chunk retrieval.
 - `llmwiki metric list` and `llmwiki metric timeline` must not write `wiki/`, `sources/`, `staging/`, `state/catalog.sqlite`, `state/corpus-batches/`, `state/embeddings/`, `state/ui-jobs/`, or `.tmp/`.
 - V4.4 does not implement UI, metric alias auto-merge, substring metric matching, unit conversion, ranking, trend/gap/synthesis, relationship classification, or wiki writeback.
+- V4.5-min `llmwiki eval result-evidence` is CLI-first and read-only. It evaluates durable `metric_results` rows against formal `claims`, `sources`, source sidecars, normalized source text, and paper inventory metadata.
+- V4.5-min uses `result_evidence_quality.v4.5` and `result_evidence_item.v4.5`; every item must preserve real `result_id`, `claim_id`, `source_id`, `paper_id`, and `citation_locator`.
+- `llmwiki eval result-evidence` must not call LLM providers, embedding providers, MinerU, parser execution, add/import, ingest, apply, ask, synthesis, lint, clean, other eval commands, or raw PDF chunk retrieval.
+- `llmwiki eval result-evidence` must not write `wiki/`, `sources/`, `staging/`, `state/catalog.sqlite`, `state/corpus-batches/`, `state/embeddings/`, `state/ui-jobs/`, or `.tmp/`.
+- V4.5-min does not implement UI, extraction prompt changes, metric aliases, unit conversion, timeline ranking, automatic repairs, or wiki writeback.
+- V4.5-min real acceptance uses a fixed 5-paper `docs/papers/` subset instead of the full 20-paper corpus. Preserve `.tmp/paper-v45-acceptance` after acceptance unless the user explicitly approves cleanup.
 
 ## 12. Generated Files And Cleanup
 

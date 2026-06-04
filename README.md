@@ -301,6 +301,22 @@ JSON schema 使用 `metric_list.v4.4`、`metric_timeline.v4.4` 和 `metric_timel
 
 V4.4 不做 metric alias 自动合并、单位换算、ranking、trend/gap/synthesis、UI 或 writeback。空结果返回 `no_catalog_backed_result` warning，不编造 narrative。
 
+## V4.5-min Result Evidence Quality Closure
+
+V4.5-min 新增 CLI-first、只读的结果证据质量检查，用于评估 durable `metric_results` rows 是否能回溯到 formal `claims`、`sources` 和可检查的 source context。它不重新抽取结果，不调用 LLM/embedding/parser，也不写 wiki、staging、sources 或 catalog。
+
+常用命令：
+
+```bash
+llmwiki eval result-evidence --root .
+llmwiki eval result-evidence --root . --json
+llmwiki eval result-evidence --root . --metric "success rate" --dataset "OSWorld" --json
+```
+
+JSON schema 使用 `result_evidence_quality.v4.5` 和 `result_evidence_item.v4.5`。检查项包括 claim/source join、PDF `page:N;block:<block-id>` locator、Markdown/text `line:N` locator、bounded context availability、parser fallback diagnostics、missing method/dataset/task/value/baseline 等。Parser diagnostics 和 paper metadata 只用于质量诊断，不是 result evidence。
+
+V4.5-min 真实验收使用固定 5 篇 `docs/papers/` 子集，不默认跑完整 20 篇；验收 workspace `.tmp/paper-v45-acceptance` 会按用户要求保留，便于后续追问实际结果。
+
 ### Internal/debug 命令
 
 ```bash

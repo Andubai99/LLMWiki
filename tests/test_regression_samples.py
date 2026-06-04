@@ -263,6 +263,11 @@ def test_docs_describe_v1_commands_and_constraints():
     assert "metric_timeline.v4.4" in readme
     assert "metric_timeline_item.v4.4" in readme
     assert "no_catalog_backed_result" in readme
+    assert "V4.5-min Result Evidence Quality Closure" in readme
+    assert "llmwiki eval result-evidence --root . --json" in readme
+    assert "result_evidence_quality.v4.5" in readme
+    assert "result_evidence_item.v4.5" in readme
+    assert ".tmp/paper-v45-acceptance" in readme
     assert "page markdown 是页面文本，不是 formal evidence" in readme
     assert "llmwiki eval pdf-quality --root ." in readme
     assert "defaults to `auto`" in readme
@@ -362,6 +367,11 @@ def test_docs_describe_v1_commands_and_constraints():
     assert "metric_timeline.v4.4" in agents
     assert "result_id`, `claim_id`, `source_id`, and `citation_locator" in agents
     assert "substring metric matching" in agents
+    assert "llmwiki eval result-evidence" in agents
+    assert "result_evidence_quality.v4.5" in agents
+    assert "result_evidence_item.v4.5" in agents
+    assert "fixed 5-paper" in agents
+    assert ".tmp/paper-v45-acceptance" in agents
     assert "--scope generated" in agents
     assert "PDF source aliases must not include parser-created aliases or paper title aliases" in agents
     assert "LLM repair may only repair JSON syntax" in agents
