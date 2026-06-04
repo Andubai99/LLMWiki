@@ -296,3 +296,29 @@ def test_pdf_chunked_ingest_drops_placeholder_metric_value_when_table_has_concre
 
     assert proposal.claims
     assert proposal.metric_results == []
+
+
+def test_pdf_chunked_ingest_drops_empty_metric_value_candidates(monkeypatch, capsys) -> None:
+    root = make_workspace()
+    assert main(["init", "--root", str(root)]) == 0
+    capsys.readouterr()
+    monkeypatch.setattr("llmwiki.pdf_blocks.read_pdf_pages", lambda content: ({"title": "Metric Paper"}, ["Metric Paper"]))
+    pdf = root / "metric-paper.pdf"
+    pdf.write_bytes(b"%PDF fake")
+    imported = import_source(root, str(pdf))
+    blocks = list(table_caption_blocks(imported.source_id))
+    write_blocks_jsonl(root / "sources" / "blocks" / f"{imported.source_id}.jsonl", blocks)
+    write_chunks_jsonl(root / "sources" / "chunks" / f"{imported.source_id}.jsonl", build_source_chunks(imported.source_id, blocks))
+    table = blocks[2]
+    caption = blocks[3]
+    provider = TableCaptionMetricProvider(table_id=table.block_id, caption_id=caption.block_id, raw_value="")
+    monkeypatch.setattr("llmwiki.llm_ingest.create_provider", lambda config, root=None: provider)
+
+    proposal = create_llm_ingest_proposal(
+        root,
+        source_row(root, imported.source_id),
+        (root / imported.normalized_path).read_text(encoding="utf-8"),
+    )
+
+    assert proposal.claims
+    assert proposal.metric_results == []

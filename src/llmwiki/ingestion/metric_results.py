@@ -115,6 +115,34 @@ def normalize_metric_value(raw_value: Any) -> dict[str, str]:
         }
 
     normalized = raw.replace("\u2212", "-")
+    range_match = re.search(
+        r"(-?\d+(?:\.\d+)?)\s*(%|points?|pts?|ms|milliseconds?|seconds?|secs?|s|x)?\s*(?:to|[-–~])\s*(-?\d+(?:\.\d+)?)\s*(%|points?|pts?|ms|milliseconds?|seconds?|secs?|s|x)?",
+        normalized,
+        flags=re.I,
+    )
+    if range_match:
+        unit = range_match.group(2) or range_match.group(4) or ""
+        return {
+            "metric_value": f"{range_match.group(1)}..{range_match.group(3)}",
+            "metric_unit": normalize_unit(unit),
+            "metric_raw_value": raw,
+            "value_normalization_status": "ambiguous",
+        }
+
+    bounded_match = re.search(
+        r"(?:^|\b)(below|under|less than|<|above|over|more than|>|around|approximately|approx\.?|~)\s*(-?\d+(?:\.\d+)?)\s*(%|points?|pts?|ms|milliseconds?|seconds?|secs?|s|x)?",
+        normalized,
+        flags=re.I,
+    )
+    if bounded_match:
+        prefix = bounded_metric_prefix(bounded_match.group(1))
+        return {
+            "metric_value": f"{prefix}{bounded_match.group(2)}",
+            "metric_unit": normalize_unit(bounded_match.group(3) or ""),
+            "metric_raw_value": raw,
+            "value_normalization_status": "ambiguous",
+        }
+
     patterns = (
         (r"^[+]?(-?\d+(?:\.\d+)?)\s*%$", "%"),
         (r"^[+]?(-?\d+(?:\.\d+)?)\s*(ms|milliseconds?)$", "ms"),
@@ -147,6 +175,28 @@ def normalize_metric_value(raw_value: Any) -> dict[str, str]:
         "metric_raw_value": raw,
         "value_normalization_status": "raw_only",
     }
+
+
+def normalize_unit(unit: str) -> str:
+    text = clean_string(unit).casefold()
+    if text in {"percent", "percentage"}:
+        return "%"
+    if text in {"point", "points", "pt", "pts"}:
+        return "points"
+    if text in {"millisecond", "milliseconds"}:
+        return "ms"
+    if text in {"sec", "secs", "second", "seconds"}:
+        return "seconds"
+    return clean_string(unit)
+
+
+def bounded_metric_prefix(value: str) -> str:
+    text = clean_string(value).casefold()
+    if text in {"below", "under", "less than", "<"}:
+        return "<"
+    if text in {"above", "over", "more than", ">"}:
+        return ">"
+    return "~"
 
 
 def is_placeholder_metric_value(raw_value: Any) -> bool:

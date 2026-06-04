@@ -69,6 +69,24 @@ def test_metric_value_normalization_is_conservative() -> None:
         "metric_raw_value": "+3.4 points",
         "value_normalization_status": "normalized",
     }
+    assert normalize_metric_value("5.26% to 5.80%") == {
+        "metric_value": "5.26..5.80",
+        "metric_unit": "%",
+        "metric_raw_value": "5.26% to 5.80%",
+        "value_normalization_status": "ambiguous",
+    }
+    assert normalize_metric_value("below 5%") == {
+        "metric_value": "<5",
+        "metric_unit": "%",
+        "metric_raw_value": "below 5%",
+        "value_normalization_status": "ambiguous",
+    }
+    assert normalize_metric_value("around 70%") == {
+        "metric_value": "~70",
+        "metric_unit": "%",
+        "metric_raw_value": "around 70%",
+        "value_normalization_status": "ambiguous",
+    }
     assert normalize_metric_value("roughly state of the art") == {
         "metric_value": "",
         "metric_unit": "",
