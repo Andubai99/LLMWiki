@@ -46,6 +46,13 @@ from .providers.base import LLMProviderError
 from .retrieval.eval import evaluate_retrieval, format_eval_report, sanitize_error
 from .retrieval.query import query_context
 from .retrieval import format_retrieval_prompt, retrieve_context
+from .evals.result_evidence import (
+    ResultEvidenceCatalogError,
+    ResultEvidenceFilterError,
+    build_result_evidence_quality,
+    format_result_evidence_json,
+    format_result_evidence_quality,
+)
 from .synthesis import SynthesisWritebackError, SynthesisWritebackResult, create_synthesis_run
 from .synthesis.planner import (
     SynthesisPlan,
@@ -297,6 +304,29 @@ def cmd_eval_pdf_quality(args: argparse.Namespace) -> int:
         print(json.dumps(summary.to_dict(), ensure_ascii=False, indent=2))
     else:
         print(format_pdf_quality_report(summary))
+    return 0
+
+
+def cmd_eval_result_evidence(args: argparse.Namespace) -> int:
+    root = Path(args.root).resolve()
+    try:
+        summary = build_result_evidence_quality(
+            root,
+            source_id=args.source_id,
+            paper_id=args.paper_id,
+            metric=args.metric,
+            dataset=args.dataset,
+            task=args.task,
+            limit=args.limit,
+            offset=args.offset,
+        )
+    except (ResultEvidenceCatalogError, ResultEvidenceFilterError, OSError, ValueError) as exc:
+        print(f"Result evidence eval failed: {sanitize_error(exc)}")
+        return 1
+    if args.json:
+        print(format_result_evidence_json(summary.to_dict()))
+    else:
+        print(format_result_evidence_quality(summary))
     return 0
 
 
@@ -800,6 +830,20 @@ def build_parser() -> argparse.ArgumentParser:
     pdf_quality_eval_parser.add_argument("--root", default=".")
     pdf_quality_eval_parser.add_argument("--json", action="store_true", help="Output stable machine-readable JSON.")
     pdf_quality_eval_parser.set_defaults(func=cmd_eval_pdf_quality)
+    result_evidence_eval_parser = eval_subparsers.add_parser(
+        "result-evidence",
+        help="Evaluate metric result evidence locator and context quality.",
+    )
+    result_evidence_eval_parser.add_argument("--root", default=".")
+    result_evidence_eval_parser.add_argument("--source-id")
+    result_evidence_eval_parser.add_argument("--paper-id")
+    result_evidence_eval_parser.add_argument("--metric")
+    result_evidence_eval_parser.add_argument("--dataset")
+    result_evidence_eval_parser.add_argument("--task")
+    result_evidence_eval_parser.add_argument("--limit", type=int, default=None)
+    result_evidence_eval_parser.add_argument("--offset", type=int, default=None)
+    result_evidence_eval_parser.add_argument("--json", action="store_true", help="Output stable machine-readable JSON.")
+    result_evidence_eval_parser.set_defaults(func=cmd_eval_result_evidence)
 
     metric_parser = subparsers.add_parser("metric", help="Query metric result timelines.")
     metric_subparsers = metric_parser.add_subparsers(dest="metric_command", required=True)
