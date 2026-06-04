@@ -37,6 +37,37 @@ REQUIRED_SCHEMA: dict[str, tuple[str, ...]] = {
         "source_id",
     ),
     "ingest_runs": ("run_id", "source_id", "status", "created_at", "applied_at"),
+    "metric_results": (
+        "result_id",
+        "schema_version",
+        "claim_id",
+        "source_id",
+        "paper_id",
+        "claim_text",
+        "citation_locator",
+        "confidence_status",
+        "evidence_block_ids",
+        "evidence_pages",
+        "evidence_section_path",
+        "evidence_block_roles",
+        "extraction_origin",
+        "method",
+        "dataset",
+        "task",
+        "metric_name",
+        "metric_value",
+        "metric_unit",
+        "metric_raw_value",
+        "metric_direction",
+        "baseline",
+        "comparison_value",
+        "setting",
+        "reported_year",
+        "is_main_result",
+        "value_normalization_status",
+        "warnings",
+        "created_at",
+    ),
 }
 
 
@@ -128,6 +159,38 @@ def init_db(db_path: Path) -> None:
                 applied_at text
             );
 
+            create table if not exists metric_results (
+                result_id text primary key,
+                schema_version text not null,
+                claim_id text not null,
+                source_id text not null,
+                paper_id text not null,
+                claim_text text not null,
+                citation_locator text not null,
+                confidence_status text not null,
+                evidence_block_ids text not null,
+                evidence_pages text not null,
+                evidence_section_path text not null,
+                evidence_block_roles text not null,
+                extraction_origin text not null,
+                method text not null,
+                dataset text not null,
+                task text not null,
+                metric_name text not null,
+                metric_value text not null,
+                metric_unit text not null,
+                metric_raw_value text not null,
+                metric_direction text not null,
+                baseline text not null,
+                comparison_value text not null,
+                setting text not null,
+                reported_year integer,
+                is_main_result integer,
+                value_normalization_status text not null,
+                warnings text not null,
+                created_at text not null
+            );
+
             create virtual table if not exists claims_fts using fts5(
                 claim_id unindexed,
                 claim_text,
@@ -140,6 +203,11 @@ def init_db(db_path: Path) -> None:
             create index if not exists idx_aliases_normalized on aliases(normalized_alias);
             create index if not exists idx_pages_type on pages(page_type);
             create index if not exists idx_relationship_type on relationships(relationship_type);
+            create index if not exists idx_metric_results_claim on metric_results(claim_id);
+            create index if not exists idx_metric_results_source on metric_results(source_id);
+            create index if not exists idx_metric_results_paper on metric_results(paper_id);
+            create index if not exists idx_metric_results_metric on metric_results(metric_name);
+            create index if not exists idx_metric_results_dataset_task on metric_results(dataset, task);
             """
         )
 

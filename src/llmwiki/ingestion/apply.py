@@ -7,6 +7,7 @@ from pathlib import Path, PurePosixPath
 
 from ..db import catalog_path, connect
 from .ingest import normalize_alias
+from .metric_results import read_metric_results_jsonl
 from ..workspace import utc_now
 
 
@@ -64,6 +65,7 @@ def apply_run(root: Path, run_id: str) -> dict[str, int | str]:
 
     validate_run_status(run_dir)
     claims = read_claims(run_dir / "claims.jsonl")
+    metric_results = read_metric_results_jsonl(run_dir / "metric-results.jsonl")
     patches = read_patches(run_dir / "patches")
     if not patches:
         raise ValueError(f"run {run_id} has no patches")
@@ -81,7 +83,7 @@ def apply_run(root: Path, run_id: str) -> dict[str, int | str]:
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(str(patch["content"]), encoding="utf-8", newline="\n")
 
-        sync_catalog(root, run_id, claims, patches)
+        sync_catalog(root, run_id, claims, patches, metric_results)
         refresh_index(root)
         append_log(root, run_id, claims, patches)
         mark_run_applied(run_dir)
@@ -296,9 +298,11 @@ def sync_catalog(
     run_id: str,
     claims: list[dict[str, str]],
     patches: list[dict[str, object]],
+    metric_results: list[dict[str, object]] | None = None,
 ) -> None:
     now = utc_now()
     source_id = first_source_id(claims, patches)
+    durable_metric_results = metric_results_for_apply(metric_results or [], claims)
     with connect(catalog_path(root)) as conn:
         page_refs = page_reference_map(conn, patches)
         for claim in claims:
@@ -407,6 +411,53 @@ def sync_catalog(
                     ),
                 )
 
+        for result in durable_metric_results:
+            conn.execute(
+                """
+                insert into metric_results (
+                    result_id, schema_version, claim_id, source_id, paper_id,
+                    claim_text, citation_locator, confidence_status,
+                    evidence_block_ids, evidence_pages, evidence_section_path,
+                    evidence_block_roles, extraction_origin, method, dataset, task,
+                    metric_name, metric_value, metric_unit, metric_raw_value,
+                    metric_direction, baseline, comparison_value, setting,
+                    reported_year, is_main_result, value_normalization_status,
+                    warnings, created_at
+                )
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                on conflict(result_id) do update set
+                    schema_version = excluded.schema_version,
+                    claim_id = excluded.claim_id,
+                    source_id = excluded.source_id,
+                    paper_id = excluded.paper_id,
+                    claim_text = excluded.claim_text,
+                    citation_locator = excluded.citation_locator,
+                    confidence_status = excluded.confidence_status,
+                    evidence_block_ids = excluded.evidence_block_ids,
+                    evidence_pages = excluded.evidence_pages,
+                    evidence_section_path = excluded.evidence_section_path,
+                    evidence_block_roles = excluded.evidence_block_roles,
+                    extraction_origin = excluded.extraction_origin,
+                    method = excluded.method,
+                    dataset = excluded.dataset,
+                    task = excluded.task,
+                    metric_name = excluded.metric_name,
+                    metric_value = excluded.metric_value,
+                    metric_unit = excluded.metric_unit,
+                    metric_raw_value = excluded.metric_raw_value,
+                    metric_direction = excluded.metric_direction,
+                    baseline = excluded.baseline,
+                    comparison_value = excluded.comparison_value,
+                    setting = excluded.setting,
+                    reported_year = excluded.reported_year,
+                    is_main_result = excluded.is_main_result,
+                    value_normalization_status = excluded.value_normalization_status,
+                    warnings = excluded.warnings,
+                    created_at = excluded.created_at
+                """,
+                metric_result_row_values(result),
+            )
+
         conn.execute(
             """
             insert into ingest_runs (run_id, source_id, status, created_at, applied_at)
@@ -417,6 +468,69 @@ def sync_catalog(
             """,
             (run_id, source_id, "applied", now, now),
         )
+
+
+def metric_results_for_apply(
+    metric_results: list[dict[str, object]],
+    claims: list[dict[str, str]],
+) -> list[dict[str, object]]:
+    claims_by_id = {claim["claim_id"]: claim for claim in claims}
+    durable: list[dict[str, object]] = []
+    for result in metric_results:
+        claim_id = str(result.get("claim_id") or "")
+        claim = claims_by_id.get(claim_id)
+        if not claim:
+            continue
+        if claim.get("confidence_status") != "cited" or result.get("confidence_status") != "cited":
+            continue
+        if str(result.get("source_id") or "") != claim.get("source_id"):
+            continue
+        if str(result.get("citation_locator") or "") != str(claim.get("citation_locator") or ""):
+            continue
+        row = dict(result)
+        row["claim_text"] = claim["claim_text"]
+        durable.append(row)
+    return durable
+
+
+def metric_result_row_values(result: dict[str, object]) -> tuple[object, ...]:
+    return (
+        result.get("result_id", ""),
+        result.get("schema_version", ""),
+        result.get("claim_id", ""),
+        result.get("source_id", ""),
+        result.get("paper_id", ""),
+        result.get("claim_text", ""),
+        result.get("citation_locator", ""),
+        result.get("confidence_status", ""),
+        json.dumps(result.get("evidence_block_ids", []), ensure_ascii=False),
+        json.dumps(result.get("evidence_pages", []), ensure_ascii=False),
+        json.dumps(result.get("evidence_section_path", []), ensure_ascii=False),
+        json.dumps(result.get("evidence_block_roles", []), ensure_ascii=False),
+        result.get("extraction_origin", ""),
+        result.get("method", ""),
+        result.get("dataset", ""),
+        result.get("task", ""),
+        result.get("metric_name", ""),
+        result.get("metric_value", ""),
+        result.get("metric_unit", ""),
+        result.get("metric_raw_value", ""),
+        result.get("metric_direction", ""),
+        result.get("baseline", ""),
+        result.get("comparison_value", ""),
+        result.get("setting", ""),
+        result.get("reported_year"),
+        bool_to_db(result.get("is_main_result")),
+        result.get("value_normalization_status", ""),
+        json.dumps(result.get("warnings", []), ensure_ascii=False),
+        result.get("created_at", ""),
+    )
+
+
+def bool_to_db(value: object) -> int | None:
+    if value is None:
+        return None
+    return 1 if bool(value) else 0
 
 
 def aliases_for_index(patch: dict[str, object], aliases: list[str]) -> list[str]:
