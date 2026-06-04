@@ -22,6 +22,9 @@ def test_parsers_status_reports_configured_backends(monkeypatch, capsys):
     assert "mineru_available=true" in out
     assert "mineru_command_source=PATH" in out
     assert "mineru_command=mineru" in out
+    assert "mineru_backend=pipeline" in out
+    assert "mineru_method=auto" in out
+    assert "mineru_extra_args=[]" in out
     assert "pypdf_available=true" in out
     assert "artifact_dir=sources/parser-artifacts" in out
 
@@ -42,6 +45,9 @@ def test_parsers_status_discovers_workspace_local_mineru(monkeypatch, capsys):
     assert data["mineru_available"] is True
     assert data["mineru_command_path"] == str(mineru)
     assert data["mineru_command_source"] == "workspace_venv"
+    assert data["mineru_backend"] == "pipeline"
+    assert data["mineru_method"] == "auto"
+    assert data["mineru_extra_args"] == []
 
 
 def test_parsers_status_json_is_stable_and_read_only(monkeypatch, capsys):
@@ -74,6 +80,9 @@ def test_parsers_status_json_is_stable_and_read_only(monkeypatch, capsys):
     assert data["mineru_available"] is False
     assert data["mineru_command"] == "missing-mineru"
     assert data["mineru_command_source"] == "not_found"
+    assert data["mineru_backend"] == "pipeline"
+    assert data["mineru_method"] == "auto"
+    assert data["mineru_extra_args"] == []
     assert data["warnings"]
     assert data["pypdf_available"] is True
     assert data["artifact_dir"] == "sources/parser-artifacts"

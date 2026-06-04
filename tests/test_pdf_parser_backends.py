@@ -22,8 +22,8 @@ def test_load_pdf_parser_config_reads_workspace_defaults():
     assert config.fallback_backend == "pypdf"
     assert config.mineru_enabled is True
     assert config.mineru_command == "mineru"
-    assert config.mineru_method == ""
-    assert config.mineru_backend == ""
+    assert config.mineru_method == "auto"
+    assert config.mineru_backend == "pipeline"
     assert config.mineru_api_url == ""
     assert config.mineru_timeout_seconds == 1800
     assert config.mineru_max_log_chars == 4000

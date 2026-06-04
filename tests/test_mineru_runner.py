@@ -166,6 +166,28 @@ def test_discover_mineru_command_finds_workspace_posix_venv(monkeypatch, tmp_pat
     assert result.command_source == "workspace_venv"
 
 
+def test_discover_mineru_command_finds_repo_venv_from_tmp_workspace(monkeypatch, tmp_path):
+    import llmwiki.mineru_runner as mineru_runner
+
+    repo = tmp_path / "repo"
+    module_file = repo / "src" / "llmwiki" / "pdf" / "mineru_runner.py"
+    module_file.parent.mkdir(parents=True)
+    module_file.write_text("module", encoding="utf-8")
+    mineru = repo / ".venv" / "Scripts" / "mineru.exe"
+    mineru.parent.mkdir(parents=True)
+    mineru.write_text("mineru", encoding="utf-8")
+    workspace = repo / ".tmp" / "paper-v451-mineru-repair-acceptance"
+    workspace.mkdir(parents=True)
+    monkeypatch.setattr(mineru_runner, "__file__", str(module_file))
+    monkeypatch.setattr("shutil.which", lambda command: None)
+
+    result = mineru_runner.discover_mineru_command(workspace, make_config())
+
+    assert result.available is True
+    assert result.command == str(mineru)
+    assert result.command_source == "repo_venv"
+
+
 def test_discover_mineru_command_not_found(monkeypatch, tmp_path):
     from llmwiki.mineru_runner import discover_mineru_command
 

@@ -5,6 +5,7 @@ from llmwiki.ingestion.metric_results import (
     MetricResultClaim,
     assign_metric_result_ids,
     dedupe_metric_results,
+    is_placeholder_metric_value,
     normalize_metric_value,
 )
 
@@ -80,6 +81,14 @@ def test_metric_value_normalization_is_conservative() -> None:
         "metric_raw_value": "",
         "value_normalization_status": "missing",
     }
+
+
+def test_metric_placeholder_values_are_detected_before_durable_results() -> None:
+    assert is_placeholder_metric_value("See Table 2")
+    assert is_placeholder_metric_value("not reported")
+    assert is_placeholder_metric_value("N/A")
+    assert not is_placeholder_metric_value("92.3%")
+    assert not is_placeholder_metric_value("0.87")
 
 
 def test_assign_metric_result_ids_happens_after_claim_ids_are_known() -> None:

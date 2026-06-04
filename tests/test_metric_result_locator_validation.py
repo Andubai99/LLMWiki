@@ -59,6 +59,29 @@ def test_pdf_result_locator_accepts_normalized_page_block_locator() -> None:
     assert validation.normalized_locator == "page:4;block:src_pdf_p004_b0012;section:Experiments"
 
 
+def test_pdf_result_locator_preserves_valid_auxiliary_evidence_blocks() -> None:
+    table = block(block_id="src_pdf_p004_b0012", block_type="table", content_role="table_like")
+    caption = block(block_id="src_pdf_p004_b0013", block_type="caption", content_role="caption")
+    heading = block(block_id="src_pdf_p004_b0011", block_type="section_heading")
+    result_text = block(block_id="src_pdf_p004_b0014", block_type="paragraph")
+    validation = validate_pdf_result_locator(
+        "block:src_pdf_p004_b0012",
+        source_id="src_pdf",
+        blocks_by_id={item.block_id: item for item in (heading, table, caption, result_text)},
+        allowed_block_ids={heading.block_id, table.block_id, caption.block_id, result_text.block_id},
+        auxiliary_block_ids=[caption.block_id, heading.block_id, result_text.block_id, table.block_id],
+    )
+
+    assert validation.evidence_block_ids == [
+        table.block_id,
+        caption.block_id,
+        heading.block_id,
+        result_text.block_id,
+    ]
+    assert validation.evidence_pages == [4]
+    assert validation.evidence_block_roles == ["table", "caption", "section_heading", "paragraph"]
+
+
 def test_pdf_result_locator_rejects_unknown_or_out_of_chunk_block() -> None:
     source_block = block()
 
