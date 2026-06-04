@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 from pathlib import Path
 
 from llmwiki.cli import main
@@ -114,6 +115,15 @@ def workspace_with_result_evidence() -> Path:
         task="",
         locator=f"page:2;block:{PDF_BLOCK_ID};section:Results",
     )
+    with sqlite3.connect(root / "state" / "catalog.sqlite") as conn:
+        conn.execute(
+            "update metric_results set evidence_block_ids = ?, evidence_block_roles = ? where result_id = ?",
+            (json.dumps([PDF_BLOCK_ID, "src_pdf_p002_b0002"]), json.dumps(["table", "caption"]), "res_pdf"),
+        )
+        conn.execute(
+            "update metric_results set evidence_block_ids = ?, evidence_block_roles = ? where result_id = ?",
+            (json.dumps([PDF_BLOCK_ID]), json.dumps(["table"]), "res_missing_value"),
+        )
     return root
 
 
@@ -151,10 +161,14 @@ def test_result_evidence_quality_summary_and_items() -> None:
     assert payload["summary"]["pdf_result_count"] == 2
     assert payload["summary"]["markdown_result_count"] == 1
     assert payload["summary"]["table_result_count"] == 2
+    assert payload["summary"]["caption_result_count"] == 1
     assert payload["summary"]["missing_normalized_value_count"] == 1
     assert payload["summary"]["missing_method_count"] == 1
     assert payload["summary"]["missing_task_count"] == 1
+    assert payload["summary"]["parser_metadata_source_count"] == 1
     assert payload["summary"]["parser_diagnostic_source_count"] == 1
+    assert payload["summary"]["parser_backend_result_counts"] == {"pypdf": 2, "unknown": 1}
+    assert payload["summary"]["parser_fallback_result_count"] == 2
 
     first = payload["items"][0]
     assert first["schema_version"] == "result_evidence_item.v4.5"
@@ -167,6 +181,9 @@ def test_result_evidence_quality_summary_and_items() -> None:
     assert first["context_page"] == 2
     assert first["context_block_id"] == PDF_BLOCK_ID
     assert first["context_block_role"] == "table"
+    assert first["evidence_block_roles"] == ["table", "caption"]
+    assert first["parser_backend"] == "pypdf"
+    assert first["parser_backend_fallback_from"] == "mineru"
     assert any(diagnostic["code"] == "parser_fallback_observed" for diagnostic in first["diagnostics"])
 
 
@@ -201,8 +218,6 @@ def test_result_evidence_reports_missing_claim_join() -> None:
         reported_year=2024,
         locator=f"page:2;block:{PDF_BLOCK_ID}",
     )
-    import sqlite3
-
     with sqlite3.connect(root / "state" / "catalog.sqlite") as conn:
         conn.execute("delete from claims where claim_id = 'clm_orphan'")
 

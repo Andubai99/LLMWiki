@@ -203,7 +203,7 @@ def normalize_row(data: dict[str, Any]) -> dict[str, Any]:
     row["warnings"] = parse_json_field(row, "warnings", [])
     row["evidence_block_ids"] = parse_json_field(row, "evidence_block_ids", [])
     row["evidence_pages"] = parse_json_field(row, "evidence_pages", [])
-    row["evidence_block_roles"] = parse_json_field(row, "evidence_block_roles", {})
+    row["evidence_block_roles"] = normalize_evidence_block_roles(parse_json_field(row, "evidence_block_roles", []))
     return row
 
 
@@ -215,6 +215,21 @@ def parse_json_field(row: dict[str, Any], field_name: str, fallback: Any) -> Any
         return json.loads(str(value))
     except json.JSONDecodeError:
         return fallback
+
+
+def normalize_evidence_block_roles(value: Any) -> list[str]:
+    if isinstance(value, dict):
+        raw_roles = value.values()
+    elif isinstance(value, list):
+        raw_roles = value
+    else:
+        raw_roles = []
+    roles: list[str] = []
+    for role in raw_roles:
+        text = str(role or "").strip()
+        if text:
+            roles.append(text)
+    return roles
 
 
 def load_paper_display_metadata(root: Path, warnings: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
@@ -247,14 +262,14 @@ def load_parser_diagnostics(root: Path, rows: list[dict[str, Any]]) -> dict[str,
         parser_warnings = list(metadata.get("parser_backend_warnings") or [])
         parser_quality = metadata.get("parser_quality") if isinstance(metadata.get("parser_quality"), dict) else {}
         warning_count = int(parser_quality.get("warning_count") or 0) + len(parser_warnings)
-        if fallback or warning_count or parser_quality.get("issues"):
-            diagnostics[source_id] = {
-                "metadata_status": "available",
-                "fallback": fallback,
-                "warning_count": warning_count,
-                "parser_backend": str(metadata.get("parser_backend") or ""),
-                "parser_backend_fallback_from": str(metadata.get("parser_backend_fallback_from") or ""),
-            }
+        diagnostics[source_id] = {
+            "metadata_status": "available",
+            "fallback": fallback,
+            "warning_count": warning_count,
+            "parser_backend": str(metadata.get("parser_backend") or ""),
+            "parser_backend_fallback_from": str(metadata.get("parser_backend_fallback_from") or ""),
+            "has_diagnostic": bool(fallback or warning_count or parser_quality.get("issues")),
+        }
     return diagnostics
 
 
@@ -280,8 +295,8 @@ def build_item(
     if not row.get("baseline"):
         diagnostics.append(diagnostic("missing_baseline", "info", f"Missing baseline for {row['result_id']}."))
 
-    if row["source_id"] in parser_diagnostics:
-        source_diag = parser_diagnostics[row["source_id"]]
+    source_diag = parser_diagnostics.get(row["source_id"], {})
+    if source_diag:
         if source_diag.get("fallback"):
             diagnostics.append(
                 diagnostic(
@@ -342,6 +357,9 @@ def build_item(
         "extraction_origin": row["extraction_origin"],
         "evidence_block_ids": list(row.get("evidence_block_ids") or []),
         "evidence_pages": list(row.get("evidence_pages") or []),
+        "evidence_block_roles": list(row.get("evidence_block_roles") or []),
+        "parser_backend": str(source_diag.get("parser_backend") or ""),
+        "parser_backend_fallback_from": str(source_diag.get("parser_backend_fallback_from") or ""),
         "warnings": list(row.get("warnings") or []),
         **locator_context,
         "diagnostics": diagnostics,
@@ -495,6 +513,10 @@ def build_summary(items: list[dict[str, Any]], parser_diagnostics: dict[str, dic
                 warning_count += 1
             else:
                 info_count += 1
+    parser_backend_result_counts: dict[str, int] = {}
+    for item in items:
+        backend = str(item.get("parser_backend") or "unknown")
+        parser_backend_result_counts[backend] = parser_backend_result_counts.get(backend, 0) + 1
     return {
         "source_count": len({item["source_id"] for item in items if item.get("source_id")}),
         "paper_count": len({item["paper_id"] for item in items if item.get("paper_id")}),
@@ -504,14 +526,18 @@ def build_summary(items: list[dict[str, Any]], parser_diagnostics: dict[str, dic
         "context_available_count": sum(1 for item in items if item["context_status"] == "available"),
         "pdf_result_count": sum(1 for item in items if item["source_type"] == "pdf"),
         "markdown_result_count": sum(1 for item in items if item["source_type"] not in {"", "pdf"}),
-        "table_result_count": sum(1 for item in items if item["context_block_role"] == "table"),
-        "caption_result_count": sum(1 for item in items if item["context_block_role"] == "caption"),
+        "table_result_count": sum(1 for item in items if item_has_evidence_role(item, "table")),
+        "caption_result_count": sum(1 for item in items if item_has_evidence_role(item, "caption")),
+        "result_text_context_count": sum(1 for item in items if item_has_any_evidence_role(item, {"paragraph", "text", "content"})),
         "missing_normalized_value_count": sum(1 for item in items if not item["metric_value"]),
         "missing_method_count": sum(1 for item in items if not item["method"]),
         "missing_dataset_count": sum(1 for item in items if not item["dataset"]),
         "missing_task_count": sum(1 for item in items if not item["task"]),
         "missing_baseline_count": sum(1 for item in items if not item["baseline"]),
-        "parser_diagnostic_source_count": len(parser_diagnostics),
+        "parser_metadata_source_count": len(parser_diagnostics),
+        "parser_diagnostic_source_count": sum(1 for source in parser_diagnostics.values() if source.get("has_diagnostic")),
+        "parser_backend_result_counts": dict(sorted(parser_backend_result_counts.items())),
+        "parser_fallback_result_count": sum(1 for item in items if item.get("parser_backend_fallback_from")),
         "warning_count": warning_count,
         "error_count": error_count,
         "info_count": info_count,
@@ -521,6 +547,17 @@ def build_summary(items: list[dict[str, Any]], parser_diagnostics: dict[str, dic
 
 def has_diagnostic(item: dict[str, Any], code: str) -> bool:
     return any(diagnostic.get("code") == code for diagnostic in item.get("diagnostics", []))
+
+
+def item_has_evidence_role(item: dict[str, Any], role: str) -> bool:
+    return item_has_any_evidence_role(item, {role})
+
+
+def item_has_any_evidence_role(item: dict[str, Any], roles: set[str]) -> bool:
+    normalized_roles = {role.casefold() for role in roles}
+    item_roles = {str(role or "").casefold() for role in item.get("evidence_block_roles", [])}
+    context_role = str(item.get("context_block_role") or "").casefold()
+    return context_role in normalized_roles or bool(item_roles & normalized_roles)
 
 
 def diagnostic(code: str, severity: str, message: str) -> dict[str, Any]:
