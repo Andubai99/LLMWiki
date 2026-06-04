@@ -268,6 +268,14 @@ def test_docs_describe_v1_commands_and_constraints():
     assert "result_evidence_quality.v4.5" in readme
     assert "result_evidence_item.v4.5" in readme
     assert ".tmp/paper-v45-acceptance" in readme
+    assert "V4.5.1 MinerU Result Extraction Quality Repair" in readme
+    assert ".tmp/paper-v451-mineru-repair-acceptance" in readme
+    assert "mineru_backend = \"pipeline\"" in readme
+    assert "mineru_method = \"auto\"" in readme
+    assert "mineru_extra_args" in readme
+    assert "result-focused chunks" in readme
+    assert "placeholder" in readme
+    assert "parser_backend_result_counts" in readme
     assert "page markdown 是页面文本，不是 formal evidence" in readme
     assert "llmwiki eval pdf-quality --root ." in readme
     assert "defaults to `auto`" in readme
@@ -372,6 +380,12 @@ def test_docs_describe_v1_commands_and_constraints():
     assert "result_evidence_item.v4.5" in agents
     assert "fixed 5-paper" in agents
     assert ".tmp/paper-v45-acceptance" in agents
+    assert "V4.5.1 is a narrow MinerU result extraction quality repair" in agents
+    assert ".tmp/paper-v451-mineru-repair-acceptance" in agents
+    assert "mineru_backend = \"pipeline\"" in agents
+    assert "mineru_method = \"auto\"" in agents
+    assert "Placeholder metric values" in agents
+    assert "evidence_block_roles" in agents
     assert "--scope generated" in agents
     assert "PDF source aliases must not include parser-created aliases or paper title aliases" in agents
     assert "LLM repair may only repair JSON syntax" in agents

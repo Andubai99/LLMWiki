@@ -317,6 +317,16 @@ JSON schema 使用 `result_evidence_quality.v4.5` 和 `result_evidence_item.v4.5
 
 V4.5-min 真实验收使用固定 5 篇 `docs/papers/` 子集，不默认跑完整 20 篇；验收 workspace `.tmp/paper-v45-acceptance` 会按用户要求保留，便于后续追问实际结果。
 
+## V4.5.1 MinerU Result Extraction Quality Repair
+
+V4.5.1 是 V4.5-min 后的窄修复阶段，用 strict MinerU 重新验收固定 5 篇论文，并提升 `metric-results` 对 table、caption、heading 和 result-text block 的覆盖。验收使用 `.tmp/paper-v451-mineru-repair-acceptance`，默认保留结果供人工追问和对比。
+
+新建 workspace 的 `[pdf_parser]` 推荐配置使用 `mineru_backend = "pipeline"`、`mineru_method = "auto"`；本次英文 5 篇验收才额外设置 `mineru_extra_args = ["-l", "en"]`。`llmwiki parsers status --root . --json` 会报告 `mineru_command_source`、`mineru_backend`、`mineru_method` 和 `mineru_extra_args`，用于确认没有误用 fallback。
+
+PDF chunking 会额外生成 result-focused chunks，让 table/caption/nearby heading/result text 进入同一个 bounded evidence window。`metric_result_candidates` 可以携带辅助 `evidence_block_ids`；durable `metric_results` 保留主 locator 和有效辅助 block roles。`See table`、`not reported`、`N/A` 这类 placeholder 不应作为最终 cited metric value，尤其当同一 evidence bundle 中能看到具体表格数值时。
+
+`llmwiki eval result-evidence --root . --json` 的 summary 可用于 V4.5.1 对比：关注 `metric_result_count`、`table_result_count`、`caption_result_count`、`result_text_context_count`、`parser_backend_result_counts`、`parser_fallback_result_count`、missing method/dataset/task/value counts 和 `error_count`。
+
 ### Internal/debug 命令
 
 ```bash

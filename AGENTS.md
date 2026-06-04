@@ -195,6 +195,11 @@
 - `llmwiki eval result-evidence` must not write `wiki/`, `sources/`, `staging/`, `state/catalog.sqlite`, `state/corpus-batches/`, `state/embeddings/`, `state/ui-jobs/`, or `.tmp/`.
 - V4.5-min does not implement UI, extraction prompt changes, metric aliases, unit conversion, timeline ranking, automatic repairs, or wiki writeback.
 - V4.5-min real acceptance uses a fixed 5-paper `docs/papers/` subset instead of the full 20-paper corpus. Preserve `.tmp/paper-v45-acceptance` after acceptance unless the user explicitly approves cleanup.
+- V4.5.1 is a narrow MinerU result extraction quality repair over the same fixed 5-paper subset. It may improve parser status diagnostics, PDF result-focused chunk construction, metric result candidate validation, and result-evidence quality counters, but it must not add UI, catalog migrations, metric aliases, unit conversion, timeline ranking, automatic repairs, or wiki writeback.
+- V4.5.1 strict acceptance must use `--parser mineru`, `mineru_backend = "pipeline"`, `mineru_method = "auto"`, and for the English 5-paper subset `mineru_extra_args = ["-l", "en"]`; accidental auto fallback must remain visible through parser metadata and `llmwiki eval result-evidence`.
+- V4.5.1 result-focused chunks may group table/caption/nearby heading/result-text blocks into one bounded evidence window. The primary `citation_locator` remains one real block, and valid auxiliary blocks must be preserved in `evidence_block_ids`, `evidence_pages`, and `evidence_block_roles`.
+- Placeholder metric values such as `See table`, `not reported`, and `N/A` must not become final cited durable `metric_results` when the same evidence bundle exposes a concrete value.
+- Preserve `.tmp/paper-v451-mineru-repair-acceptance` after V4.5.1 acceptance unless the user explicitly approves cleanup.
 
 ## 12. Generated Files And Cleanup
 
