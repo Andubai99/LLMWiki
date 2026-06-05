@@ -302,6 +302,16 @@ def test_docs_describe_v1_commands_and_constraints():
     assert "metric_repair_projection.v4.8" in readme
     assert "metric_repair_run.v4.8" in readme
     assert "not a durable repair/apply workflow" in readme
+    assert "V4.9 LLM Metric Normalization And Timeline Synthesis" in readme
+    assert "llmwiki metric normalize --root . --dry-run --json" in readme
+    assert "llmwiki metric normalize-status <normalization-run-id>" in readme
+    assert "llmwiki metric timeline-synthesis <normalization-run-id>" in readme
+    assert "metric_normalization_run.v4.9" in readme
+    assert "metric_evidence_bundle.v4.9" in readme
+    assert "metric_normalization_decision.v4.9" in readme
+    assert "metric_timeline_group.v4.9" in readme
+    assert "metric_timeline_point.v4.9" in readme
+    assert "metric_timeline_synthesis.v4.9" in readme
     assert "page markdown 是页面文本，不是 formal evidence" in readme
     assert "llmwiki eval pdf-quality --root ." in readme
     assert "defaults to `auto`" in readme
@@ -434,6 +444,15 @@ def test_docs_describe_v1_commands_and_constraints():
     assert "metric_repair_run.v4.8" in agents
     assert "staging/<repair-run-id>/" in agents
     assert "must not update `metric_results`" in agents
+    assert "llmwiki metric normalize" in agents
+    assert "metric_normalization_run.v4.9" in agents
+    assert "metric_evidence_bundle.v4.9" in agents
+    assert "metric_normalization_decision.v4.9" in agents
+    assert "metric_timeline_group.v4.9" in agents
+    assert "metric_timeline_point.v4.9" in agents
+    assert "metric_timeline_synthesis.v4.9" in agents
+    assert "staging/<normalization-run-id>/" in agents
+    assert "must not update durable `metric_results`" in agents
     assert "Expensive Acceptance Policy" in agents
     assert "MinerU+LLM full-corpus acceptance is expensive" in agents
     assert "Default to reusing preserved acceptance workspaces" in agents

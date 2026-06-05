@@ -217,6 +217,14 @@
 - V4.8 must not update `metric_results`, mutate `state/catalog.sqlite`, change `llmwiki metric timeline`, create wiki pages, create source artifacts, or provide durable repair/apply.
 - V4.8 must not call LLM providers, embedding providers, MinerU, parser execution, add/import, ingest, apply, ask, synthesis, lint, clean, CLI eval recursion, or raw PDF chunk retrieval.
 - V4.8 acceptance should reuse `.tmp/paper-v46-corpus-acceptance`; do not rerun full MinerU+LLM for repair review proposal generation.
+- V4.9 `llmwiki metric normalize`, `llmwiki metric normalize-status`, and `llmwiki metric timeline-synthesis` are CLI-first LLM metric normalization and timeline preview commands over existing catalog-backed `metric_results`.
+- V4.9 uses `metric_normalization_run.v4.9`, `metric_evidence_bundle.v4.9`, `metric_normalization_decision.v4.9`, `metric_timeline_group.v4.9`, `metric_timeline_point.v4.9`, `metric_timeline_synthesis.v4.9`, and `metric_normalization_warning.v4.9`; decisions and timeline previews are derived metadata, not formal evidence.
+- `llmwiki metric normalize --dry-run`, `normalize-status`, and `timeline-synthesis` must be read-only and must not call LLM providers or write workspace files.
+- A real `llmwiki metric normalize` run may call the configured LLM provider and may write only `staging/<normalization-run-id>/` artifacts; it must not write `state/catalog.sqlite`, `wiki/`, `sources/`, `state/corpus-batches/`, `state/embeddings/`, or `state/ui-jobs/`.
+- V4.9 must not rerun MinerU, parser execution, corpus import, ingest, apply, ask, synthesis writeback, lint, clean, or raw PDF chunk retrieval.
+- V4.9 must not update durable `metric_results`, change `llmwiki metric timeline`, create durable overlays, or write wiki pages.
+- V4.9 LLM prompts must use bounded evidence bundles only and must not save raw prompt, raw LLM response, API key, parser logs, parser artifacts, or unsupported evidence refs.
+- V4.9 acceptance should reuse `.tmp/paper-v46-corpus-acceptance`; do not rerun full MinerU+LLM ingest for metric normalization and timeline synthesis.
 
 ## 11.6 Expensive Acceptance Policy
 

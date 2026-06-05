@@ -375,6 +375,23 @@ JSON output uses `metric_repair_plan.v4.8`, `metric_repair_proposal.v4.8`, `metr
 
 V4.8 is a review workflow, not a durable repair/apply workflow. Default `repair-plan` and `repair-status` are read-only. `repair-plan --stage` and `repair-mark` may write only `staging/<repair-run-id>/` review artifacts, including `metric-repair-plan.json`, `metric-repair-proposals.jsonl`, `metric-repair-decisions.jsonl`, `run.json`, and `triage.md`. V4.8 does not update `state/catalog.sqlite`, does not change `metric_results`, does not alter `llmwiki metric timeline`, and does not rerun MinerU+LLM.
 
+## V4.9 LLM Metric Normalization And Timeline Synthesis
+
+V4.9 adds a CLI-first LLM normalization pass over existing catalog-backed `metric_results`. It uses bounded evidence bundles to automatically normalize metric, dataset, task, result role, and timeline year, then writes a staging-only timeline preview:
+
+```bash
+llmwiki metric normalize --root . --dry-run --json
+llmwiki metric normalize --root . --json
+llmwiki metric normalize-status <normalization-run-id> --root . --json
+llmwiki metric timeline-synthesis <normalization-run-id> --root . --json
+```
+
+JSON output uses `metric_normalization_run.v4.9`, `metric_evidence_bundle.v4.9`, `metric_normalization_decision.v4.9`, `metric_timeline_group.v4.9`, `metric_timeline_point.v4.9`, `metric_timeline_synthesis.v4.9`, and `metric_normalization_warning.v4.9`.
+
+`llmwiki metric normalize --dry-run`, `normalize-status`, and `timeline-synthesis` are read-only. A real `normalize` run may call the configured LLM provider and may write only `staging/<normalization-run-id>/` artifacts: `run.json`, `evidence-bundles.jsonl`, `llm-normalization-decisions.jsonl`, `timeline-groups.jsonl`, `timeline-points.jsonl`, `timeline-synthesis.json`, `warnings.jsonl`, and `triage.md`.
+
+V4.9 does not rerun MinerU/parser/corpus import/ingest/apply, does not update `metric_results`, does not mutate `state/catalog.sqlite`, does not write wiki pages, and does not change `llmwiki metric timeline`. It reuses preserved acceptance workspaces such as `.tmp/paper-v46-corpus-acceptance`; full MinerU+LLM corpus re-ingest is not required.
+
 ### Internal/debug 命令
 
 ```bash
