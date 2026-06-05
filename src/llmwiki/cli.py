@@ -26,11 +26,18 @@ from .lint import lint_workspace
 from .maintenance.clean import clean_workspace, format_clean_report
 from .llm import create_provider, load_llm_config, override_llm_config
 from .metrics.formatting import (
+    format_metric_canonicalization,
     format_metric_json,
     format_metric_list,
     format_metric_timeline,
+    metric_canonicalization_payload,
     metric_list_payload,
     metric_timeline_payload,
+)
+from .metrics.canonicalization import (
+    MetricCanonicalizationCatalogError,
+    MetricCanonicalizationFilterError,
+    build_metric_canonicalization_report,
 )
 from .metrics.timeline import (
     TimelineCatalogError,
@@ -513,6 +520,27 @@ def cmd_metric_timeline(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_metric_canonicalize(args: argparse.Namespace) -> int:
+    root = Path(args.root).resolve()
+    try:
+        result = build_metric_canonicalization_report(
+            root,
+            metric=args.metric,
+            dataset=args.dataset,
+            task=args.task,
+            limit=args.limit,
+            offset=args.offset,
+        )
+    except (MetricCanonicalizationCatalogError, MetricCanonicalizationFilterError, OSError, ValueError) as exc:
+        print(f"Metric canonicalization failed: {sanitize_error(exc)}")
+        return 1
+    if args.json:
+        print(format_metric_json(metric_canonicalization_payload(result)))
+    else:
+        print(format_metric_canonicalization(result))
+    return 0
+
+
 def cmd_parsers_status(args: argparse.Namespace) -> int:
     root = Path(args.root).resolve()
     config = load_pdf_parser_config(root)
@@ -923,6 +951,19 @@ def build_parser() -> argparse.ArgumentParser:
     metric_timeline_parser.add_argument("--offset", type=int, default=None)
     metric_timeline_parser.add_argument("--json", action="store_true", help="Output stable machine-readable JSON.")
     metric_timeline_parser.set_defaults(func=cmd_metric_timeline)
+
+    metric_canonicalize_parser = metric_subparsers.add_parser(
+        "canonicalize",
+        help="Report conservative metric canonicalization and timeline readiness.",
+    )
+    metric_canonicalize_parser.add_argument("--root", default=".")
+    metric_canonicalize_parser.add_argument("--metric")
+    metric_canonicalize_parser.add_argument("--dataset")
+    metric_canonicalize_parser.add_argument("--task")
+    metric_canonicalize_parser.add_argument("--limit", type=int, default=None)
+    metric_canonicalize_parser.add_argument("--offset", type=int, default=None)
+    metric_canonicalize_parser.add_argument("--json", action="store_true", help="Output stable machine-readable JSON.")
+    metric_canonicalize_parser.set_defaults(func=cmd_metric_canonicalize)
 
     corpus_parser = subparsers.add_parser("corpus", help="Manage corpus import batches.")
     corpus_subparsers = corpus_parser.add_subparsers(dest="corpus_command", required=True)

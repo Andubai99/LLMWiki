@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from .canonicalization import MetricCanonicalizationReport
 from .timeline import MetricListResponse, MetricTimelineResponse
 
 
@@ -15,6 +16,10 @@ def metric_list_payload(response: MetricListResponse) -> dict[str, Any]:
 
 
 def metric_timeline_payload(response: MetricTimelineResponse) -> dict[str, Any]:
+    return response.to_dict()
+
+
+def metric_canonicalization_payload(response: MetricCanonicalizationReport) -> dict[str, Any]:
     return response.to_dict()
 
 
@@ -50,6 +55,95 @@ def format_metric_list(response: MetricListResponse) -> str:
     warning_lines = warning_text_lines(payload["warnings"])
     if warning_lines:
         lines.extend(["", "Warnings:", *warning_lines])
+    return "\n".join(lines)
+
+
+def format_metric_canonicalization(response: MetricCanonicalizationReport) -> str:
+    payload = response.to_dict()
+    summary = payload["summary"]
+    query = payload["query"]
+    filters = [
+        f"{name}={query[name]}"
+        for name in ("metric", "dataset", "task")
+        if query.get(name)
+    ]
+    lines = [
+        "Metric canonicalization",
+        f"Filters: {' '.join(filters) if filters else 'none'}",
+        f"Results: {summary['result_count']}",
+        f"Canonical metrics: {summary['canonical_metric_count_unpaged']}",
+        f"Comparability groups: {summary['comparability_group_count_unpaged']}",
+        f"Timeline readiness: strict_ready={summary['strict_ready_count']} ready_after_value_repair={summary['ready_after_value_repair_count']} needs_review={summary['needs_canonical_review_count']}",
+        f"Value repairs: {summary['value_repair_count_unpaged']}",
+        "",
+        "Canonical metric | Rows | Papers | Missing values | Warnings",
+    ]
+    metrics = payload["canonical_metrics"]
+    if not metrics:
+        lines.append("none | 0 | 0 | 0 |")
+    for metric in metrics[:20]:
+        warning_codes = ", ".join(str(warning.get("code") or "") for warning in metric.get("warnings", []))
+        lines.append(
+            " | ".join(
+                [
+                    clip(str(metric["display_name"]), 32),
+                    str(metric["row_count"]),
+                    str(metric["paper_count"]),
+                    str(metric["missing_value_count"]),
+                    clip(warning_codes, 24),
+                ]
+            )
+        )
+
+    lines.extend(
+        [
+            "",
+            "Timeline readiness",
+            "Status | Metric | Dataset | Task | Rows | Papers | Reasons",
+        ]
+    )
+    readiness = payload["timeline_readiness"]
+    if not readiness:
+        lines.append("not_ready_empty | none | | | 0 | 0 | empty")
+    for item in readiness[:20]:
+        lines.append(
+            " | ".join(
+                [
+                    str(item["readiness_status"]),
+                    clip(str(item["display_name"]), 24),
+                    clip(str(item["dataset"]), 18),
+                    clip(str(item["task"]), 18),
+                    str(item["row_count"]),
+                    str(item["paper_count"]),
+                    clip(", ".join(item.get("blocking_reasons") or []), 30),
+                ]
+            )
+        )
+
+    repairs = payload["value_repairs"]
+    lines.extend(["", "Value repairs", "Result | Metric | Suggested value | Source | Confidence"])
+    if not repairs:
+        lines.append("none | | | |")
+    for repair in repairs[:20]:
+        value = repair["suggested_metric_value"]
+        unit = repair["suggested_metric_unit"]
+        if value and unit and unit not in value:
+            value = f"{value}{unit}"
+        lines.append(
+            " | ".join(
+                [
+                    clip(str(repair["result_id"]), 18),
+                    clip(str(repair["metric_name"]), 24),
+                    clip(str(value), 16),
+                    str(repair["suggestion_source"]),
+                    str(repair["repair_confidence"]),
+                ]
+            )
+        )
+
+    warning_lines = warning_text_lines(payload["warnings"])
+    if warning_lines:
+        lines.extend(["", "Warnings:", *warning_lines[:30]])
     return "\n".join(lines)
 
 
