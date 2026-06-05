@@ -254,7 +254,7 @@ def build_metric_normalization_run(
         decisions.extend(bundle_decisions)
         warnings.extend(bundle_warnings)
 
-    timeline_groups, timeline_points = build_timeline_preview(decisions)
+    timeline_groups, timeline_points = build_timeline_preview(decisions, dry_run.evidence_bundles)
     synthesis = build_timeline_synthesis_payload("", timeline_groups, timeline_points, warnings)
     run_id = create_normalization_run_id(dry_run.query, decisions)
     run = MetricNormalizationRun(
@@ -531,7 +531,8 @@ def normalize_decision_payload(payload: dict[str, Any], bundle: dict[str, Any]) 
     return decisions, dedupe_warnings(warnings)
 
 
-def build_timeline_preview(decisions: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+def build_timeline_preview(decisions: list[dict[str, Any]], bundles: list[dict[str, Any]] | None = None) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    row_by_result_id = result_rows_by_id(bundles or [])
     points: list[dict[str, Any]] = []
     grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for decision in decisions:
@@ -540,7 +541,7 @@ def build_timeline_preview(decisions: list[dict[str, Any]]) -> tuple[list[dict[s
         for ref in decision.get("evidence_refs") or []:
             if ref.get("result_id") not in set(decision.get("result_ids") or []):
                 continue
-            point = timeline_point_payload(decision, ref)
+            point = timeline_point_payload(decision, ref, row_by_result_id.get(str(ref.get("result_id") or ""), {}))
             points.append(point)
             grouped[str(point["timeline_group_key"])].append(point)
     groups: list[dict[str, Any]] = []
@@ -569,15 +570,16 @@ def build_timeline_preview(decisions: list[dict[str, Any]]) -> tuple[list[dict[s
     return groups, points
 
 
-def timeline_point_payload(decision: dict[str, Any], ref: dict[str, Any]) -> dict[str, Any]:
+def timeline_point_payload(decision: dict[str, Any], ref: dict[str, Any], row: dict[str, Any]) -> dict[str, Any]:
     group_key = timeline_group_key(decision)
     return {
         "schema_version": METRIC_TIMELINE_POINT_SCHEMA_VERSION,
         "timeline_group_key": group_key,
         "timeline_year": decision.get("timeline_year"),
-        "metric_value": "",
-        "metric_raw_value": "",
-        "method": "",
+        "metric_value": str(row.get("metric_value") or ""),
+        "metric_raw_value": str(row.get("metric_raw_value") or ""),
+        "metric_unit": str(row.get("metric_unit") or ""),
+        "method": str(row.get("method") or ""),
         "paper_title": "",
         "source_id": ref["source_id"],
         "paper_id": first_or_empty(decision.get("paper_ids") or [ref["source_id"]]),
@@ -594,6 +596,15 @@ def timeline_point_payload(decision: dict[str, Any], ref: dict[str, Any]) -> dic
         "confidence": decision["confidence"],
         "decision_id": decision["decision_id"],
     }
+
+
+def result_rows_by_id(bundles: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    rows: dict[str, dict[str, Any]] = {}
+    for bundle in bundles:
+        for row in bundle.get("result_rows") or []:
+            if isinstance(row, dict) and row.get("result_id"):
+                rows[str(row["result_id"])] = row
+    return rows
 
 
 def timeline_group_key(decision: dict[str, Any]) -> str:
