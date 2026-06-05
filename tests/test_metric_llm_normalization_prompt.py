@@ -107,3 +107,33 @@ def test_normalize_decision_payload_accepts_valid_refs_and_rejects_fabricated_re
     invalid["decisions"][0]["evidence_refs"][0]["result_id"] = "res_fake"
     with pytest.raises(MetricNormalizationLLMError):
         normalize_decision_payload(invalid, bundle)
+
+
+def test_normalize_decision_payload_repairs_missing_refs_from_same_bundle() -> None:
+    bundle = sample_bundle()
+    raw = {
+        "decisions": [
+            {
+                "canonical_metric_name": "",
+                "canonical_dataset_name": "",
+                "canonical_task_name": "",
+                "result_role": "main_result",
+                "paper_year": 2025,
+                "timeline_year": 2025,
+                "timeline_year_basis": "paper_identity_for_main_result",
+                "comparable": True,
+                "decision_status": "auto_accepted",
+                "confidence": "high",
+                "rationale": "证据包中唯一结果可恢复引用。",
+                "evidence_refs": [],
+                "warnings": [],
+            }
+        ]
+    }
+
+    decisions, warnings = normalize_decision_payload(raw, bundle)
+
+    assert decisions[0]["result_ids"] == ["res_a"]
+    assert decisions[0]["evidence_refs"][0]["claim_id"] == "clm_a"
+    assert decisions[0]["canonical_metric_name"] == "Success Rate"
+    assert any(warning["code"] == "missing_evidence_refs_repaired" for warning in warnings)

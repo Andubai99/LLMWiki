@@ -474,11 +474,17 @@ def normalize_decision_payload(payload: dict[str, Any], bundle: dict[str, Any]) 
     allowed_result_ids = {ref[0] for ref in allowed_refs}
     warnings: list[dict[str, Any]] = []
     decisions: list[dict[str, Any]] = []
-    for raw in raw_decisions:
+    bundle_rows = [row for row in bundle.get("result_rows", []) if isinstance(row, dict)]
+    for raw_index, raw in enumerate(raw_decisions):
         if not isinstance(raw, dict):
             warnings.append(warning("invalid_decision_item", "Skipped non-object normalization decision."))
             continue
         evidence_refs = normalize_evidence_refs(raw.get("evidence_refs") or [])
+        if not evidence_refs:
+            repaired_refs = repair_missing_evidence_refs(raw, bundle_rows, raw_index, len(raw_decisions))
+            if repaired_refs:
+                evidence_refs = repaired_refs
+                warnings.append(warning("missing_evidence_refs_repaired", "LLM omitted evidence refs; restored refs from the same evidence bundle."))
         for ref in evidence_refs:
             key = (
                 ref["result_id"],
@@ -498,9 +504,10 @@ def normalize_decision_payload(payload: dict[str, Any], bundle: dict[str, Any]) 
             status = "needs_review"
             warnings.append(warning("low_confidence_downgraded", "Low-confidence decision downgraded from auto_accepted."))
         comparable = bool(raw.get("comparable", False)) and status == "auto_accepted" and confidence in AUTO_TIMELINE_CONFIDENCES
-        canonical_metric_name = str(raw.get("canonical_metric_name") or raw.get("metric_name") or "").strip()
-        canonical_dataset_name = str(raw.get("canonical_dataset_name") or "").strip()
-        canonical_task_name = str(raw.get("canonical_task_name") or "").strip()
+        fallback_row = next((row for row in bundle_rows if str(row.get("result_id") or "") in set(result_ids)), {})
+        canonical_metric_name = str(raw.get("canonical_metric_name") or raw.get("metric_name") or fallback_row.get("metric_name") or "").strip()
+        canonical_dataset_name = str(raw.get("canonical_dataset_name") or fallback_row.get("dataset") or "").strip()
+        canonical_task_name = str(raw.get("canonical_task_name") or fallback_row.get("task") or "").strip()
         decision = {
             "schema_version": METRIC_NORMALIZATION_DECISION_SCHEMA_VERSION,
             "decision_id": decision_id_for_payload(raw),
@@ -844,6 +851,30 @@ def normalize_evidence_refs(value: Any) -> list[dict[str, str]]:
             }
         )
     return refs
+
+
+def repair_missing_evidence_refs(raw: dict[str, Any], bundle_rows: list[dict[str, Any]], raw_index: int, raw_count: int) -> list[dict[str, str]]:
+    requested_ids = set(normalize_list(raw.get("result_ids")))
+    if requested_ids:
+        rows = [row for row in bundle_rows if str(row.get("result_id") or "") in requested_ids]
+    elif len(bundle_rows) == 1:
+        rows = list(bundle_rows)
+    elif raw_count == len(bundle_rows) and 0 <= raw_index < len(bundle_rows):
+        rows = [bundle_rows[raw_index]]
+    elif raw_count == 1:
+        rows = list(bundle_rows)
+    else:
+        rows = []
+    return [
+        {
+            "result_id": str(row.get("result_id") or ""),
+            "claim_id": str(row.get("claim_id") or ""),
+            "source_id": str(row.get("source_id") or ""),
+            "citation_locator": str(row.get("citation_locator") or ""),
+        }
+        for row in rows
+        if row.get("result_id") and row.get("claim_id") and row.get("source_id") and row.get("citation_locator")
+    ]
 
 
 def normalize_warning_list(value: Any) -> list[dict[str, Any]]:
