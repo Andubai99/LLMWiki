@@ -292,6 +292,16 @@ def test_docs_describe_v1_commands_and_constraints():
     assert "metric_timeline_readiness.v4.7" in readme
     assert "ready_after_value_repair" in readme
     assert "full MinerU+LLM rerun is not required" in readme
+    assert "V4.8 Metric Repair Review Workflow" in readme
+    assert "llmwiki metric repair-plan --root . --json" in readme
+    assert "llmwiki metric repair-status <repair-run-id> --root ." in readme
+    assert "llmwiki metric repair-mark <repair-run-id> <proposal-id>" in readme
+    assert "metric_repair_plan.v4.8" in readme
+    assert "metric_repair_proposal.v4.8" in readme
+    assert "metric_repair_review_decision.v4.8" in readme
+    assert "metric_repair_projection.v4.8" in readme
+    assert "metric_repair_run.v4.8" in readme
+    assert "not a durable repair/apply workflow" in readme
     assert "page markdown 是页面文本，不是 formal evidence" in readme
     assert "llmwiki eval pdf-quality --root ." in readme
     assert "defaults to `auto`" in readme
@@ -416,6 +426,14 @@ def test_docs_describe_v1_commands_and_constraints():
     assert "metric_timeline_readiness.v4.7" in agents
     assert "ambiguous_label" in agents
     assert "do not rerun full MinerU+LLM" in agents
+    assert "llmwiki metric repair-plan" in agents
+    assert "metric_repair_plan.v4.8" in agents
+    assert "metric_repair_proposal.v4.8" in agents
+    assert "metric_repair_review_decision.v4.8" in agents
+    assert "metric_repair_projection.v4.8" in agents
+    assert "metric_repair_run.v4.8" in agents
+    assert "staging/<repair-run-id>/" in agents
+    assert "must not update `metric_results`" in agents
     assert "Expensive Acceptance Policy" in agents
     assert "MinerU+LLM full-corpus acceptance is expensive" in agents
     assert "Default to reusing preserved acceptance workspaces" in agents

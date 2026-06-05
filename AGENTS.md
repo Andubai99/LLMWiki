@@ -211,6 +211,12 @@
 - `llmwiki metric canonicalize` must not write `wiki/`, `sources/`, `staging/`, `state/catalog.sqlite`, `state/corpus-batches/`, `state/embeddings/`, `state/ui-jobs/`, or `.tmp/`.
 - V4.7 must not automatically merge vague labels such as `score`, `Avg`, or `Overall`; it should mark them as `ambiguous_label` or `context_dependent`.
 - V4.7 acceptance should reuse preserved workspaces such as `.tmp/paper-v46-corpus-acceptance`; do not rerun full MinerU+LLM for canonicalization or timeline readiness reports.
+- V4.8 `llmwiki metric repair-plan`, `llmwiki metric repair-status`, and `llmwiki metric repair-mark` are CLI-first metric repair review commands over existing V4.7 diagnostics.
+- V4.8 uses `metric_repair_plan.v4.8`, `metric_repair_proposal.v4.8`, `metric_repair_review_decision.v4.8`, `metric_repair_projection.v4.8`, `metric_repair_warning.v4.8`, and `metric_repair_run.v4.8`; proposals and decisions are review metadata, not evidence.
+- Default `llmwiki metric repair-plan` and `llmwiki metric repair-status` must be read-only. `repair-plan --stage` and `repair-mark` may write only `staging/<repair-run-id>/` review artifacts.
+- V4.8 must not update `metric_results`, mutate `state/catalog.sqlite`, change `llmwiki metric timeline`, create wiki pages, create source artifacts, or provide durable repair/apply.
+- V4.8 must not call LLM providers, embedding providers, MinerU, parser execution, add/import, ingest, apply, ask, synthesis, lint, clean, CLI eval recursion, or raw PDF chunk retrieval.
+- V4.8 acceptance should reuse `.tmp/paper-v46-corpus-acceptance`; do not rerun full MinerU+LLM for repair review proposal generation.
 
 ## 11.6 Expensive Acceptance Policy
 

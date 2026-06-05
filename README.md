@@ -359,6 +359,22 @@ JSON output uses `metric_canonicalization_report.v4.7`, `canonical_metric.v4.7`,
 
 V4.7 reuses preserved acceptance workspaces such as `.tmp/paper-v46-corpus-acceptance`; a full MinerU+LLM rerun is not required for metric canonicalization or timeline readiness reporting.
 
+## V4.8 Metric Repair Review Workflow
+
+V4.8 adds a CLI-first metric repair review workflow that turns V4.7 diagnostics into reviewable proposals:
+
+```bash
+llmwiki metric repair-plan --root .
+llmwiki metric repair-plan --root . --json
+llmwiki metric repair-plan --root . --stage
+llmwiki metric repair-status <repair-run-id> --root .
+llmwiki metric repair-mark <repair-run-id> <proposal-id> --root . --status accepted --reason "reviewed"
+```
+
+JSON output uses `metric_repair_plan.v4.8`, `metric_repair_proposal.v4.8`, `metric_repair_review_decision.v4.8`, `metric_repair_projection.v4.8`, `metric_repair_warning.v4.8`, and staged run manifests use `metric_repair_run.v4.8`.
+
+V4.8 is a review workflow, not a durable repair/apply workflow. Default `repair-plan` and `repair-status` are read-only. `repair-plan --stage` and `repair-mark` may write only `staging/<repair-run-id>/` review artifacts, including `metric-repair-plan.json`, `metric-repair-proposals.jsonl`, `metric-repair-decisions.jsonl`, `run.json`, and `triage.md`. V4.8 does not update `state/catalog.sqlite`, does not change `metric_results`, does not alter `llmwiki metric timeline`, and does not rerun MinerU+LLM.
+
 ### Internal/debug 命令
 
 ```bash
