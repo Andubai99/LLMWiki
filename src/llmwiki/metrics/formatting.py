@@ -4,6 +4,7 @@ import json
 from typing import Any
 
 from .canonicalization import MetricCanonicalizationReport
+from .repair import MetricRepairPlan
 from .timeline import MetricListResponse, MetricTimelineResponse
 
 
@@ -20,6 +21,10 @@ def metric_timeline_payload(response: MetricTimelineResponse) -> dict[str, Any]:
 
 
 def metric_canonicalization_payload(response: MetricCanonicalizationReport) -> dict[str, Any]:
+    return response.to_dict()
+
+
+def metric_repair_payload(response: MetricRepairPlan) -> dict[str, Any]:
     return response.to_dict()
 
 
@@ -55,6 +60,69 @@ def format_metric_list(response: MetricListResponse) -> str:
     warning_lines = warning_text_lines(payload["warnings"])
     if warning_lines:
         lines.extend(["", "Warnings:", *warning_lines])
+    return "\n".join(lines)
+
+
+def format_metric_repair_plan(response: MetricRepairPlan) -> str:
+    return format_metric_repair_response(response, title="Metric repair plan")
+
+
+def format_metric_repair_status(response: MetricRepairPlan) -> str:
+    return format_metric_repair_response(response, title="Metric repair status")
+
+
+def format_metric_repair_response(response: MetricRepairPlan, *, title: str) -> str:
+    payload = response.to_dict()
+    summary = payload["summary"]
+    lines = [
+        title,
+        f"Run: {payload.get('repair_run_id') or 'none'}",
+        f"Proposals: {summary.get('proposal_count_unpaged', summary.get('proposal_count', 0))}",
+        f"Year repairs: {summary.get('year_repair_proposal_count', 0)}",
+        f"Value repairs: {summary.get('value_repair_proposal_count', 0)}",
+        f"Metric alias reviews: {summary.get('metric_alias_review_count', 0)}",
+        f"Dataset alias reviews: {summary.get('dataset_alias_review_count', 0)}",
+        f"Task alias reviews: {summary.get('task_alias_review_count', 0)}",
+        f"Blocked vague labels: {summary.get('blocked_vague_label_count', 0)}",
+        f"Decisions: {summary.get('decision_count', 0)}",
+        "",
+        "Projected readiness",
+        "Group | Current | Projected | Required proposals",
+    ]
+    projections = payload["projections"]
+    if not projections:
+        lines.append("none | | | 0")
+    for projection in projections[:20]:
+        lines.append(
+            " | ".join(
+                [
+                    clip(str(projection["comparability_group_key"]), 36),
+                    str(projection["current_readiness_status"]),
+                    str(projection["projected_readiness_status"]),
+                    str(len(projection.get("required_proposal_ids") or [])),
+                ]
+            )
+        )
+
+    lines.extend(["", "Top proposals", "Proposal | Type | Status | Risk | Title"])
+    proposals = payload["proposals"]
+    if not proposals:
+        lines.append("none | | | |")
+    for proposal in proposals[:20]:
+        lines.append(
+            " | ".join(
+                [
+                    clip(str(proposal["proposal_id"]), 18),
+                    clip(str(proposal["proposal_type"]), 32),
+                    str(proposal["review_status"]),
+                    str(proposal["risk_level"]),
+                    clip(str(proposal["title"]), 42),
+                ]
+            )
+        )
+    warning_lines = warning_text_lines(payload["warnings"])
+    if warning_lines:
+        lines.extend(["", "Warnings:", *warning_lines[:30]])
     return "\n".join(lines)
 
 

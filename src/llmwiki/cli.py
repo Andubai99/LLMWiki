@@ -29,10 +29,22 @@ from .metrics.formatting import (
     format_metric_canonicalization,
     format_metric_json,
     format_metric_list,
+    format_metric_repair_plan,
+    format_metric_repair_status,
     format_metric_timeline,
     metric_canonicalization_payload,
     metric_list_payload,
+    metric_repair_payload,
     metric_timeline_payload,
+)
+from .metrics.repair import (
+    MetricRepairCatalogError,
+    MetricRepairFilterError,
+    MetricRepairStagingError,
+    append_metric_repair_decision,
+    build_metric_repair_plan,
+    read_metric_repair_status,
+    stage_metric_repair_plan,
 )
 from .metrics.canonicalization import (
     MetricCanonicalizationCatalogError,
@@ -541,6 +553,64 @@ def cmd_metric_canonicalize(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_metric_repair_plan(args: argparse.Namespace) -> int:
+    root = Path(args.root).resolve()
+    try:
+        result = build_metric_repair_plan(
+            root,
+            metric=args.metric,
+            dataset=args.dataset,
+            task=args.task,
+            proposal_type=args.proposal_type,
+            limit=args.limit,
+            offset=args.offset,
+        )
+        if args.stage:
+            result = stage_metric_repair_plan(root, result, label=args.label or "")
+    except (MetricRepairCatalogError, MetricRepairFilterError, MetricRepairStagingError, OSError, ValueError) as exc:
+        print(f"Metric repair plan failed: {sanitize_error(exc)}")
+        return 1
+    if args.json:
+        print(format_metric_json(metric_repair_payload(result)))
+    else:
+        print(format_metric_repair_plan(result))
+    return 0
+
+
+def cmd_metric_repair_status(args: argparse.Namespace) -> int:
+    root = Path(args.root).resolve()
+    try:
+        result = read_metric_repair_status(root, args.repair_run_id)
+    except (MetricRepairStagingError, OSError, ValueError) as exc:
+        print(f"Metric repair status failed: {sanitize_error(exc)}")
+        return 1
+    if args.json:
+        print(format_metric_json(metric_repair_payload(result)))
+    else:
+        print(format_metric_repair_status(result))
+    return 0
+
+
+def cmd_metric_repair_mark(args: argparse.Namespace) -> int:
+    root = Path(args.root).resolve()
+    try:
+        decision = append_metric_repair_decision(
+            root,
+            args.repair_run_id,
+            args.proposal_id,
+            status=args.status,
+            reason=args.reason or "",
+        )
+    except (MetricRepairStagingError, OSError, ValueError) as exc:
+        print(f"Metric repair mark failed: {sanitize_error(exc)}")
+        return 1
+    if args.json:
+        print(format_metric_json(decision))
+    else:
+        print(f"Metric repair decision recorded: {decision['proposal_id']} -> {decision['status']}")
+    return 0
+
+
 def cmd_parsers_status(args: argparse.Namespace) -> int:
     root = Path(args.root).resolve()
     config = load_pdf_parser_config(root)
@@ -964,6 +1034,43 @@ def build_parser() -> argparse.ArgumentParser:
     metric_canonicalize_parser.add_argument("--offset", type=int, default=None)
     metric_canonicalize_parser.add_argument("--json", action="store_true", help="Output stable machine-readable JSON.")
     metric_canonicalize_parser.set_defaults(func=cmd_metric_canonicalize)
+
+    metric_repair_plan_parser = metric_subparsers.add_parser(
+        "repair-plan",
+        help="Generate a reviewable metric repair proposal plan.",
+    )
+    metric_repair_plan_parser.add_argument("--root", default=".")
+    metric_repair_plan_parser.add_argument("--metric")
+    metric_repair_plan_parser.add_argument("--dataset")
+    metric_repair_plan_parser.add_argument("--task")
+    metric_repair_plan_parser.add_argument("--proposal-type")
+    metric_repair_plan_parser.add_argument("--limit", type=int, default=None)
+    metric_repair_plan_parser.add_argument("--offset", type=int, default=None)
+    metric_repair_plan_parser.add_argument("--stage", action="store_true")
+    metric_repair_plan_parser.add_argument("--label")
+    metric_repair_plan_parser.add_argument("--json", action="store_true", help="Output stable machine-readable JSON.")
+    metric_repair_plan_parser.set_defaults(func=cmd_metric_repair_plan)
+
+    metric_repair_status_parser = metric_subparsers.add_parser(
+        "repair-status",
+        help="Show staged metric repair review status.",
+    )
+    metric_repair_status_parser.add_argument("repair_run_id")
+    metric_repair_status_parser.add_argument("--root", default=".")
+    metric_repair_status_parser.add_argument("--json", action="store_true", help="Output stable machine-readable JSON.")
+    metric_repair_status_parser.set_defaults(func=cmd_metric_repair_status)
+
+    metric_repair_mark_parser = metric_subparsers.add_parser(
+        "repair-mark",
+        help="Append a review decision for a metric repair proposal.",
+    )
+    metric_repair_mark_parser.add_argument("repair_run_id")
+    metric_repair_mark_parser.add_argument("proposal_id")
+    metric_repair_mark_parser.add_argument("--root", default=".")
+    metric_repair_mark_parser.add_argument("--status", choices=("accepted", "rejected", "needs_review", "blocked"), required=True)
+    metric_repair_mark_parser.add_argument("--reason", default="")
+    metric_repair_mark_parser.add_argument("--json", action="store_true", help="Output stable machine-readable JSON.")
+    metric_repair_mark_parser.set_defaults(func=cmd_metric_repair_mark)
 
     corpus_parser = subparsers.add_parser("corpus", help="Manage corpus import batches.")
     corpus_subparsers = corpus_parser.add_subparsers(dest="corpus_command", required=True)

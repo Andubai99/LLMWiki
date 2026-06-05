@@ -9,6 +9,7 @@ from tests.test_metric_timeline_readonly import snapshot_workspace
 
 def test_metric_repair_report_only_commands_do_not_write_workspace_files(capsys) -> None:
     root = workspace_with_metric_repair_cases()
+    capsys.readouterr()
     assert main(["metric", "repair-plan", "--root", str(root), "--stage", "--json"]) == 0
     staged = json.loads(capsys.readouterr().out)
     before = snapshot_workspace(root)
