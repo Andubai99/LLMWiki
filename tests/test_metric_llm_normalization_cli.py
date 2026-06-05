@@ -10,13 +10,16 @@ from tests.test_metric_repair_query import workspace_with_metric_repair_cases
 class FakeProvider:
     def complete(self, messages, schema=None):
         assert schema is not None
+        bundle_text = messages[-1]["content"].split("evidence bundle:\n", 1)[1]
+        bundle = json.loads(bundle_text)
+        row = bundle["result_rows"][0]
         content = {
             "decisions": [
                 {
-                    "result_ids": ["res_pdf"],
-                    "claim_ids": ["clm_pdf"],
-                    "source_ids": ["src_pdf"],
-                    "paper_ids": ["src_pdf"],
+                    "result_ids": [row["result_id"]],
+                    "claim_ids": [row["claim_id"]],
+                    "source_ids": [row["source_id"]],
+                    "paper_ids": [row["paper_id"]],
                     "canonical_metric_name": "success rate",
                     "canonical_dataset_name": "OSWorld",
                     "canonical_task_name": "computer use",
@@ -31,10 +34,10 @@ class FakeProvider:
                     "rationale": "论文年份可用于本文主结果。",
                     "evidence_refs": [
                         {
-                            "result_id": "res_pdf",
-                            "claim_id": "clm_pdf",
-                            "source_id": "src_pdf",
-                            "citation_locator": "page:2;block:src_pdf_p002_b0001;section:Results",
+                            "result_id": row["result_id"],
+                            "claim_id": row["claim_id"],
+                            "source_id": row["source_id"],
+                            "citation_locator": row["citation_locator"],
                         }
                     ],
                     "warnings": [],
@@ -60,6 +63,7 @@ def test_cli_includes_metric_normalize_commands() -> None:
 def test_metric_normalize_dry_run_cli_outputs_json_without_staging(capsys) -> None:
     root = workspace_with_metric_repair_cases()
     capsys.readouterr()
+    before = sorted(path.as_posix() for path in (root / "staging").glob("**/*")) if (root / "staging").exists() else []
 
     assert main(["metric", "normalize", "--root", str(root), "--dry-run", "--json"]) == 0
     payload = json.loads(capsys.readouterr().out)
@@ -67,7 +71,8 @@ def test_metric_normalize_dry_run_cli_outputs_json_without_staging(capsys) -> No
     assert payload["schema_version"] == "metric_normalization_run.v4.9"
     assert payload["mode"] == "dry_run"
     assert payload["normalization_run_id"] == ""
-    assert not (root / "staging").exists()
+    after = sorted(path.as_posix() for path in (root / "staging").glob("**/*")) if (root / "staging").exists() else []
+    assert after == before
 
 
 def test_metric_normalize_cli_runs_provider_and_status_and_synthesis(monkeypatch, capsys) -> None:

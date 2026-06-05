@@ -29,13 +29,27 @@ from .metrics.formatting import (
     format_metric_canonicalization,
     format_metric_json,
     format_metric_list,
+    format_metric_normalization,
     format_metric_repair_plan,
     format_metric_repair_status,
     format_metric_timeline,
+    format_metric_timeline_synthesis,
     metric_canonicalization_payload,
     metric_list_payload,
+    metric_normalization_payload,
     metric_repair_payload,
+    metric_timeline_synthesis_payload,
     metric_timeline_payload,
+)
+from .metrics.llm_normalization import (
+    MetricNormalizationCatalogError,
+    MetricNormalizationFilterError,
+    MetricNormalizationLLMError,
+    MetricNormalizationStagingError,
+    build_metric_normalization_dry_run,
+    build_metric_normalization_run,
+    build_metric_normalization_status,
+    build_timeline_synthesis_response,
 )
 from .metrics.repair import (
     MetricRepairCatalogError,
@@ -611,6 +625,81 @@ def cmd_metric_repair_mark(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_metric_normalize(args: argparse.Namespace) -> int:
+    root = Path(args.root).resolve()
+    try:
+        if args.dry_run:
+            result = build_metric_normalization_dry_run(
+                root,
+                metric=args.metric,
+                dataset=args.dataset,
+                task=args.task,
+                source_id=args.source_id,
+                paper_id=args.paper_id,
+                limit=args.limit,
+                offset=args.offset,
+                max_groups=args.max_groups,
+                max_results_per_group=args.max_results_per_group,
+            )
+        else:
+            result = build_metric_normalization_run(
+                root,
+                metric=args.metric,
+                dataset=args.dataset,
+                task=args.task,
+                source_id=args.source_id,
+                paper_id=args.paper_id,
+                limit=args.limit,
+                offset=args.offset,
+                max_groups=args.max_groups,
+                max_results_per_group=args.max_results_per_group,
+                reuse_run=args.reuse_run,
+            )
+    except (
+        MetricNormalizationCatalogError,
+        MetricNormalizationFilterError,
+        MetricNormalizationLLMError,
+        MetricNormalizationStagingError,
+        OSError,
+        ValueError,
+    ) as exc:
+        print(f"Metric normalize failed: {sanitize_error(exc)}")
+        return 1
+    if args.json:
+        print(format_metric_json(metric_normalization_payload(result)))
+    else:
+        print(format_metric_normalization(result))
+    return 0
+
+
+def cmd_metric_normalize_status(args: argparse.Namespace) -> int:
+    root = Path(args.root).resolve()
+    try:
+        result = build_metric_normalization_status(root, args.normalization_run_id)
+    except (MetricNormalizationStagingError, OSError, ValueError) as exc:
+        print(f"Metric normalize status failed: {sanitize_error(exc)}")
+        return 1
+    if args.json:
+        print(format_metric_json(metric_normalization_payload(result)))
+    else:
+        print(format_metric_normalization(result))
+    return 0
+
+
+def cmd_metric_timeline_synthesis(args: argparse.Namespace) -> int:
+    root = Path(args.root).resolve()
+    try:
+        result = build_timeline_synthesis_response(root, args.normalization_run_id, metric=args.metric)
+    except (MetricNormalizationStagingError, OSError, ValueError) as exc:
+        print(f"Metric timeline synthesis failed: {sanitize_error(exc)}")
+        return 1
+    if args.json:
+        print(format_metric_json(metric_timeline_synthesis_payload(result)))
+    else:
+        print(format_metric_timeline_synthesis(result))
+    return 0
+
+
 def cmd_parsers_status(args: argparse.Namespace) -> int:
     root = Path(args.root).resolve()
     config = load_pdf_parser_config(root)
@@ -1071,6 +1160,44 @@ def build_parser() -> argparse.ArgumentParser:
     metric_repair_mark_parser.add_argument("--reason", default="")
     metric_repair_mark_parser.add_argument("--json", action="store_true", help="Output stable machine-readable JSON.")
     metric_repair_mark_parser.set_defaults(func=cmd_metric_repair_mark)
+
+    metric_normalize_parser = metric_subparsers.add_parser(
+        "normalize",
+        help="Run LLM metric normalization and stage a timeline preview.",
+    )
+    metric_normalize_parser.add_argument("--root", default=".")
+    metric_normalize_parser.add_argument("--metric")
+    metric_normalize_parser.add_argument("--dataset")
+    metric_normalize_parser.add_argument("--task")
+    metric_normalize_parser.add_argument("--source-id")
+    metric_normalize_parser.add_argument("--paper-id")
+    metric_normalize_parser.add_argument("--limit", type=int, default=None)
+    metric_normalize_parser.add_argument("--offset", type=int, default=None)
+    metric_normalize_parser.add_argument("--max-groups", type=int, default=None)
+    metric_normalize_parser.add_argument("--max-results-per-group", type=int, default=None)
+    metric_normalize_parser.add_argument("--reuse-run")
+    metric_normalize_parser.add_argument("--dry-run", action="store_true")
+    metric_normalize_parser.add_argument("--json", action="store_true", help="Output stable machine-readable JSON.")
+    metric_normalize_parser.set_defaults(func=cmd_metric_normalize)
+
+    metric_normalize_status_parser = metric_subparsers.add_parser(
+        "normalize-status",
+        help="Show staged LLM metric normalization status.",
+    )
+    metric_normalize_status_parser.add_argument("normalization_run_id")
+    metric_normalize_status_parser.add_argument("--root", default=".")
+    metric_normalize_status_parser.add_argument("--json", action="store_true", help="Output stable machine-readable JSON.")
+    metric_normalize_status_parser.set_defaults(func=cmd_metric_normalize_status)
+
+    metric_timeline_synthesis_parser = metric_subparsers.add_parser(
+        "timeline-synthesis",
+        help="Read a staged LLM-normalized metric timeline synthesis.",
+    )
+    metric_timeline_synthesis_parser.add_argument("normalization_run_id")
+    metric_timeline_synthesis_parser.add_argument("--root", default=".")
+    metric_timeline_synthesis_parser.add_argument("--metric")
+    metric_timeline_synthesis_parser.add_argument("--json", action="store_true", help="Output stable machine-readable JSON.")
+    metric_timeline_synthesis_parser.set_defaults(func=cmd_metric_timeline_synthesis)
 
     corpus_parser = subparsers.add_parser("corpus", help="Manage corpus import batches.")
     corpus_subparsers = corpus_parser.add_subparsers(dest="corpus_command", required=True)

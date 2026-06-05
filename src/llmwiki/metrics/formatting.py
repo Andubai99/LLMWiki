@@ -4,6 +4,7 @@ import json
 from typing import Any
 
 from .canonicalization import MetricCanonicalizationReport
+from .llm_normalization import MetricNormalizationRun, MetricTimelineSynthesisResponse
 from .repair import MetricRepairPlan
 from .timeline import MetricListResponse, MetricTimelineResponse
 
@@ -25,6 +26,14 @@ def metric_canonicalization_payload(response: MetricCanonicalizationReport) -> d
 
 
 def metric_repair_payload(response: MetricRepairPlan) -> dict[str, Any]:
+    return response.to_dict()
+
+
+def metric_normalization_payload(response: MetricNormalizationRun) -> dict[str, Any]:
+    return response.to_dict()
+
+
+def metric_timeline_synthesis_payload(response: MetricTimelineSynthesisResponse) -> dict[str, Any]:
     return response.to_dict()
 
 
@@ -69,6 +78,80 @@ def format_metric_repair_plan(response: MetricRepairPlan) -> str:
 
 def format_metric_repair_status(response: MetricRepairPlan) -> str:
     return format_metric_repair_response(response, title="Metric repair status")
+
+
+def format_metric_normalization(response: MetricNormalizationRun) -> str:
+    payload = response.to_dict()
+    summary = payload["summary"]
+    lines = [
+        "Metric normalization",
+        f"Run: {payload.get('normalization_run_id') or 'none'}",
+        f"Mode: {payload.get('mode') or ''}",
+        f"Evidence bundles: {summary.get('evidence_bundle_count', payload.get('evidence_bundle_count', 0))}",
+        f"Decisions: {summary.get('decision_count', 0)}",
+        f"Auto accepted: {summary.get('auto_accepted_decision_count', 0)}",
+        f"Needs review: {summary.get('needs_review_decision_count', 0)}",
+        f"Conflicts: {summary.get('conflict_decision_count', 0)}",
+        f"Timeline groups: {summary.get('timeline_group_count', payload.get('timeline_group_count', 0))}",
+        f"Timeline points: {summary.get('timeline_point_count', payload.get('timeline_point_count', 0))}",
+        "",
+        "Timeline preview",
+        "Year | Metric | Dataset | Task | Result | Claim | Locator",
+    ]
+    points = payload["timeline_points"]
+    if not points:
+        lines.append("none | | | | | |")
+    for point in points[:30]:
+        lines.append(
+            " | ".join(
+                [
+                    str(point.get("timeline_year") or ""),
+                    clip(str(point.get("canonical_metric_name") or ""), 24),
+                    clip(str(point.get("canonical_dataset_name") or ""), 18),
+                    clip(str(point.get("canonical_task_name") or ""), 18),
+                    clip(str(point.get("result_id") or ""), 18),
+                    clip(str(point.get("claim_id") or ""), 18),
+                    clip(str(point.get("citation_locator") or ""), 30),
+                ]
+            )
+        )
+    warning_lines = warning_text_lines(payload["warnings"])
+    if warning_lines:
+        lines.extend(["", "Warnings:", *warning_lines[:30]])
+    return "\n".join(lines)
+
+
+def format_metric_timeline_synthesis(response: MetricTimelineSynthesisResponse) -> str:
+    payload = response.to_dict()
+    lines = [
+        "Metric timeline synthesis",
+        f"Run: {payload['normalization_run_id']}",
+        f"Timeline groups: {payload['timeline_group_count']}",
+        f"Timeline points: {payload['timeline_point_count']}",
+        "",
+        str(payload.get("synthesis") or ""),
+        "",
+        "Evidence refs",
+        "Result | Claim | Source | Locator",
+    ]
+    refs = payload["evidence_refs"]
+    if not refs:
+        lines.append("none | | |")
+    for ref in refs[:30]:
+        lines.append(
+            " | ".join(
+                [
+                    clip(str(ref.get("result_id") or ""), 18),
+                    clip(str(ref.get("claim_id") or ""), 18),
+                    clip(str(ref.get("source_id") or ""), 16),
+                    clip(str(ref.get("citation_locator") or ""), 32),
+                ]
+            )
+        )
+    warning_lines = warning_text_lines(payload["warnings"])
+    if warning_lines:
+        lines.extend(["", "Warnings:", *warning_lines[:30]])
+    return "\n".join(lines)
 
 
 def format_metric_repair_response(response: MetricRepairPlan, *, title: str) -> str:
