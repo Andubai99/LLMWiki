@@ -422,6 +422,24 @@ def test_gitignore_excludes_virtualenv_and_python_caches():
         assert pattern in gitignore
 
 
+def test_v47_spec_preserves_acceptance_reuse_policy():
+    root = Path(__file__).resolve().parents[1]
+    spec = (
+        root
+        / "docs"
+        / "specs"
+        / "2026-06-05-llmwiki-v4-7-metric-canonicalization-timeline-readiness-repair-design.md"
+    ).read_text(encoding="utf-8")
+
+    assert "V4.7 Metric Canonicalization And Timeline Readiness Repair Design" in spec
+    assert "Acceptance Reuse" in spec
+    assert ".tmp\\paper-v46-corpus-acceptance" in spec
+    assert "full 20-paper MinerU+LLM rerun is not required for V4.7" in spec
+    assert "call LLM providers" in spec
+    assert "run MinerU" in spec
+    assert "does not create new claims" in spec
+
+
 def test_gitignore_excludes_generated_workspace_content():
     root = Path(__file__).resolve().parents[1]
     gitignore = (root / ".gitignore").read_text(encoding="utf-8")
