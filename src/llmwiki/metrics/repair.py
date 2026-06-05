@@ -5,6 +5,7 @@ import json
 import re
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -46,6 +47,10 @@ class MetricRepairFilterError(ValueError):
 
 class MetricRepairCatalogError(RuntimeError):
     """Catalog is unavailable or incompatible with V4.8 metric repair review."""
+
+
+class MetricRepairStagingError(RuntimeError):
+    """Metric repair staging run is missing or invalid."""
 
 
 @dataclass
@@ -164,6 +169,198 @@ def build_metric_repair_plan(
         projections=page(projections, resolved_limit, resolved_offset),
         warnings=dedupe_warnings(warnings),
     )
+
+
+def stage_metric_repair_plan(root: Path, plan: MetricRepairPlan, *, label: str = "") -> MetricRepairPlan:
+    root = root.resolve()
+    run_id = create_repair_run_id(plan, label=label)
+    run_dir = root / "staging" / run_id
+    run_dir.mkdir(parents=True, exist_ok=False)
+    staged = MetricRepairPlan(
+        root=plan.root,
+        query=dict(plan.query),
+        summary=dict(plan.summary),
+        proposals=[dict(proposal) for proposal in plan.proposals],
+        projections=[dict(projection) for projection in plan.projections],
+        warnings=[dict(warning_item) for warning_item in plan.warnings],
+        repair_run_id=run_id,
+        generated_at=plan.generated_at,
+    )
+    manifest = {
+        "schema_version": METRIC_REPAIR_RUN_SCHEMA_VERSION,
+        "run_id": run_id,
+        "run_type": "metric_repair_review",
+        "status": "staged",
+        "label": label or "",
+        "created_at": utc_now(),
+        "proposal_count": len(staged.proposals),
+        "projection_count": len(staged.projections),
+    }
+    write_json(run_dir / "run.json", manifest)
+    write_json(run_dir / "metric-repair-plan.json", staged.to_dict())
+    write_jsonl(run_dir / "metric-repair-proposals.jsonl", staged.proposals)
+    (run_dir / "metric-repair-decisions.jsonl").write_text("", encoding="utf-8")
+    (run_dir / "triage.md").write_text(format_repair_triage(staged), encoding="utf-8")
+    return staged
+
+
+def read_metric_repair_status(root: Path, repair_run_id: str) -> MetricRepairPlan:
+    run_dir = repair_run_dir(root, repair_run_id)
+    plan_path = run_dir / "metric-repair-plan.json"
+    proposals_path = run_dir / "metric-repair-proposals.jsonl"
+    if not plan_path.exists() or not proposals_path.exists():
+        raise MetricRepairStagingError(f"missing metric repair plan artifacts: {repair_run_id}")
+    plan_payload = json.loads(plan_path.read_text(encoding="utf-8"))
+    proposals = read_jsonl(proposals_path)
+    decisions = read_decisions(root, repair_run_id)
+    latest = latest_decision_by_proposal(decisions)
+    proposals_with_decisions: list[dict[str, Any]] = []
+    for proposal in proposals:
+        current = latest.get(str(proposal.get("proposal_id") or ""))
+        updated = dict(proposal)
+        if current:
+            updated["current_decision"] = current
+            updated["review_status"] = current["status"]
+        else:
+            updated["current_decision"] = {}
+        proposals_with_decisions.append(updated)
+
+    summary = dict(plan_payload.get("summary") or {})
+    current_status_counts = Counter(proposal["review_status"] for proposal in proposals_with_decisions)
+    summary["decision_count"] = len(decisions)
+    summary["accepted_proposal_count"] = current_status_counts.get("accepted", 0)
+    summary["rejected_proposal_count"] = current_status_counts.get("rejected", 0)
+    summary["needs_review_proposal_count"] = current_status_counts.get("needs_review", 0)
+    summary["proposal_counts_by_status"] = dict(sorted(current_status_counts.items()))
+    return MetricRepairPlan(
+        root=str(plan_payload.get("root") or root.resolve().as_posix()),
+        query=dict(plan_payload.get("query") or {}),
+        summary=summary,
+        proposals=proposals_with_decisions,
+        projections=list(plan_payload.get("projections") or []),
+        warnings=list(plan_payload.get("warnings") or []),
+        repair_run_id=repair_run_id,
+        generated_at=str(plan_payload.get("generated_at") or utc_now()),
+    )
+
+
+def append_metric_repair_decision(
+    root: Path,
+    repair_run_id: str,
+    proposal_id: str,
+    *,
+    status: str,
+    reason: str = "",
+) -> dict[str, Any]:
+    if status not in DECISION_STATUSES:
+        raise MetricRepairStagingError(f"invalid repair decision status: {status}")
+    run_dir = repair_run_dir(root, repair_run_id)
+    proposals = read_jsonl(run_dir / "metric-repair-proposals.jsonl")
+    if proposal_id not in {str(proposal.get("proposal_id") or "") for proposal in proposals}:
+        raise MetricRepairStagingError(f"unknown metric repair proposal: {proposal_id}")
+    decision_body = {
+        "proposal_id": proposal_id,
+        "status": status,
+        "reason": reason or "",
+        "decided_at": utc_now(),
+    }
+    decision = {
+        "schema_version": METRIC_REPAIR_DECISION_SCHEMA_VERSION,
+        "decision_id": decision_id_for_payload(decision_body),
+        **decision_body,
+    }
+    with (run_dir / "metric-repair-decisions.jsonl").open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(decision, ensure_ascii=False, sort_keys=True) + "\n")
+    return decision
+
+
+def create_repair_run_id(plan: MetricRepairPlan, *, label: str = "") -> str:
+    now = datetime.now(timezone.utc)
+    timestamp = now.strftime("%Y%m%d%H%M%S")
+    digest_payload = {
+        "generated_at": plan.generated_at,
+        "query": plan.query,
+        "proposal_count": len(plan.proposals),
+        "label": label or "",
+        "timestamp": timestamp,
+    }
+    digest = hashlib.sha256(json.dumps(digest_payload, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()[:8]
+    return f"run_metric_repair_{timestamp}_{digest}"
+
+
+def repair_run_dir(root: Path, repair_run_id: str) -> Path:
+    if not repair_run_id.startswith("run_metric_repair_"):
+        raise MetricRepairStagingError(f"invalid metric repair run id: {repair_run_id}")
+    staging_root = root.resolve() / "staging"
+    run_dir = (staging_root / repair_run_id).resolve()
+    try:
+        run_dir.relative_to(staging_root.resolve())
+    except ValueError as exc:
+        raise MetricRepairStagingError(f"metric repair run is outside staging: {repair_run_id}") from exc
+    if not run_dir.exists():
+        raise MetricRepairStagingError(f"missing metric repair run: {repair_run_id}")
+    return run_dir
+
+
+def read_decisions(root: Path, repair_run_id: str) -> list[dict[str, Any]]:
+    decisions_path = repair_run_dir(root, repair_run_id) / "metric-repair-decisions.jsonl"
+    if not decisions_path.exists():
+        return []
+    return read_jsonl(decisions_path)
+
+
+def latest_decision_by_proposal(decisions: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    latest: dict[str, dict[str, Any]] = {}
+    for decision in decisions:
+        proposal_id = str(decision.get("proposal_id") or "")
+        if proposal_id:
+            latest[proposal_id] = decision
+    return latest
+
+
+def write_json(path: Path, payload: dict[str, Any]) -> None:
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
+    with path.open("w", encoding="utf-8") as handle:
+        for row in rows:
+            handle.write(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n")
+
+
+def read_jsonl(path: Path) -> list[dict[str, Any]]:
+    if not path.exists():
+        raise MetricRepairStagingError(f"missing metric repair artifact: {path.name}")
+    rows: list[dict[str, Any]] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if line.strip():
+            rows.append(json.loads(line))
+    return rows
+
+
+def format_repair_triage(plan: MetricRepairPlan) -> str:
+    summary = plan.summary
+    lines = [
+        "# Metric Repair Review",
+        "",
+        f"- run_id: `{plan.repair_run_id}`",
+        f"- schema_version: `{METRIC_REPAIR_RUN_SCHEMA_VERSION}`",
+        f"- proposal_count: `{summary.get('proposal_count_unpaged', len(plan.proposals))}`",
+        f"- year_repair_proposal_count: `{summary.get('year_repair_proposal_count', 0)}`",
+        f"- value_repair_proposal_count: `{summary.get('value_repair_proposal_count', 0)}`",
+        f"- metric_alias_review_count: `{summary.get('metric_alias_review_count', 0)}`",
+        f"- dataset_alias_review_count: `{summary.get('dataset_alias_review_count', 0)}`",
+        f"- task_alias_review_count: `{summary.get('task_alias_review_count', 0)}`",
+        f"- blocked_vague_label_count: `{summary.get('blocked_vague_label_count', 0)}`",
+        "",
+        "## Top Proposals",
+    ]
+    for proposal in plan.proposals[:20]:
+        lines.append(
+            f"- `{proposal['proposal_id']}` {proposal['proposal_type']} "
+            f"risk={proposal['risk_level']} status={proposal['review_status']} - {proposal['title']}"
+        )
+    return "\n".join(lines) + "\n"
 
 
 def proposal_id_for_payload(payload: dict[str, Any]) -> str:
