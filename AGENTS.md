@@ -206,6 +206,23 @@
 - `llmwiki eval corpus-results` must not write `wiki/`, `sources/`, `staging/`, `state/catalog.sqlite`, `state/corpus-batches/`, `state/embeddings/`, `state/ui-jobs/`, or `.tmp/`.
 - V4.6-min full acceptance uses strict MinerU over the full 20-paper `docs/papers/` corpus and preserves `.tmp/paper-v46-corpus-acceptance` unless the user explicitly approves cleanup.
 
+## 11.6 Expensive Acceptance Policy
+
+- MinerU+LLM full-corpus acceptance is expensive and must not be treated as routine validation.
+- Default to reusing preserved acceptance workspaces such as `.tmp/paper-v46-corpus-acceptance` for read-only analysis, CLI reports, metric canonicalization, timeline readiness checks, and other post-processing work.
+- Do not rerun MinerU+LLM imports when a task only changes read-only reporting, catalog queries, metric grouping, value normalization over existing rows, timeline readiness scoring, docs, tests, or formatting.
+- Rerun MinerU+LLM only when the task changes ingest, PDF chunking, parser/block handling, LLM extraction prompts, metric result candidate validation, source import semantics, or apply-time metric persistence.
+- When a rerun is necessary, use staged acceptance levels instead of jumping directly to the full corpus:
+  - L0: unit tests and schema tests.
+  - L1: read existing catalog/eval outputs.
+  - L2: run new eval/report commands against preserved `.tmp` acceptance workspaces.
+  - L3: rerun a targeted 1-3 paper MinerU+LLM subset.
+  - L4: rerun the fixed 5-paper smoke corpus.
+  - L5: rerun the full 20-paper corpus only for phase closure or when lower levels cannot answer the risk.
+- Every future V4/V5 spec and implementation plan must include an `Acceptance Reuse` section stating whether existing acceptance workspaces can be reused, what the minimum rerun subset is, and what condition would justify L5 full-corpus rerun.
+- Prefer `llmwiki corpus retry <batch-id> --failed-only` for transient failures; do not rerun already-applied items unless the changed code path requires re-ingesting successful sources.
+- Preserve expensive acceptance outputs by default when the user intends to inspect results. Do not run clean commands that remove `.tmp/paper-v46-corpus-acceptance` or similar preserved workspaces unless the user explicitly approves cleanup.
+
 ## 12. Generated Files And Cleanup
 
 每次运行测试、验收、批量导入实验或真实 PDF acceptance 后，必须及时清理生成态和缓存，除非用户明确要求保留用于检查。

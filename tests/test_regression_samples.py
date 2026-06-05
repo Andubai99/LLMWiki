@@ -399,6 +399,12 @@ def test_docs_describe_v1_commands_and_constraints():
     assert "corpus_results_metric.v4.6" in agents
     assert "corpus_results_warning.v4.6" in agents
     assert ".tmp/paper-v46-corpus-acceptance" in agents
+    assert "Expensive Acceptance Policy" in agents
+    assert "MinerU+LLM full-corpus acceptance is expensive" in agents
+    assert "Default to reusing preserved acceptance workspaces" in agents
+    assert "Acceptance Reuse" in agents
+    assert "L5: rerun the full 20-paper corpus only for phase closure" in agents
+    assert "corpus retry <batch-id> --failed-only" in agents
     assert "--scope generated" in agents
     assert "PDF source aliases must not include parser-created aliases or paper title aliases" in agents
     assert "LLM repair may only repair JSON syntax" in agents
