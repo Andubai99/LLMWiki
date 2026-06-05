@@ -173,6 +173,16 @@ def build_metric_repair_plan(
 
 def stage_metric_repair_plan(root: Path, plan: MetricRepairPlan, *, label: str = "") -> MetricRepairPlan:
     root = root.resolve()
+    if int(plan.summary.get("proposal_count_unpaged") or len(plan.proposals)) > len(plan.proposals):
+        plan = build_metric_repair_plan(
+            root,
+            metric=plan.query.get("metric") or None,
+            dataset=plan.query.get("dataset") or None,
+            task=plan.query.get("task") or None,
+            proposal_type=plan.query.get("proposal_type") or None,
+            limit=REPAIR_MAX_LIMIT,
+            offset=0,
+        )
     run_id = create_repair_run_id(plan, label=label)
     run_dir = root / "staging" / run_id
     run_dir.mkdir(parents=True, exist_ok=False)
