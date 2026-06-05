@@ -53,6 +53,13 @@ from .evals.result_evidence import (
     format_result_evidence_json,
     format_result_evidence_quality,
 )
+from .evals.corpus_results import (
+    CorpusResultsCatalogError,
+    CorpusResultsFilterError,
+    build_corpus_results_eval,
+    format_corpus_results,
+    format_corpus_results_json,
+)
 from .synthesis import SynthesisWritebackError, SynthesisWritebackResult, create_synthesis_run
 from .synthesis.planner import (
     SynthesisPlan,
@@ -327,6 +334,27 @@ def cmd_eval_result_evidence(args: argparse.Namespace) -> int:
         print(format_result_evidence_json(summary.to_dict()))
     else:
         print(format_result_evidence_quality(summary))
+    return 0
+
+
+def cmd_eval_corpus_results(args: argparse.Namespace) -> int:
+    root = Path(args.root).resolve()
+    try:
+        summary = build_corpus_results_eval(
+            root,
+            metric=args.metric,
+            dataset=args.dataset,
+            task=args.task,
+            limit=args.limit,
+            offset=args.offset,
+        )
+    except (CorpusResultsCatalogError, CorpusResultsFilterError, OSError, ValueError) as exc:
+        print(f"Corpus results eval failed: {sanitize_error(exc)}")
+        return 1
+    if args.json:
+        print(format_corpus_results_json(summary.to_dict()))
+    else:
+        print(format_corpus_results(summary))
     return 0
 
 
@@ -850,6 +878,18 @@ def build_parser() -> argparse.ArgumentParser:
     result_evidence_eval_parser.add_argument("--offset", type=int, default=None)
     result_evidence_eval_parser.add_argument("--json", action="store_true", help="Output stable machine-readable JSON.")
     result_evidence_eval_parser.set_defaults(func=cmd_eval_result_evidence)
+    corpus_results_eval_parser = eval_subparsers.add_parser(
+        "corpus-results",
+        help="Summarize corpus-level metric result acceptance quality.",
+    )
+    corpus_results_eval_parser.add_argument("--root", default=".")
+    corpus_results_eval_parser.add_argument("--metric")
+    corpus_results_eval_parser.add_argument("--dataset")
+    corpus_results_eval_parser.add_argument("--task")
+    corpus_results_eval_parser.add_argument("--limit", type=int, default=None)
+    corpus_results_eval_parser.add_argument("--offset", type=int, default=None)
+    corpus_results_eval_parser.add_argument("--json", action="store_true", help="Output stable machine-readable JSON.")
+    corpus_results_eval_parser.set_defaults(func=cmd_eval_corpus_results)
 
     metric_parser = subparsers.add_parser("metric", help="Query metric result timelines.")
     metric_subparsers = metric_parser.add_subparsers(dest="metric_command", required=True)
