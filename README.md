@@ -343,6 +343,22 @@ JSON schema 使用 `corpus_results_eval.v4.6`、`corpus_results_paper.v4.6`、`c
 
 V4.6-min 完整验收使用 strict MinerU 跑完整 `docs/papers/` 20 篇，并保留 `.tmp/paper-v46-corpus-acceptance` 供人工追问和对比，不默认 clean。
 
+## V4.7 Metric Canonicalization And Timeline Readiness Repair
+
+V4.7 adds a CLI-first, read-only canonicalization report over existing durable `metric_results`:
+
+```bash
+llmwiki metric canonicalize --root .
+llmwiki metric canonicalize --root . --json
+llmwiki metric canonicalize --root . --metric "success rate" --dataset "OSWorld" --json
+```
+
+JSON output uses `metric_canonicalization_report.v4.7`, `canonical_metric.v4.7`, `metric_result_value_repair.v4.7`, `metric_comparability_group.v4.7`, `metric_timeline_readiness.v4.7`, and `metric_canonicalization_warning.v4.7`. The report groups conservative metric variants, proposes non-durable value repair suggestions, and classifies timeline readiness as `strict_ready`, `ready_after_value_repair`, `discoverable_not_comparable`, `needs_canonical_review`, `needs_value_repair`, `needs_year_repair`, `not_ready_single_paper`, or `not_ready_empty`.
+
+`llmwiki metric canonicalize` is a reporting surface, not an evidence source and not an automatic repair. It does not call LLM, embedding, MinerU/parser, add/import, ingest, apply, ask, synthesis, lint, clean, or CLI eval recursion, and it does not write `wiki/`, `sources/`, `staging/`, `state/catalog.sqlite`, `state/corpus-batches/`, `state/embeddings/`, `state/ui-jobs/`, or `.tmp/`.
+
+V4.7 reuses preserved acceptance workspaces such as `.tmp/paper-v46-corpus-acceptance`; a full MinerU+LLM rerun is not required for metric canonicalization or timeline readiness reporting.
+
 ### Internal/debug 命令
 
 ```bash

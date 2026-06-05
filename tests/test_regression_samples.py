@@ -283,6 +283,15 @@ def test_docs_describe_v1_commands_and_constraints():
     assert "corpus_results_metric.v4.6" in readme
     assert "corpus_results_warning.v4.6" in readme
     assert ".tmp/paper-v46-corpus-acceptance" in readme
+    assert "V4.7 Metric Canonicalization And Timeline Readiness Repair" in readme
+    assert "llmwiki metric canonicalize --root . --json" in readme
+    assert "metric_canonicalization_report.v4.7" in readme
+    assert "canonical_metric.v4.7" in readme
+    assert "metric_result_value_repair.v4.7" in readme
+    assert "metric_comparability_group.v4.7" in readme
+    assert "metric_timeline_readiness.v4.7" in readme
+    assert "ready_after_value_repair" in readme
+    assert "full MinerU+LLM rerun is not required" in readme
     assert "page markdown 是页面文本，不是 formal evidence" in readme
     assert "llmwiki eval pdf-quality --root ." in readme
     assert "defaults to `auto`" in readme
@@ -399,6 +408,14 @@ def test_docs_describe_v1_commands_and_constraints():
     assert "corpus_results_metric.v4.6" in agents
     assert "corpus_results_warning.v4.6" in agents
     assert ".tmp/paper-v46-corpus-acceptance" in agents
+    assert "llmwiki metric canonicalize" in agents
+    assert "metric_canonicalization_report.v4.7" in agents
+    assert "canonical_metric.v4.7" in agents
+    assert "metric_result_value_repair.v4.7" in agents
+    assert "metric_comparability_group.v4.7" in agents
+    assert "metric_timeline_readiness.v4.7" in agents
+    assert "ambiguous_label" in agents
+    assert "do not rerun full MinerU+LLM" in agents
     assert "Expensive Acceptance Policy" in agents
     assert "MinerU+LLM full-corpus acceptance is expensive" in agents
     assert "Default to reusing preserved acceptance workspaces" in agents

@@ -205,6 +205,12 @@
 - `llmwiki eval corpus-results` must not call LLM providers, embedding providers, MinerU, parser execution, add/import, ingest, apply, ask, synthesis, lint, clean, other eval commands, or raw PDF chunk retrieval.
 - `llmwiki eval corpus-results` must not write `wiki/`, `sources/`, `staging/`, `state/catalog.sqlite`, `state/corpus-batches/`, `state/embeddings/`, `state/ui-jobs/`, or `.tmp/`.
 - V4.6-min full acceptance uses strict MinerU over the full 20-paper `docs/papers/` corpus and preserves `.tmp/paper-v46-corpus-acceptance` unless the user explicitly approves cleanup.
+- V4.7 `llmwiki metric canonicalize` is CLI-first and read-only. It reports conservative metric canonicalization, value repair suggestions, comparability groups, and upgraded timeline readiness over existing durable `metric_results`.
+- V4.7 uses `metric_canonicalization_report.v4.7`, `canonical_metric.v4.7`, `metric_result_value_repair.v4.7`, `metric_comparability_group.v4.7`, `metric_timeline_readiness.v4.7`, and `metric_canonicalization_warning.v4.7`; it is not an evidence source and must not create, merge, delete, overwrite, or durably repair result rows.
+- `llmwiki metric canonicalize` must not call LLM providers, embedding providers, MinerU, parser execution, add/import, ingest, apply, ask, synthesis, lint, clean, CLI eval recursion, or raw PDF chunk retrieval.
+- `llmwiki metric canonicalize` must not write `wiki/`, `sources/`, `staging/`, `state/catalog.sqlite`, `state/corpus-batches/`, `state/embeddings/`, `state/ui-jobs/`, or `.tmp/`.
+- V4.7 must not automatically merge vague labels such as `score`, `Avg`, or `Overall`; it should mark them as `ambiguous_label` or `context_dependent`.
+- V4.7 acceptance should reuse preserved workspaces such as `.tmp/paper-v46-corpus-acceptance`; do not rerun full MinerU+LLM for canonicalization or timeline readiness reports.
 
 ## 11.6 Expensive Acceptance Policy
 
