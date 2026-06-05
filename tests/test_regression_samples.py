@@ -276,6 +276,13 @@ def test_docs_describe_v1_commands_and_constraints():
     assert "result-focused chunks" in readme
     assert "placeholder" in readme
     assert "parser_backend_result_counts" in readme
+    assert "V4.6-min Corpus Acceptance Metrics" in readme
+    assert "llmwiki eval corpus-results --root . --json" in readme
+    assert "corpus_results_eval.v4.6" in readme
+    assert "corpus_results_paper.v4.6" in readme
+    assert "corpus_results_metric.v4.6" in readme
+    assert "corpus_results_warning.v4.6" in readme
+    assert ".tmp/paper-v46-corpus-acceptance" in readme
     assert "page markdown 是页面文本，不是 formal evidence" in readme
     assert "llmwiki eval pdf-quality --root ." in readme
     assert "defaults to `auto`" in readme
@@ -386,6 +393,12 @@ def test_docs_describe_v1_commands_and_constraints():
     assert "mineru_method = \"auto\"" in agents
     assert "Placeholder metric values" in agents
     assert "evidence_block_roles" in agents
+    assert "llmwiki eval corpus-results" in agents
+    assert "corpus_results_eval.v4.6" in agents
+    assert "corpus_results_paper.v4.6" in agents
+    assert "corpus_results_metric.v4.6" in agents
+    assert "corpus_results_warning.v4.6" in agents
+    assert ".tmp/paper-v46-corpus-acceptance" in agents
     assert "--scope generated" in agents
     assert "PDF source aliases must not include parser-created aliases or paper title aliases" in agents
     assert "LLM repair may only repair JSON syntax" in agents

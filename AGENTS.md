@@ -200,6 +200,11 @@
 - V4.5.1 result-focused chunks may group table/caption/nearby heading/result-text blocks into one bounded evidence window. The primary `citation_locator` remains one real block, and valid auxiliary blocks must be preserved in `evidence_block_ids`, `evidence_pages`, and `evidence_block_roles`.
 - Placeholder metric values such as `See table`, `not reported`, and `N/A` must not become final cited durable `metric_results` when the same evidence bundle exposes a concrete value.
 - Preserve `.tmp/paper-v451-mineru-repair-acceptance` after V4.5.1 acceptance unless the user explicitly approves cleanup.
+- V4.6-min `llmwiki eval corpus-results` is CLI-first and read-only. It summarizes V4.2 inventory, V4.3 durable `metric_results`, V4.4 timeline readiness, and V4.5 result-evidence quality into `corpus_results_eval.v4.6`.
+- V4.6-min uses `corpus_results_paper.v4.6`, `corpus_results_metric.v4.6`, and `corpus_results_warning.v4.6`; it is an acceptance/reporting surface, not a new evidence source.
+- `llmwiki eval corpus-results` must not call LLM providers, embedding providers, MinerU, parser execution, add/import, ingest, apply, ask, synthesis, lint, clean, other eval commands, or raw PDF chunk retrieval.
+- `llmwiki eval corpus-results` must not write `wiki/`, `sources/`, `staging/`, `state/catalog.sqlite`, `state/corpus-batches/`, `state/embeddings/`, `state/ui-jobs/`, or `.tmp/`.
+- V4.6-min full acceptance uses strict MinerU over the full 20-paper `docs/papers/` corpus and preserves `.tmp/paper-v46-corpus-acceptance` unless the user explicitly approves cleanup.
 
 ## 12. Generated Files And Cleanup
 

@@ -327,6 +327,22 @@ PDF chunking 会额外生成 result-focused chunks，让 table/caption/nearby he
 
 `llmwiki eval result-evidence --root . --json` 的 summary 可用于 V4.5.1 对比：关注 `metric_result_count`、`table_result_count`、`caption_result_count`、`result_text_context_count`、`parser_backend_result_counts`、`parser_fallback_result_count`、missing method/dataset/task/value counts 和 `error_count`。
 
+## V4.6-min Corpus Acceptance Metrics
+
+V4.6-min 新增 CLI-first、只读的 corpus acceptance 报告，把 V4.2 inventory、V4.3 durable `metric_results`、V4.4 timeline readiness 和 V4.5 result-evidence 质量指标汇总到一个入口：
+
+```bash
+llmwiki eval corpus-results --root .
+llmwiki eval corpus-results --root . --json
+llmwiki eval corpus-results --root . --metric "success rate" --dataset "OSWorld" --json
+```
+
+JSON schema 使用 `corpus_results_eval.v4.6`、`corpus_results_paper.v4.6`、`corpus_results_metric.v4.6` 和 `corpus_results_warning.v4.6`。顶层字段包括 `summary`、`quality_gates`、`papers`、`metrics`、`timeline_readiness` 和 `warnings`；`summary` 汇总 formal claim count、durable metric result count、parser backend/fallback 分布、table/caption/result-text coverage、missing method/dataset/task/value counts 和 timeline candidate count。
+
+`llmwiki eval corpus-results` 是 acceptance/reporting surface，不是 evidence source。它只读 catalog、paper inventory metadata 和 result-evidence context，不调用 LLM、embedding、MinerU/parser、add/import、ingest、apply、ask、synthesis、lint、clean，也不写 `wiki/`、`sources/`、`staging/`、`state/catalog.sqlite`、`state/corpus-batches/`、`state/embeddings/`、`state/ui-jobs/` 或 `.tmp/`。
+
+V4.6-min 完整验收使用 strict MinerU 跑完整 `docs/papers/` 20 篇，并保留 `.tmp/paper-v46-corpus-acceptance` 供人工追问和对比，不默认 clean。
+
 ### Internal/debug 命令
 
 ```bash
