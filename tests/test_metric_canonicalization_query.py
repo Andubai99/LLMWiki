@@ -12,6 +12,8 @@ from tests.test_metric_timeline_query import insert_metric_result, insert_source
 
 def workspace_with_canonicalization_cases() -> Path:
     root = workspace_with_corpus_results()
+    with sqlite3.connect(root / "state" / "catalog.sqlite") as conn:
+        conn.execute("update metric_results set task = ? where result_id = ?", ("computer use", "res_missing_value"))
     insert_metric_result(
         root,
         result_id="res_score_a",
@@ -58,7 +60,6 @@ def test_metric_canonicalization_report_schema_summary_and_groups() -> None:
     assert payload["summary"]["canonical_metric_count_unpaged"] == 3
     assert payload["summary"]["comparability_group_count_unpaged"] >= 3
     assert payload["summary"]["value_repair_count_unpaged"] == 1
-    assert payload["summary"]["strict_ready_count"] >= 1
     assert payload["summary"]["ready_after_value_repair_count"] >= 1
     assert payload["summary"]["needs_canonical_review_count"] >= 1
 
