@@ -71,6 +71,23 @@ from .metrics.timeline import (
     build_metric_list,
     build_metric_timeline,
 )
+from .research.formatting import (
+    format_research_graph,
+    format_research_json,
+    format_research_synthesis,
+    research_relationship_payload,
+    research_synthesis_payload,
+)
+from .research.relationships import (
+    ResearchRelationshipCatalogError,
+    ResearchRelationshipFilterError,
+    ResearchRelationshipLLMError,
+    ResearchRelationshipStagingError,
+    build_research_graph_run,
+    build_research_graph_status,
+    build_research_relationship_dry_run,
+    build_research_synthesis_response,
+)
 from .ingestion.pipeline import AddPipelineError, add_and_process_source
 from .pdf.quality import evaluate_pdf_quality, format_pdf_quality_report
 from .pdf.parser_backends import load_pdf_parser_config
@@ -700,6 +717,79 @@ def cmd_metric_timeline_synthesis(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_research_graph(args: argparse.Namespace) -> int:
+    root = Path(args.root).resolve()
+    try:
+        if args.dry_run:
+            result = build_research_relationship_dry_run(
+                root,
+                topic=args.topic,
+                source_id=args.source_id,
+                paper_id=args.paper_id,
+                relationship_type=args.relationship_type,
+                metric=args.metric,
+                dataset=args.dataset,
+                task=args.task,
+                limit=args.limit,
+                offset=args.offset,
+                max_bundles=args.max_bundles,
+                max_results_per_bundle=args.max_results_per_bundle,
+                reuse_normalization_run=args.reuse_normalization_run,
+            )
+        else:
+            result = build_research_graph_run(
+                root,
+                topic=args.topic,
+                source_id=args.source_id,
+                paper_id=args.paper_id,
+                relationship_type=args.relationship_type,
+                metric=args.metric,
+                dataset=args.dataset,
+                task=args.task,
+                limit=args.limit,
+                offset=args.offset,
+                max_bundles=args.max_bundles,
+                max_results_per_bundle=args.max_results_per_bundle,
+                reuse_normalization_run=args.reuse_normalization_run,
+            )
+    except (ResearchRelationshipCatalogError, ResearchRelationshipFilterError, ResearchRelationshipLLMError) as exc:
+        print(f"Research graph failed: {sanitize_error(exc)}")
+        return 1
+    if args.json:
+        print(format_research_json(research_relationship_payload(result)))
+    else:
+        print(format_research_graph(result))
+    return 0
+
+
+def cmd_research_graph_status(args: argparse.Namespace) -> int:
+    root = Path(args.root).resolve()
+    try:
+        result = build_research_graph_status(root, args.relationship_run_id)
+    except ResearchRelationshipStagingError as exc:
+        print(f"Research graph status failed: {sanitize_error(exc)}")
+        return 1
+    if args.json:
+        print(format_research_json(research_relationship_payload(result)))
+    else:
+        print(format_research_graph(result))
+    return 0
+
+
+def cmd_research_synthesize(args: argparse.Namespace) -> int:
+    root = Path(args.root).resolve()
+    try:
+        result = build_research_synthesis_response(root, args.relationship_run_id, topic=args.topic)
+    except ResearchRelationshipStagingError as exc:
+        print(f"Research synthesis failed: {sanitize_error(exc)}")
+        return 1
+    if args.json:
+        print(format_research_json(research_synthesis_payload(result)))
+    else:
+        print(format_research_synthesis(result))
+    return 0
+
+
 def cmd_parsers_status(args: argparse.Namespace) -> int:
     root = Path(args.root).resolve()
     config = load_pdf_parser_config(root)
@@ -1198,6 +1288,49 @@ def build_parser() -> argparse.ArgumentParser:
     metric_timeline_synthesis_parser.add_argument("--metric")
     metric_timeline_synthesis_parser.add_argument("--json", action="store_true", help="Output stable machine-readable JSON.")
     metric_timeline_synthesis_parser.set_defaults(func=cmd_metric_timeline_synthesis)
+
+    research_parser = subparsers.add_parser("research", help="Build research relationship graph previews.")
+    research_subparsers = research_parser.add_subparsers(dest="research_command", required=True)
+
+    research_graph_parser = research_subparsers.add_parser(
+        "graph",
+        help="Build a source-backed research relationship graph staging run.",
+    )
+    research_graph_parser.add_argument("--root", default=".")
+    research_graph_parser.add_argument("--topic")
+    research_graph_parser.add_argument("--source-id")
+    research_graph_parser.add_argument("--paper-id")
+    research_graph_parser.add_argument("--relationship-type")
+    research_graph_parser.add_argument("--metric")
+    research_graph_parser.add_argument("--dataset")
+    research_graph_parser.add_argument("--task")
+    research_graph_parser.add_argument("--limit", type=int, default=None)
+    research_graph_parser.add_argument("--offset", type=int, default=None)
+    research_graph_parser.add_argument("--max-bundles", type=int, default=None)
+    research_graph_parser.add_argument("--max-results-per-bundle", type=int, default=None)
+    research_graph_parser.add_argument("--reuse-normalization-run")
+    research_graph_parser.add_argument("--dry-run", action="store_true")
+    research_graph_parser.add_argument("--json", action="store_true", help="Output stable machine-readable JSON.")
+    research_graph_parser.set_defaults(func=cmd_research_graph)
+
+    research_graph_status_parser = research_subparsers.add_parser(
+        "graph-status",
+        help="Show staged research relationship graph status.",
+    )
+    research_graph_status_parser.add_argument("relationship_run_id")
+    research_graph_status_parser.add_argument("--root", default=".")
+    research_graph_status_parser.add_argument("--json", action="store_true", help="Output stable machine-readable JSON.")
+    research_graph_status_parser.set_defaults(func=cmd_research_graph_status)
+
+    research_synthesize_parser = research_subparsers.add_parser(
+        "synthesize",
+        help="Read a staged evidence-grounded research synthesis preview.",
+    )
+    research_synthesize_parser.add_argument("relationship_run_id")
+    research_synthesize_parser.add_argument("--root", default=".")
+    research_synthesize_parser.add_argument("--topic")
+    research_synthesize_parser.add_argument("--json", action="store_true", help="Output stable machine-readable JSON.")
+    research_synthesize_parser.set_defaults(func=cmd_research_synthesize)
 
     corpus_parser = subparsers.add_parser("corpus", help="Manage corpus import batches.")
     corpus_subparsers = corpus_parser.add_subparsers(dest="corpus_command", required=True)
