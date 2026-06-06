@@ -480,7 +480,8 @@ def validate_relationship_edges(bundle: dict[str, Any], payload: dict[str, Any])
             warnings.append(relationship_warning("fabricated_evidence_ref", "Skipped edge with evidence refs outside the bundle."))
             continue
         status = normalize_choice(raw.get("decision_status"), DECISION_STATUSES, fallback="needs_review")
-        confidence = normalize_choice(raw.get("confidence"), CONFIDENCES, fallback="low")
+        confidence, confidence_warnings = normalize_confidence(raw.get("confidence"), status)
+        warnings.extend(confidence_warnings)
         comparability = normalize_choice(raw.get("comparability_status"), COMPARABILITY_STATUSES, fallback="unknown")
         relationship_type = normalize_choice(raw.get("relationship_type"), RELATIONSHIP_TYPES, fallback="background_related")
         if status == "auto_accepted" and not evidence_refs:
@@ -919,6 +920,15 @@ def normalize_warning_list(value: Any) -> list[dict[str, Any]]:
 def normalize_choice(value: Any, allowed: set[str], *, fallback: str) -> str:
     text = str(value or "").strip()
     return text if text in allowed else fallback
+
+
+def normalize_confidence(value: Any, status: str) -> tuple[str, list[dict[str, Any]]]:
+    text = str(value or "").strip()
+    if text in CONFIDENCES:
+        return text, []
+    if status == "auto_accepted":
+        return "medium", [relationship_warning("missing_confidence_defaulted", "Auto-accepted edge had missing or invalid confidence; defaulted to medium.")]
+    return "low", []
 
 
 def paper_identity_by_id(root: Path, warnings: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:

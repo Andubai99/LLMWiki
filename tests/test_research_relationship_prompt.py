@@ -127,3 +127,33 @@ def test_research_relationship_edge_validation_fills_empty_subject_object_from_b
     assert edges[0]["object"]["entity_type"] == "metric"
     assert edges[0]["object"]["label"] == "Success Rate"
     assert edges[0]["rationale"]
+
+
+def test_research_relationship_edge_validation_defaults_auto_accepted_confidence_to_medium() -> None:
+    bundle = sample_relationship_bundle()
+    row = bundle["result_rows"][0]
+    llm_payload = {
+        "edges": [
+            {
+                "relationship_type": "same_metric",
+                "subject": {"entity_type": "paper", "entity_id": "src_a", "label": "Paper A"},
+                "object": {"entity_type": "metric", "entity_id": "success_rate", "label": "success rate"},
+                "decision_status": "auto_accepted",
+                "comparability_status": "comparable",
+                "evidence_refs": [
+                    {
+                        "result_id": row["result_id"],
+                        "claim_id": row["claim_id"],
+                        "source_id": row["source_id"],
+                        "paper_id": row["paper_id"],
+                        "citation_locator": row["citation_locator"],
+                    }
+                ],
+            }
+        ]
+    }
+
+    edges, warnings = validate_relationship_edges(bundle, llm_payload)
+
+    assert edges[0]["confidence"] == "medium"
+    assert any(warning["code"] == "missing_confidence_defaulted" for warning in warnings)
