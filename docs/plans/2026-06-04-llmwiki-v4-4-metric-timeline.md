@@ -1,4 +1,4 @@
-# LLMWiki V4.4 Metric Timeline Implementation Plan
+﻿# LLMWiki V4.4 Metric Timeline Implementation Plan
 
 ## Summary
 
@@ -82,7 +82,7 @@
      - `llmwiki metric timeline "<metric-from-list>" --root .tmp\paper-v44-acceptance`
      - 对一个不存在 metric 验证 empty-result warning
    - 记录 sanitized observation：
-     - `docs/specs/2026-06-04-llmwiki-v4-4-metric-timeline-acceptance-observations.md`
+     - `docs/observations/2026-06-04-llmwiki-v4-4-metric-timeline-acceptance-observations.md`
    - 提交：`test: 记录 V4.4 指标时间线真实验收`
 
 ## Test Plan

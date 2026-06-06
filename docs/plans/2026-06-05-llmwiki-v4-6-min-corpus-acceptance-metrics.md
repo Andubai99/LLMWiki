@@ -1,4 +1,4 @@
-# LLMWiki V4.6-min Corpus Acceptance Metrics Implementation Plan
+﻿# LLMWiki V4.6-min Corpus Acceptance Metrics Implementation Plan
 
 ## Summary
 
@@ -98,7 +98,7 @@
    - 导入完整 `docs/papers/`：
      - `.\.venv\Scripts\python.exe -m llmwiki corpus import .tmp\paper-v46-corpus-acceptance\docs\papers --root .tmp\paper-v46-corpus-acceptance --recursive --parser mineru --json`
    - 运行 JSON/human corpus-results，记录 sanitized observation：
-     - `docs/specs/2026-06-05-llmwiki-v4-6-min-corpus-acceptance-metrics-observations.md`
+     - `docs/observations/2026-06-05-llmwiki-v4-6-min-corpus-acceptance-metrics-observations.md`
    - 提交：`test: 记录 V4.6-min 完整语料验收指标结果`。
 
 ## Test Plan

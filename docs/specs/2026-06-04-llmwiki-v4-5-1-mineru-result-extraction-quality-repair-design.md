@@ -1,4 +1,4 @@
-# LLMWiki V4.5.1 MinerU Result Extraction Quality Repair Design
+﻿# LLMWiki V4.5.1 MinerU Result Extraction Quality Repair Design
 
 Date: 2026-06-04
 
@@ -543,7 +543,7 @@ Run:
 Record a sanitized observation file:
 
 ```text
-docs/specs/2026-06-04-llmwiki-v4-5-1-mineru-result-extraction-quality-repair-acceptance-observations.md
+docs/observations/2026-06-04-llmwiki-v4-5-1-mineru-result-extraction-quality-repair-acceptance-observations.md
 ```
 
 Observation must include:

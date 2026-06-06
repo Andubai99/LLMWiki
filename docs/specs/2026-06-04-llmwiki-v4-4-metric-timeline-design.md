@@ -1,4 +1,4 @@
-# LLMWiki V4.4 Metric Timeline Design
+﻿# LLMWiki V4.4 Metric Timeline Design
 
 Date: 2026-06-04
 
@@ -615,7 +615,7 @@ The metric used for acceptance should be selected from `metric list` output afte
 Record an acceptance observation file under `docs/specs/`, for example:
 
 ```text
-docs/specs/2026-06-04-llmwiki-v4-4-metric-timeline-acceptance-observations.md
+docs/observations/2026-06-04-llmwiki-v4-4-metric-timeline-acceptance-observations.md
 ```
 
 The observation should report:

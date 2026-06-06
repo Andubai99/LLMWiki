@@ -1,4 +1,4 @@
-# LLMWiki V4.7 Metric Canonicalization And Timeline Readiness Repair Implementation Plan
+﻿# LLMWiki V4.7 Metric Canonicalization And Timeline Readiness Repair Implementation Plan
 
 ## Summary
 
@@ -71,7 +71,7 @@ Method: **spec-driven + contract-first + risk-based TDD**. V4.7 does not rerun M
    - Run JSON and human acceptance:
      - `.\.venv\Scripts\python.exe -m llmwiki metric canonicalize --root .tmp\paper-v46-corpus-acceptance --json`
      - `.\.venv\Scripts\python.exe -m llmwiki metric canonicalize --root .tmp\paper-v46-corpus-acceptance`
-   - Record sanitized observations at `docs/specs/2026-06-05-llmwiki-v4-7-metric-canonicalization-timeline-readiness-repair-observations.md`.
+   - Record sanitized observations at `docs/observations/2026-06-05-llmwiki-v4-7-metric-canonicalization-timeline-readiness-repair-observations.md`.
    - Commit: `test: 记录 V4.7 指标规范化验收结果`.
 
 ## Test Plan

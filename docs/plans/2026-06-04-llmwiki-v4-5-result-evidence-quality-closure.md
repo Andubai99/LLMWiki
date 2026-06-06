@@ -1,4 +1,4 @@
-# LLMWiki V4.5-min Result Evidence Quality Closure Implementation Plan
+﻿# LLMWiki V4.5-min Result Evidence Quality Closure Implementation Plan
 
 ## Summary
 
@@ -82,7 +82,7 @@ V4.5-min 不新增 UI，不调用 LLM/embedding/parser，不写 wiki/source/stag
      - `llmwiki eval result-evidence --root .tmp\paper-v45-acceptance --json`
      - `llmwiki eval result-evidence --root .tmp\paper-v45-acceptance`
    - 记录 sanitized observation：
-     - `docs/specs/2026-06-04-llmwiki-v4-5-result-evidence-quality-acceptance-observations.md`
+     - `docs/observations/2026-06-04-llmwiki-v4-5-result-evidence-quality-acceptance-observations.md`
    - 记录 paper count、metric result count、resolvable/context ratio、missing joins、missing context、parser fallback count、table/caption/context availability、top diagnostics、保留 workspace 路径。
    - 不默认运行 clean 清理 `.tmp/paper-v45-acceptance`。
    - 提交：`test: 记录 V4.5 结果证据质量真实验收`

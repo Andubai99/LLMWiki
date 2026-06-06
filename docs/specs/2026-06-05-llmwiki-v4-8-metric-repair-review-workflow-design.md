@@ -1,4 +1,4 @@
-# LLMWiki V4.8 Metric Repair Review Workflow Design
+﻿# LLMWiki V4.8 Metric Repair Review Workflow Design
 
 Date: 2026-06-05
 
@@ -540,7 +540,7 @@ Manual acceptance commands:
 Observation file:
 
 ```text
-docs/specs/2026-06-05-llmwiki-v4-8-metric-repair-review-workflow-observations.md
+docs/observations/2026-06-05-llmwiki-v4-8-metric-repair-review-workflow-observations.md
 ```
 
 Record only sanitized observations:

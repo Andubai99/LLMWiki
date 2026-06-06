@@ -1,4 +1,4 @@
-# LLMWiki V4.7 Metric Canonicalization And Timeline Readiness Repair Design
+﻿# LLMWiki V4.7 Metric Canonicalization And Timeline Readiness Repair Design
 
 Date: 2026-06-05
 
@@ -492,7 +492,7 @@ Manual acceptance commands:
 Observation file:
 
 ```text
-docs/specs/2026-06-05-llmwiki-v4-7-metric-canonicalization-timeline-readiness-repair-observations.md
+docs/observations/2026-06-05-llmwiki-v4-7-metric-canonicalization-timeline-readiness-repair-observations.md
 ```
 
 Record only sanitized observations:

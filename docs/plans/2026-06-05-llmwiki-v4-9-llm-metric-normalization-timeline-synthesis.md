@@ -1,4 +1,4 @@
-# LLMWiki V4.9 LLM 指标归一化与时间线综合执行计划
+﻿# LLMWiki V4.9 LLM 指标归一化与时间线综合执行计划
 
 ## Summary
 
@@ -30,7 +30,7 @@
 7. 接入 CLI 和格式化：新增 `normalize`、`normalize-status`、`timeline-synthesis`，JSON 使用 `ensure_ascii=False, indent=2`，human 输出展示 summary、decision counts、timeline 和 warnings。
 8. 固定安全边界：`--dry-run`、status、synthesis 零 LLM/零写入；正式 normalize 只允许调用 LLM 并写 `staging/<normalization-run-id>/`，禁止 MinerU、parser、import、ingest、apply、ask、writeback、clean。
 9. 更新 README、AGENTS、`tests/test_regression_samples.py`，说明 V4.9 是 LLM 自动归一化和 timeline preview，不是 durable apply。
-10. 复用 `.tmp/paper-v46-corpus-acceptance` 做真实验收，记录 sanitized observation 到 `docs/specs/2026-06-05-llmwiki-v4-9-llm-metric-normalization-timeline-synthesis-observations.md`。
+10. 复用 `.tmp/paper-v46-corpus-acceptance` 做真实验收，记录 sanitized observation 到 `docs/observations/2026-06-05-llmwiki-v4-9-llm-metric-normalization-timeline-synthesis-observations.md`。
 
 ## Test Plan
 

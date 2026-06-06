@@ -1,4 +1,4 @@
-# LLMWiki V4.5-min Result Evidence Quality Closure Design
+﻿# LLMWiki V4.5-min Result Evidence Quality Closure Design
 
 Date: 2026-06-04
 
@@ -523,7 +523,7 @@ Recommended workflow:
 Record an acceptance observation file under `docs/specs/`, for example:
 
 ```text
-docs/specs/2026-06-04-llmwiki-v4-5-result-evidence-quality-acceptance-observations.md
+docs/observations/2026-06-04-llmwiki-v4-5-result-evidence-quality-acceptance-observations.md
 ```
 
 The observation should report:

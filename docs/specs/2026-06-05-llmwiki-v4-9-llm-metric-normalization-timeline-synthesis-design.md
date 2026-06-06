@@ -1,4 +1,4 @@
-# LLMWiki V4.9 LLM Metric Normalization And Timeline Synthesis Design
+﻿# LLMWiki V4.9 LLM Metric Normalization And Timeline Synthesis Design
 
 Date: 2026-06-05
 
@@ -499,7 +499,7 @@ V4.9 目标：
 记录：
 
 ```text
-docs/specs/2026-06-05-llmwiki-v4-9-llm-metric-normalization-timeline-synthesis-observations.md
+docs/observations/2026-06-05-llmwiki-v4-9-llm-metric-normalization-timeline-synthesis-observations.md
 ```
 
 记录内容：

@@ -1,4 +1,4 @@
-# LLMWiki V2.9.2 PDF Quality And Paper Identity Implementation Plan
+﻿# LLMWiki V2.9.2 PDF Quality And Paper Identity Implementation Plan
 
 ## Summary
 
@@ -138,7 +138,7 @@
 
 - 在 `.tmp/papers-v292-acceptance` 临时 workspace 初始化并导入 `docs/papers/*.pdf`。
 - 运行 lint、eval pdf-quality、embeddings rebuild、V2.9.1 PDF retrieval eval。
-- 记录 sanitized note 到 `docs/specs/2026-06-01-llmwiki-v2-9-2-pdf-acceptance-observations.md`。
+- 记录 sanitized note 到 `docs/observations/2026-06-01-llmwiki-v2-9-2-pdf-acceptance-observations.md`。
 - 提交：`test: 记录 V2.9.2 PDF acceptance 结果`。
 
 ### Task 12: 最终验证与清理

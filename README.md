@@ -163,6 +163,8 @@ llmwiki ui --root .
 
 `llmwiki clean --root .` 默认只清理测试缓存和临时验收工作区；`llmwiki clean --root . --scope generated` 清理生成态 source/wiki/staging/state/vector cache；`--scope all` 同时清理两类内容。`--dry-run` 可先预览将删除的路径。该命令会保留 `.gitkeep`、`config/api-keys.toml`、`docs/papers/`、`.venv/` 和用户资料。
 
+真实验收 observation 放在本地 `docs/observations/`，该目录被 `.gitignore` 忽略，不作为提交内容。提交的 spec/plan 可以引用这些本地 observation 文件名，但不要提交验收工作区、原始 prompt/response、parser logs、API key 或 catalog/source/wiki 生成态。
+
 ## V3.1 Local UI
 
 `llmwiki ui --root .` 启动绑定 `127.0.0.1` 的本地 read-only dashboard。它直接读取 workspace skeleton、catalog、staging runs、PDF sidecars、parser 状态、LLM/embedding 配置状态和 vector index 状态，用于快速判断当前 workspace 是否 ready、有哪些 sources、最近 runs 和 wiki pages。

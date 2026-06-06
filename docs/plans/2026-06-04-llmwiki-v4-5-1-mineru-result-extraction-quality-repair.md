@@ -1,4 +1,4 @@
-# LLMWiki V4.5.1 MinerU Result Extraction Quality Repair Implementation Plan
+﻿# LLMWiki V4.5.1 MinerU Result Extraction Quality Repair Implementation Plan
 
 ## Summary
 
@@ -75,7 +75,7 @@ V4.5.1 不新增 UI、不做 catalog migration、不改 V4.4 timeline 语义。�
      - `mineru_method = "auto"`
      - `mineru_extra_args = ["-l", "en"]`
    - 导入固定 5 篇论文并运行 result evidence eval。
-   - 记录 `docs/specs/2026-06-04-llmwiki-v4-5-1-mineru-result-extraction-quality-repair-acceptance-observations.md`。
+   - 记录 `docs/observations/2026-06-04-llmwiki-v4-5-1-mineru-result-extraction-quality-repair-acceptance-observations.md`。
    - 提交：`test: 记录 V4.5.1 MinerU 修复验收结果`。
 
 ## Test Plan

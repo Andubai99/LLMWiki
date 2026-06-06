@@ -39,6 +39,7 @@
 - Production Python package code lives under `src/llmwiki/`. Do not add new runtime modules under a root-level `llmwiki/` directory.
 - Tests live under `tests/`; committed documentation/specs/plans live under `docs/`.
 - New implementation plans must be saved under `docs/plans/`; new specs must be saved under `docs/specs/`. Do not create new plan/spec files under `docs/superpowers/`.
+- Real acceptance observations must be written under `docs/observations/`. This directory is local, gitignored, and must not be committed; committed specs/plans may reference expected observation filenames there.
 - Do not modify files under `sources/raw/`.
 - Do not write final wiki pages directly during ingest. Write candidate changes under `staging/<run-id>/`.
 - Codex/LLM must not bypass staging; proposed knowledge changes must be inspectable before apply.
@@ -182,7 +183,7 @@
 - `claims` remain the evidence source of truth. `metric_results` rows must reference real `claim_id`, `source_id`, `paper_id`, `claim_text`, and citation locator; first-version `paper_id` defaults to `source_id`.
 - Weak, ambiguous, unsupported, invalid-locator, or non-applied result candidates may appear in staging/triage but must not become durable `metric_results` rows.
 - Parser artifacts, parser logs, parser backend attempts, diagnostics, raw prompts, and raw LLM responses are not evidence for metric/result claims.
-- V4.3 real acceptance must use the configured real LLM provider on a declared `docs/papers/` subset followed by the full 20-paper corpus, and must record only sanitized observations under `docs/specs/`.
+- V4.3 real acceptance must use the configured real LLM provider on a declared `docs/papers/` subset followed by the full 20-paper corpus, and must record only sanitized local observations under `docs/observations/`.
 - V4.4 `llmwiki metric list` and `llmwiki metric timeline` are CLI-first, read-only metric evolution queries over durable `metric_results`.
 - V4.4 metric timeline rows must come from `state/catalog.sqlite metric_results` joined to formal `claims` and `sources`; paper identity fields are display/sort metadata, not result evidence.
 - V4.4 uses `metric_list.v4.4`, `metric_timeline.v4.4`, and `metric_timeline_item.v4.4`; every non-warning timeline row must preserve real `result_id`, `claim_id`, `source_id`, and `citation_locator`.

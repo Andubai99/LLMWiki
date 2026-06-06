@@ -1,4 +1,4 @@
-# LLMWiki V2.9.3 PDF Ingest Robustness And Paper Identity Refinement Implementation Plan
+﻿# LLMWiki V2.9.3 PDF Ingest Robustness And Paper Identity Refinement Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` or `superpowers:executing-plans` to implement this plan task-by-task. Use TDD: write failing tests first, verify failure, implement, verify pass, then commit. Split commits by feature/function.
 
@@ -168,7 +168,7 @@
   - retrieval PDF foundation eval remains stable.
 - [ ] If a real acceptance bug appears, write the failing test first, fix, rerun affected tests, then commit.
 - [ ] Optional sanitized note:
-  - `docs/specs/2026-06-01-llmwiki-v2-9-3-pdf-acceptance-observations.md`
+  - `docs/observations/2026-06-01-llmwiki-v2-9-3-pdf-acceptance-observations.md`
   - Commit with `git commit -m "test: 记录 V2.9.3 PDF 验收结果"`.
 
 ### Task 10: Final Verification And Cleanup

@@ -1,4 +1,4 @@
-# LLMWiki V4.8 Metric Repair Review Workflow Implementation Plan
+﻿# LLMWiki V4.8 Metric Repair Review Workflow Implementation Plan
 
 ## Summary
 
@@ -28,7 +28,7 @@
 5. 接入 CLI 和格式化：新增 `repair-plan`、`repair-status`、`repair-mark`，JSON 使用 `ensure_ascii=False, indent=2`，human 输出只显示 summary、proposal counts、projected readiness、top proposals 和 warnings。
 6. 固定边界和安全回归：report-only 命令零写入；staging 命令只写 `staging/<repair-run-id>/`；禁止调用 LLM、embedding、MinerU、parser、add/import、ingest、apply、ask、synthesis、lint、clean、CLI eval recursion。
 7. 更新 README、AGENTS、`tests/test_regression_samples.py`，说明 V4.8 是 review workflow，不是 durable repair/apply。
-8. 复用 `.tmp/paper-v46-corpus-acceptance` 做只读/staging 验收，记录 sanitized observation 到 `docs/specs/2026-06-05-llmwiki-v4-8-metric-repair-review-workflow-observations.md`。
+8. 复用 `.tmp/paper-v46-corpus-acceptance` 做只读/staging 验收，记录 sanitized observation 到 `docs/observations/2026-06-05-llmwiki-v4-8-metric-repair-review-workflow-observations.md`。
 
 ## Test Plan
 

@@ -1,4 +1,4 @@
-# LLMWiki V4.6-min Corpus Acceptance Metrics Design
+﻿# LLMWiki V4.6-min Corpus Acceptance Metrics Design
 
 Date: 2026-06-05
 
@@ -451,7 +451,7 @@ mineru_extra_args = ["-l", "en"]
 The full 20-paper acceptance may take a long time. It should be recorded in:
 
 ```text
-docs/specs/2026-06-05-llmwiki-v4-6-min-corpus-acceptance-metrics-observations.md
+docs/observations/2026-06-05-llmwiki-v4-6-min-corpus-acceptance-metrics-observations.md
 ```
 
 Record only sanitized observations:

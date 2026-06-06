@@ -1,4 +1,4 @@
-# LLMWiki V4.3 Metric And Result Claim Extraction Implementation Plan
+﻿# LLMWiki V4.3 Metric And Result Claim Extraction Implementation Plan
 
 ## Summary
 
@@ -71,7 +71,7 @@
 8. 真实 LLM acceptance
    - 子集验收：在 `.tmp/paper-v43-subset` 初始化临时 workspace，复制本地 ignored `config/api-keys.toml`，用 `docs/papers/` 中 2-3 篇论文跑 real LLM import。
    - 完整验收：在 `.tmp/paper-v43-acceptance` 跑完整 20 篇 `docs/papers/`。
-   - 记录 sanitized observation：`docs/specs/2026-06-04-llmwiki-v4-3-metric-result-claim-extraction-acceptance-observations.md`。
+   - 记录 sanitized observation：`docs/observations/2026-06-04-llmwiki-v4-3-metric-result-claim-extraction-acceptance-observations.md`。
    - 记录指标：paper count、formal claim count、metric_results row count、rows per paper、cited ratio、invalid locator count、weak/unsupported count、non-empty method/dataset/task/metric/value/baseline counts。
    - 如果真实失败，先记录具体 command/source/error/artifact，再写最小失败测试和窄修复。
    - 提交 observation：`test: 记录 V4.3 指标结果真实验收`。

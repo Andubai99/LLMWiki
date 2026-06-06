@@ -476,6 +476,8 @@ def test_docs_describe_v1_commands_and_constraints():
     assert "staging/<relationship-run-id>/" in agents
     assert "not_comparable" in agents
     assert "full MinerU+LLM corpus re-ingest is not justified" in agents
+    assert "docs/observations/" in agents
+    assert "must not be committed" in agents
     assert "Expensive Acceptance Policy" in agents
     assert "MinerU+LLM full-corpus acceptance is expensive" in agents
     assert "Default to reusing preserved acceptance workspaces" in agents
@@ -557,6 +559,7 @@ def test_gitignore_excludes_generated_workspace_content():
         "!sources/chunks/.gitkeep",
         "sources/parser-artifacts/*",
         "!sources/parser-artifacts/.gitkeep",
+        "docs/observations/",
         "staging/*",
         "!staging/.gitkeep",
         "state/*.sqlite",
