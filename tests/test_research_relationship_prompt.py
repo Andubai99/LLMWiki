@@ -90,3 +90,40 @@ def test_research_relationship_edge_validation_rejects_fabricated_refs() -> None
 
     assert edges == []
     assert any(warning["code"] == "fabricated_evidence_ref" for warning in warnings)
+
+
+def test_research_relationship_edge_validation_fills_empty_subject_object_from_bundle() -> None:
+    bundle = sample_relationship_bundle()
+    row = bundle["result_rows"][0]
+    llm_payload = {
+        "edges": [
+            {
+                "relationship_type": "same_metric",
+                "subject": {},
+                "object": {},
+                "decision_status": "auto_accepted",
+                "confidence": "high",
+                "comparability_status": "comparable",
+                "rationale": "",
+                "evidence_refs": [
+                    {
+                        "result_id": row["result_id"],
+                        "claim_id": row["claim_id"],
+                        "source_id": row["source_id"],
+                        "paper_id": row["paper_id"],
+                        "citation_locator": row["citation_locator"],
+                    }
+                ],
+                "warnings": [],
+            }
+        ]
+    }
+
+    edges, warnings = validate_relationship_edges(bundle, llm_payload)
+
+    assert warnings == []
+    assert edges[0]["subject"]["entity_type"] == "paper"
+    assert edges[0]["subject"]["entity_id"] == "src_a"
+    assert edges[0]["object"]["entity_type"] == "metric"
+    assert edges[0]["object"]["label"] == "Success Rate"
+    assert edges[0]["rationale"]

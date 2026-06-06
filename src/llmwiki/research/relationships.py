@@ -467,6 +467,7 @@ def validate_relationship_edges(bundle: dict[str, Any], payload: dict[str, Any])
     allowed_refs = allowed_evidence_refs(bundle)
     warnings: list[dict[str, Any]] = []
     edges: list[dict[str, Any]] = []
+    row_by_ref = {evidence_ref_key(row): row for row in bundle.get("result_rows", []) if isinstance(row, dict)}
     for raw in raw_edges:
         if not isinstance(raw, dict):
             warnings.append(relationship_warning("invalid_edge_item", "Skipped non-object relationship edge."))
@@ -484,11 +485,13 @@ def validate_relationship_edges(bundle: dict[str, Any], payload: dict[str, Any])
         relationship_type = normalize_choice(raw.get("relationship_type"), RELATIONSHIP_TYPES, fallback="background_related")
         if status == "auto_accepted" and not evidence_refs:
             status = "insufficient_evidence"
+        first_row = row_by_ref.get(evidence_ref_key(evidence_refs[0]), {})
+        subject, object_ = fallback_subject_object(raw, relationship_type, first_row)
         edge = {
             "schema_version": RESEARCH_RELATIONSHIP_EDGE_SCHEMA_VERSION,
             "relationship_type": relationship_type,
-            "subject": normalize_entity(raw.get("subject") or {}),
-            "object": normalize_entity(raw.get("object") or {}),
+            "subject": subject,
+            "object": object_,
             "source_ids": sorted({ref["source_id"] for ref in evidence_refs if ref["source_id"]}),
             "paper_ids": sorted({ref["paper_id"] for ref in evidence_refs if ref["paper_id"]}),
             "claim_ids": sorted({ref["claim_id"] for ref in evidence_refs if ref["claim_id"]}),
@@ -498,7 +501,7 @@ def validate_relationship_edges(bundle: dict[str, Any], payload: dict[str, Any])
             "confidence": confidence,
             "decision_status": status,
             "comparability_status": comparability,
-            "rationale": str(raw.get("rationale") or "")[:500],
+            "rationale": str(raw.get("rationale") or default_rationale(relationship_type, first_row))[:500],
             "warnings": normalize_warning_list(raw.get("warnings") or []),
         }
         edge["relationship_id"] = relationship_edge_id(edge)
@@ -841,6 +844,60 @@ def normalize_entity(value: dict[str, Any]) -> dict[str, str]:
     return {"entity_type": entity_type, "entity_id": entity_id[:200], "label": label[:200]}
 
 
+def fallback_subject_object(raw: dict[str, Any], relationship_type: str, row: dict[str, Any]) -> tuple[dict[str, str], dict[str, str]]:
+    subject = normalize_entity(raw.get("subject") or {})
+    object_ = normalize_entity(raw.get("object") or {})
+    if is_empty_entity(subject):
+        subject = default_subject(row, relationship_type)
+    if is_empty_entity(object_):
+        object_ = default_object(row, relationship_type)
+    return subject, object_
+
+
+def is_empty_entity(entity: dict[str, str]) -> bool:
+    return entity.get("entity_type") == "concept" and entity.get("entity_id") == "concept" and entity.get("label") == "concept"
+
+
+def default_subject(row: dict[str, Any], relationship_type: str) -> dict[str, str]:
+    if relationship_type in {"same_metric", "same_benchmark", "same_task", "background_related"}:
+        paper_id = str(row.get("paper_id") or row.get("source_id") or "paper")
+        return {"entity_type": "paper", "entity_id": paper_id, "label": paper_id}
+    if relationship_type in {"not_comparable", "compares_against", "improves_over"}:
+        result_id = str(row.get("result_id") or "result")
+        return {"entity_type": "result", "entity_id": result_id, "label": str(row.get("method") or result_id)}
+    method = str(row.get("method") or row.get("paper_id") or row.get("source_id") or "method")
+    return {"entity_type": "method", "entity_id": normalize_key(method), "label": method[:200]}
+
+
+def default_object(row: dict[str, Any], relationship_type: str) -> dict[str, str]:
+    if relationship_type == "same_metric":
+        label = str(row.get("metric_name") or "metric")
+        return {"entity_type": "metric", "entity_id": normalize_key(label), "label": label[:200]}
+    if relationship_type == "same_benchmark":
+        label = str(row.get("dataset") or "benchmark")
+        return {"entity_type": "benchmark", "entity_id": normalize_key(label), "label": label[:200]}
+    if relationship_type == "same_task":
+        label = str(row.get("task") or "task")
+        return {"entity_type": "task", "entity_id": normalize_key(label), "label": label[:200]}
+    if relationship_type in {"compares_against", "improves_over"}:
+        label = str(row.get("baseline") or "baseline")
+        return {"entity_type": "method", "entity_id": normalize_key(label), "label": label[:200]}
+    if relationship_type == "not_comparable":
+        label = str(row.get("dataset") or row.get("metric_name") or "comparison setting")
+        return {"entity_type": "dataset", "entity_id": normalize_key(label), "label": label[:200]}
+    label = str(row.get("metric_name") or row.get("dataset") or row.get("task") or "concept")
+    return {"entity_type": "concept", "entity_id": normalize_key(label), "label": label[:200]}
+
+
+def default_rationale(relationship_type: str, row: dict[str, Any]) -> str:
+    if not row:
+        return "Relationship is based on the cited bundle evidence."
+    metric = str(row.get("metric_name") or "")
+    dataset = str(row.get("dataset") or "")
+    task = str(row.get("task") or "")
+    return f"Relationship {relationship_type} is grounded in cited result evidence for {metric} / {dataset} / {task}."
+
+
 def normalize_warning_list(value: Any) -> list[dict[str, Any]]:
     if not isinstance(value, list):
         return []
@@ -1117,4 +1174,3 @@ def format_research_triage(run: ResearchRelationshipRun) -> str:
     if not run.relationship_edges:
         lines.append("- none")
     return "\n".join(lines) + "\n"
-
