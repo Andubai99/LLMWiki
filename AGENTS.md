@@ -22,15 +22,15 @@
 
 ### V3: User Interaction And Product Shell
 
-优先做本地 UI / 产品外壳，解决用户交互差的问题。目标是让用户在 UI 中完成 source 添加、运行状态查看、失败恢复、evidence 检查、ask、synthesis preview/writeback、lint/eval 查看。V3 不应顺手实现复杂 PDF parsing 或关系分类。
+V3 UI dashboard 线已经冻结并进入删除目标。后续论文主线不再新增、扩展或维护 UI dashboard 功能；用户交互出口应收束到 CLI、gold/eval 报告，以及后续 metric-graph-aware Ask/Synthesis。
 
 ### V4: PDF And Research Corpus Ingestion
 
 围绕 `docs/papers` 中的 20 篇 CUA 论文，解决批量导入队列、长任务状态、失败续跑、MinerU 验收闭环、表格/图/公式 evidence foundation、论文级 page type / knowledge structure。
 
-### V5: Wiki Self-Maintenance And Research Intelligence
+### V5: Research Metric Graph And Evidence-Grounded Ask/Synthesis
 
-提升 wiki 自我维护能力和真实论文场景下的关系/冲突识别能力。目标包括 maintenance planner、research relationship classifier、source-backed conflict detection、living synthesis 更新和相关评测。
+当前项目主线固定为：给定一批同领域论文，系统持续抽取实验指标结果，维护可追溯 research metric graph，并支持用户围绕指标、benchmark、方法和可比较性进行证据约束问答与综合。后续开发优先围绕 metric result extraction、evidence coverage audit、research metric graph、incremental update、gold set evaluation、graph-aware ask 和 evidence-grounded synthesis 推进。
 
 在 V3/V4/V5 的具体 spec/plan 没有明确要求前，不要临时加入大范围架构改造。
 
@@ -143,6 +143,7 @@
 
 ## 11. UI Dashboard Rules
 
+- UI dashboard is deprecated. Do not add new UI dashboard specs, tests, routes, controls, or acceptance work. Existing UI code may be removed by a dedicated deletion plan once CLI/Ask/Synthesis paths remain intact.
 - `llmwiki ui` starts a local dashboard bound to `127.0.0.1` by default.
 - UI GET/status endpoints may read workspace skeleton, catalog, staging metadata, source sidecars, UI job state, parser status, config presence, and vector index status.
 - UI GET/status endpoints must not call LLM providers, embedding providers, MinerU document parsing, parser execution, add/ingest/apply/ask/lint/eval/clean, or any write path.
@@ -184,7 +185,8 @@
 - Weak, ambiguous, unsupported, invalid-locator, or non-applied result candidates may appear in staging/triage but must not become durable `metric_results` rows.
 - Parser artifacts, parser logs, parser backend attempts, diagnostics, raw prompts, and raw LLM responses are not evidence for metric/result claims.
 - V4.3 real acceptance must use the configured real LLM provider on a declared `docs/papers/` subset followed by the full 20-paper corpus, and must record only sanitized local observations under `docs/observations/`.
-- V4.4 `llmwiki metric list` and `llmwiki metric timeline` are CLI-first, read-only metric evolution queries over durable `metric_results`.
+- V4.4 `llmwiki metric list` and `llmwiki metric timeline` are frozen CLI-first, read-only metric evolution queries over durable `metric_results`.
+- Do not extend the Timeline line unless a future corpus actually needs year-based metric evolution; research metric graph is now the primary organization surface.
 - V4.4 metric timeline rows must come from `state/catalog.sqlite metric_results` joined to formal `claims` and `sources`; paper identity fields are display/sort metadata, not result evidence.
 - V4.4 uses `metric_list.v4.4`, `metric_timeline.v4.4`, and `metric_timeline_item.v4.4`; every non-warning timeline row must preserve real `result_id`, `claim_id`, `source_id`, and `citation_locator`.
 - `llmwiki metric list` and `llmwiki metric timeline` must not call LLM providers, embedding providers, MinerU, parser execution, add/import, ingest, apply, ask, synthesis, lint, eval, clean, or raw PDF chunk retrieval.
@@ -212,7 +214,8 @@
 - `llmwiki metric canonicalize` must not write `wiki/`, `sources/`, `staging/`, `state/catalog.sqlite`, `state/corpus-batches/`, `state/embeddings/`, `state/ui-jobs/`, or `.tmp/`.
 - V4.7 must not automatically merge vague labels such as `score`, `Avg`, or `Overall`; it should mark them as `ambiguous_label` or `context_dependent`.
 - V4.7 acceptance should reuse preserved workspaces such as `.tmp/paper-v46-corpus-acceptance`; do not rerun full MinerU+LLM for canonicalization or timeline readiness reports.
-- V4.8 `llmwiki metric repair-plan`, `llmwiki metric repair-status`, and `llmwiki metric repair-mark` are CLI-first metric repair review commands over existing V4.7 diagnostics.
+- V4.8 `llmwiki metric repair-plan`, `llmwiki metric repair-status`, and `llmwiki metric repair-mark` are deprecated CLI-first metric repair review commands over existing V4.7 diagnostics.
+- Do not continue V4.8 manual repair review as a core direction. Future work should prefer LLM-assisted metric normalization, evidence validation, and gold/eval feedback over human repair workflow expansion.
 - V4.8 uses `metric_repair_plan.v4.8`, `metric_repair_proposal.v4.8`, `metric_repair_review_decision.v4.8`, `metric_repair_projection.v4.8`, `metric_repair_warning.v4.8`, and `metric_repair_run.v4.8`; proposals and decisions are review metadata, not evidence.
 - Default `llmwiki metric repair-plan` and `llmwiki metric repair-status` must be read-only. `repair-plan --stage` and `repair-mark` may write only `staging/<repair-run-id>/` review artifacts.
 - V4.8 must not update `metric_results`, mutate `state/catalog.sqlite`, change `llmwiki metric timeline`, create wiki pages, create source artifacts, or provide durable repair/apply.

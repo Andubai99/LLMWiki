@@ -154,7 +154,6 @@ llmwiki query "问题" --root .
 llmwiki lint --root .
 llmwiki doctor --root .
 llmwiki clean --root .
-llmwiki ui --root .
 ```
 
 `llmwiki ask` 会先调用 LLM query planning，再使用本地 retrieve 从 wiki/catalog 检索证据，最后只基于 retrieved evidence 生成 grounded answer。默认不写回 wiki。
@@ -165,7 +164,9 @@ llmwiki ui --root .
 
 真实验收 observation 放在本地 `docs/observations/`，该目录被 `.gitignore` 忽略，不作为提交内容。提交的 spec/plan 可以引用这些本地 observation 文件名，但不要提交验收工作区、原始 prompt/response、parser logs、API key 或 catalog/source/wiki 生成态。
 
-## V3.1 Local UI
+## V3.1 Local UI Deprecated
+
+UI dashboard 已冻结并进入删除目标。后续论文主线不再扩展 UI dashboard；项目重点收束到 research metric graph、gold/eval、incremental update、graph-aware Ask 和 evidence-grounded synthesis。
 
 `llmwiki ui --root .` 启动绑定 `127.0.0.1` 的本地 read-only dashboard。它直接读取 workspace skeleton、catalog、staging runs、PDF sidecars、parser 状态、LLM/embedding 配置状态和 vector index 状态，用于快速判断当前 workspace 是否 ready、有哪些 sources、最近 runs 和 wiki pages。
 
@@ -286,7 +287,9 @@ state/catalog.sqlite metric_results
 
 V4.3 real acceptance must use the configured real LLM provider on a declared `docs/papers/` subset followed by the full 20-paper corpus. Generated acceptance workspaces, raw prompts, raw LLM responses, parser logs, parser artifacts, catalogs, staging files, wiki output, and API keys must not be committed.
 
-## V4.4 Metric Timeline
+## V4.4 Metric Timeline Frozen
+
+Timeline 线已经冻结。除非未来语料确实需要按年份组织 metric evolution，否则不要继续扩展 timeline；当前论文方向以 research metric graph 作为主要组织结构。
 
 V4.4 新增 CLI-first、只读的指标时间线查询，用于把 durable `metric_results` 行展示为可审计的 metric evolution timeline。它不重新 ingest，不搜索 raw PDF chunks，不调用 LLM/embedding/parser，也不写 wiki 或 catalog。
 
@@ -361,7 +364,9 @@ JSON output uses `metric_canonicalization_report.v4.7`, `canonical_metric.v4.7`,
 
 V4.7 reuses preserved acceptance workspaces such as `.tmp/paper-v46-corpus-acceptance`; a full MinerU+LLM rerun is not required for metric canonicalization or timeline readiness reporting.
 
-## V4.8 Metric Repair Review Workflow
+## V4.8 Metric Repair Review Workflow Deprecated
+
+V4.8 manual repair review workflow is deprecated as a core project direction. Future work should prioritize automatic LLM-assisted normalization, evidence validation, gold-set evaluation, and research metric graph quality rather than expanding manual proposal review.
 
 V4.8 adds a CLI-first metric repair review workflow that turns V4.7 diagnostics into reviewable proposals:
 

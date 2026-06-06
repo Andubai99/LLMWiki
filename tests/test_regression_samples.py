@@ -448,6 +448,8 @@ def test_docs_describe_v1_commands_and_constraints():
     assert "ambiguous_label" in agents
     assert "do not rerun full MinerU+LLM" in agents
     assert "llmwiki metric repair-plan" in agents
+    assert "deprecated CLI-first metric repair review commands" in agents
+    assert "Do not continue V4.8 manual repair review" in agents
     assert "metric_repair_plan.v4.8" in agents
     assert "metric_repair_proposal.v4.8" in agents
     assert "metric_repair_review_decision.v4.8" in agents
@@ -476,6 +478,11 @@ def test_docs_describe_v1_commands_and_constraints():
     assert "staging/<relationship-run-id>/" in agents
     assert "not_comparable" in agents
     assert "full MinerU+LLM corpus re-ingest is not justified" in agents
+    assert "research metric graph" in agents
+    assert "metric result extraction" in agents
+    assert "graph-aware ask" in agents
+    assert "UI dashboard is deprecated" in agents
+    assert "Timeline line" in agents
     assert "docs/observations/" in agents
     assert "must not be committed" in agents
     assert "Expensive Acceptance Policy" in agents
@@ -490,7 +497,7 @@ def test_docs_describe_v1_commands_and_constraints():
     assert "content_role=\"ignored\"" in agents
     assert "MinerU" in agents
     assert "vector" in agents
-    assert "V3.4 local Source Library, Ask/Synthesis UI, and read-only Evidence/Wiki Browser are allowed" in agents
+    assert "V3 UI dashboard 线已经冻结并进入删除目标" in agents
 
 
 def test_gitignore_excludes_virtualenv_and_python_caches():
