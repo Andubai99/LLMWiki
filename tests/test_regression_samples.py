@@ -312,6 +312,14 @@ def test_docs_describe_v1_commands_and_constraints():
     assert "metric_timeline_group.v4.9" in readme
     assert "metric_timeline_point.v4.9" in readme
     assert "metric_timeline_synthesis.v4.9" in readme
+    assert "V5.0 Research Relationship Graph And Evidence-Grounded Synthesis" in readme
+    assert "llmwiki research graph --root . --dry-run --json" in readme
+    assert "llmwiki research graph-status <relationship-run-id>" in readme
+    assert "llmwiki research synthesize <relationship-run-id>" in readme
+    assert "research_relationship_run.v5.0" in readme
+    assert "research_relationship_edge.v5.0" in readme
+    assert "not_comparable" in readme
+    assert "full MinerU+LLM corpus re-ingest" in readme
     assert "page markdown 是页面文本，不是 formal evidence" in readme
     assert "llmwiki eval pdf-quality --root ." in readme
     assert "defaults to `auto`" in readme
@@ -453,6 +461,17 @@ def test_docs_describe_v1_commands_and_constraints():
     assert "metric_timeline_synthesis.v4.9" in agents
     assert "staging/<normalization-run-id>/" in agents
     assert "must not update durable `metric_results`" in agents
+    assert "V5.0 Research Relationship Graph" in agents
+    assert "llmwiki research graph" in agents
+    assert "llmwiki research graph-status" in agents
+    assert "llmwiki research synthesize" in agents
+    assert "research_relationship_run.v5.0" in agents
+    assert "research_relationship_bundle.v5.0" in agents
+    assert "research_relationship_edge.v5.0" in agents
+    assert "research_graph.v5.0" in agents
+    assert "research_synthesis.v5.0" in agents
+    assert "not_comparable" in agents
+    assert "full MinerU+LLM corpus re-ingest is not justified" in agents
     assert "Expensive Acceptance Policy" in agents
     assert "MinerU+LLM full-corpus acceptance is expensive" in agents
     assert "Default to reusing preserved acceptance workspaces" in agents
@@ -492,6 +511,29 @@ def test_v47_spec_preserves_acceptance_reuse_policy():
     assert "call LLM providers" in spec
     assert "run MinerU" in spec
     assert "does not create new claims" in spec
+
+
+def test_v50_spec_defines_source_backed_relationship_graph():
+    root = Path(__file__).resolve().parents[1]
+    spec = (
+        root
+        / "docs"
+        / "specs"
+        / "2026-06-06-llmwiki-v5-0-research-relationship-graph-evidence-grounded-synthesis-design.md"
+    ).read_text(encoding="utf-8")
+
+    assert "V5.0 Research Relationship Graph And Evidence-Grounded Synthesis Design" in spec
+    assert "not a global scholarly knowledge graph" in spec
+    assert "source-backed cross-paper relationships" in spec
+    assert "research_relationship_edge.v5.0" in spec
+    assert "claim_id" in spec
+    assert "result_id" in spec
+    assert "citation_locator" in spec
+    assert "not_comparable" in spec
+    assert "Acceptance Reuse" in spec
+    assert ".tmp/paper-v46-corpus-acceptance" in spec
+    assert "L5 full-corpus rerun is not justified" in spec
+    assert "staging/<relationship-run-id>/" in spec
 
 
 def test_gitignore_excludes_generated_workspace_content():

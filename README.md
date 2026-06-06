@@ -392,6 +392,23 @@ JSON output uses `metric_normalization_run.v4.9`, `metric_evidence_bundle.v4.9`,
 
 V4.9 does not rerun MinerU/parser/corpus import/ingest/apply, does not update `metric_results`, does not mutate `state/catalog.sqlite`, does not write wiki pages, and does not change `llmwiki metric timeline`. It reuses preserved acceptance workspaces such as `.tmp/paper-v46-corpus-acceptance`; full MinerU+LLM corpus re-ingest is not required.
 
+## V5.0 Research Relationship Graph And Evidence-Grounded Synthesis
+
+V5.0 shifts the research intelligence focus from year-based timelines to source-backed cross-paper relationships. The target is not a global scholarly knowledge graph; it is a local-first relationship graph compiler for a user-provided paper corpus.
+
+Planned CLI surface:
+
+```bash
+llmwiki research graph --root . --dry-run --json
+llmwiki research graph --root . --json
+llmwiki research graph-status <relationship-run-id> --root . --json
+llmwiki research synthesize <relationship-run-id> --root . --json
+```
+
+Planned schemas are `research_relationship_run.v5.0`, `research_relationship_bundle.v5.0`, `research_relationship_edge.v5.0`, `research_graph.v5.0`, `research_synthesis.v5.0`, and `research_relationship_warning.v5.0`. Relationship types include `same_task`, `same_benchmark`, `same_metric`, `compares_against`, `improves_over`, `extends_method`, `uses_component`, `addresses_limitation`, `supports`, `contradicts_or_tensions`, `not_comparable`, and `background_related`.
+
+Every accepted relationship edge must preserve real evidence refs such as `claim_id`, `result_id`, `source_id`, `paper_id`, and `citation_locator`. `not_comparable` is a first-class output, not a failure. V5.0 should reuse preserved workspaces such as `.tmp/paper-v46-corpus-acceptance` and V4.9 normalization runs; it must not require a full MinerU+LLM corpus re-ingest for first implementation.
+
 ### Internal/debug 命令
 
 ```bash
