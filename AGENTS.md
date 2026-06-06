@@ -227,12 +227,13 @@
 - V4.9 acceptance should reuse `.tmp/paper-v46-corpus-acceptance`; do not rerun full MinerU+LLM ingest for metric normalization and timeline synthesis.
 - V5.0 Research Relationship Graph shifts the main research-intelligence surface from year-based timelines to source-backed cross-paper relationships.
 - V5.0 is not a global scholarly knowledge graph. It is a local-first relationship graph compiler for a user-provided paper corpus.
-- Planned V5.0 commands include `llmwiki research graph`, `llmwiki research graph-status`, and `llmwiki research synthesize`.
-- V5.0 uses planned schemas `research_relationship_run.v5.0`, `research_relationship_bundle.v5.0`, `research_relationship_edge.v5.0`, `research_graph.v5.0`, `research_synthesis.v5.0`, and `research_relationship_warning.v5.0`.
+- V5.0 commands include `llmwiki research graph`, `llmwiki research graph-status`, and `llmwiki research synthesize`.
+- V5.0 uses schemas `research_relationship_run.v5.0`, `research_relationship_bundle.v5.0`, `research_relationship_edge.v5.0`, `research_graph.v5.0`, `research_synthesis.v5.0`, and `research_relationship_warning.v5.0`.
 - Every accepted V5.0 relationship edge must preserve real evidence refs such as `claim_id`, `result_id`, `source_id`, `paper_id`, and `citation_locator`; the LLM must not invent relationship ids, evidence ids, source ids, paper ids, page paths, or locators.
 - V5.0 relationship types may include `same_task`, `same_benchmark`, `same_metric`, `compares_against`, `improves_over`, `extends_method`, `uses_component`, `addresses_limitation`, `supports`, `contradicts_or_tensions`, `not_comparable`, and `background_related`.
 - `not_comparable` is a first-class V5.0 output, not a failure; the system should preserve why papers or results cannot be fairly compared.
 - V5.0 first implementation should be CLI-first and staging-only. It must not add UI, perform catalog migration, update durable relationships, write wiki pages, call MinerU/parser/import/ingest/apply, or perform external scholarly metadata lookup.
+- `llmwiki research graph --dry-run`, `research graph-status`, and `research synthesize` must be read-only and must not call LLM providers or write workspace files. A real `research graph` run may call the configured LLM provider and may write only `staging/<relationship-run-id>/` artifacts.
 - V5.0 acceptance should reuse `.tmp/paper-v46-corpus-acceptance` and V4.9 normalization staging artifacts where possible; full MinerU+LLM corpus re-ingest is not justified for first implementation.
 
 ## 11.6 Expensive Acceptance Policy

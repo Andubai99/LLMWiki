@@ -212,6 +212,7 @@ def test_docs_describe_v1_commands_and_constraints():
         "ui",
         "corpus",
         "metric",
+        "research",
     ):
         assert f"llmwiki {command}" in readme
     assert "--json" in readme
@@ -317,7 +318,9 @@ def test_docs_describe_v1_commands_and_constraints():
     assert "llmwiki research graph-status <relationship-run-id>" in readme
     assert "llmwiki research synthesize <relationship-run-id>" in readme
     assert "research_relationship_run.v5.0" in readme
+    assert "research_relationship_bundle.v5.0" in readme
     assert "research_relationship_edge.v5.0" in readme
+    assert "staging/<relationship-run-id>/" in readme
     assert "not_comparable" in readme
     assert "full MinerU+LLM corpus re-ingest" in readme
     assert "page markdown 是页面文本，不是 formal evidence" in readme
@@ -470,6 +473,7 @@ def test_docs_describe_v1_commands_and_constraints():
     assert "research_relationship_edge.v5.0" in agents
     assert "research_graph.v5.0" in agents
     assert "research_synthesis.v5.0" in agents
+    assert "staging/<relationship-run-id>/" in agents
     assert "not_comparable" in agents
     assert "full MinerU+LLM corpus re-ingest is not justified" in agents
     assert "Expensive Acceptance Policy" in agents
