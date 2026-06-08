@@ -22,15 +22,15 @@
 
 ### V3: User Interaction And Product Shell
 
-优先做本地 UI / 产品外壳，解决用户交互差的问题。目标是让用户在 UI 中完成 source 添加、运行状态查看、失败恢复、evidence 检查、ask、synthesis preview/writeback、lint/eval 查看。V3 不应顺手实现复杂 PDF parsing 或关系分类。
+V3 UI dashboard 线已经冻结并进入删除目标。后续论文主线不再新增、扩展或维护 UI dashboard 功能；用户交互出口应收束到 CLI、gold/eval 报告，以及后续 metric-graph-aware Ask/Synthesis。
 
 ### V4: PDF And Research Corpus Ingestion
 
 围绕 `docs/papers` 中的 20 篇 CUA 论文，解决批量导入队列、长任务状态、失败续跑、MinerU 验收闭环、表格/图/公式 evidence foundation、论文级 page type / knowledge structure。
 
-### V5: Wiki Self-Maintenance And Research Intelligence
+### V5: Research Metric Graph And Evidence-Grounded Ask/Synthesis
 
-提升 wiki 自我维护能力和真实论文场景下的关系/冲突识别能力。目标包括 maintenance planner、research relationship classifier、source-backed conflict detection、living synthesis 更新和相关评测。
+当前项目主线固定为：给定一批同领域论文，系统持续抽取实验指标结果，维护可追溯 research metric graph，并支持用户围绕指标、benchmark、方法和可比较性进行证据约束问答与综合。后续开发优先围绕 metric result extraction、evidence coverage audit、research metric graph、incremental update、gold set evaluation、graph-aware ask 和 evidence-grounded synthesis 推进。
 
 在 V3/V4/V5 的具体 spec/plan 没有明确要求前，不要临时加入大范围架构改造。
 
@@ -39,6 +39,7 @@
 - Production Python package code lives under `src/llmwiki/`. Do not add new runtime modules under a root-level `llmwiki/` directory.
 - Tests live under `tests/`; committed documentation/specs/plans live under `docs/`.
 - New implementation plans must be saved under `docs/plans/`; new specs must be saved under `docs/specs/`. Do not create new plan/spec files under `docs/superpowers/`.
+- Real acceptance observations must be written under `docs/observations/`. This directory is local, gitignored, and must not be committed; committed specs/plans may reference expected observation filenames there.
 - Do not modify files under `sources/raw/`.
 - Do not write final wiki pages directly during ingest. Write candidate changes under `staging/<run-id>/`.
 - Codex/LLM must not bypass staging; proposed knowledge changes must be inspectable before apply.
@@ -142,6 +143,7 @@
 
 ## 11. UI Dashboard Rules
 
+- UI dashboard is deprecated. Do not add new UI dashboard specs, tests, routes, controls, or acceptance work. Existing UI code may be removed by a dedicated deletion plan once CLI/Ask/Synthesis paths remain intact.
 - `llmwiki ui` starts a local dashboard bound to `127.0.0.1` by default.
 - UI GET/status endpoints may read workspace skeleton, catalog, staging metadata, source sidecars, UI job state, parser status, config presence, and vector index status.
 - UI GET/status endpoints must not call LLM providers, embedding providers, MinerU document parsing, parser execution, add/ingest/apply/ask/lint/eval/clean, or any write path.
@@ -182,7 +184,78 @@
 - `claims` remain the evidence source of truth. `metric_results` rows must reference real `claim_id`, `source_id`, `paper_id`, `claim_text`, and citation locator; first-version `paper_id` defaults to `source_id`.
 - Weak, ambiguous, unsupported, invalid-locator, or non-applied result candidates may appear in staging/triage but must not become durable `metric_results` rows.
 - Parser artifacts, parser logs, parser backend attempts, diagnostics, raw prompts, and raw LLM responses are not evidence for metric/result claims.
-- V4.3 real acceptance must use the configured real LLM provider on a declared `docs/papers/` subset followed by the full 20-paper corpus, and must record only sanitized observations under `docs/specs/`.
+- V4.3 real acceptance must use the configured real LLM provider on a declared `docs/papers/` subset followed by the full 20-paper corpus, and must record only sanitized local observations under `docs/observations/`.
+- V4.4 `llmwiki metric list` and `llmwiki metric timeline` are frozen CLI-first, read-only metric evolution queries over durable `metric_results`.
+- Do not extend the Timeline line unless a future corpus actually needs year-based metric evolution; research metric graph is now the primary organization surface.
+- V4.4 metric timeline rows must come from `state/catalog.sqlite metric_results` joined to formal `claims` and `sources`; paper identity fields are display/sort metadata, not result evidence.
+- V4.4 uses `metric_list.v4.4`, `metric_timeline.v4.4`, and `metric_timeline_item.v4.4`; every non-warning timeline row must preserve real `result_id`, `claim_id`, `source_id`, and `citation_locator`.
+- `llmwiki metric list` and `llmwiki metric timeline` must not call LLM providers, embedding providers, MinerU, parser execution, add/import, ingest, apply, ask, synthesis, lint, eval, clean, or raw PDF chunk retrieval.
+- `llmwiki metric list` and `llmwiki metric timeline` must not write `wiki/`, `sources/`, `staging/`, `state/catalog.sqlite`, `state/corpus-batches/`, `state/embeddings/`, `state/ui-jobs/`, or `.tmp/`.
+- V4.4 does not implement UI, metric alias auto-merge, substring metric matching, unit conversion, ranking, trend/gap/synthesis, relationship classification, or wiki writeback.
+- V4.5-min `llmwiki eval result-evidence` is CLI-first and read-only. It evaluates durable `metric_results` rows against formal `claims`, `sources`, source sidecars, normalized source text, and paper inventory metadata.
+- V4.5-min uses `result_evidence_quality.v4.5` and `result_evidence_item.v4.5`; every item must preserve real `result_id`, `claim_id`, `source_id`, `paper_id`, and `citation_locator`.
+- `llmwiki eval result-evidence` must not call LLM providers, embedding providers, MinerU, parser execution, add/import, ingest, apply, ask, synthesis, lint, clean, other eval commands, or raw PDF chunk retrieval.
+- `llmwiki eval result-evidence` must not write `wiki/`, `sources/`, `staging/`, `state/catalog.sqlite`, `state/corpus-batches/`, `state/embeddings/`, `state/ui-jobs/`, or `.tmp/`.
+- V4.5-min does not implement UI, extraction prompt changes, metric aliases, unit conversion, timeline ranking, automatic repairs, or wiki writeback.
+- V4.5-min real acceptance uses a fixed 5-paper `docs/papers/` subset instead of the full 20-paper corpus. Preserve `.tmp/paper-v45-acceptance` after acceptance unless the user explicitly approves cleanup.
+- V4.5.1 is a narrow MinerU result extraction quality repair over the same fixed 5-paper subset. It may improve parser status diagnostics, PDF result-focused chunk construction, metric result candidate validation, and result-evidence quality counters, but it must not add UI, catalog migrations, metric aliases, unit conversion, timeline ranking, automatic repairs, or wiki writeback.
+- V4.5.1 strict acceptance must use `--parser mineru`, `mineru_backend = "pipeline"`, `mineru_method = "auto"`, and for the English 5-paper subset `mineru_extra_args = ["-l", "en"]`; accidental auto fallback must remain visible through parser metadata and `llmwiki eval result-evidence`.
+- V4.5.1 result-focused chunks may group table/caption/nearby heading/result-text blocks into one bounded evidence window. The primary `citation_locator` remains one real block, and valid auxiliary blocks must be preserved in `evidence_block_ids`, `evidence_pages`, and `evidence_block_roles`.
+- Placeholder metric values such as `See table`, `not reported`, and `N/A` must not become final cited durable `metric_results` when the same evidence bundle exposes a concrete value.
+- Preserve `.tmp/paper-v451-mineru-repair-acceptance` after V4.5.1 acceptance unless the user explicitly approves cleanup.
+- V4.6-min `llmwiki eval corpus-results` is CLI-first and read-only. It summarizes V4.2 inventory, V4.3 durable `metric_results`, V4.4 timeline readiness, and V4.5 result-evidence quality into `corpus_results_eval.v4.6`.
+- V4.6-min uses `corpus_results_paper.v4.6`, `corpus_results_metric.v4.6`, and `corpus_results_warning.v4.6`; it is an acceptance/reporting surface, not a new evidence source.
+- `llmwiki eval corpus-results` must not call LLM providers, embedding providers, MinerU, parser execution, add/import, ingest, apply, ask, synthesis, lint, clean, other eval commands, or raw PDF chunk retrieval.
+- `llmwiki eval corpus-results` must not write `wiki/`, `sources/`, `staging/`, `state/catalog.sqlite`, `state/corpus-batches/`, `state/embeddings/`, `state/ui-jobs/`, or `.tmp/`.
+- V4.6-min full acceptance uses strict MinerU over the full 20-paper `docs/papers/` corpus and preserves `.tmp/paper-v46-corpus-acceptance` unless the user explicitly approves cleanup.
+- V4.7 `llmwiki metric canonicalize` is CLI-first and read-only. It reports conservative metric canonicalization, value repair suggestions, comparability groups, and upgraded timeline readiness over existing durable `metric_results`.
+- V4.7 uses `metric_canonicalization_report.v4.7`, `canonical_metric.v4.7`, `metric_result_value_repair.v4.7`, `metric_comparability_group.v4.7`, `metric_timeline_readiness.v4.7`, and `metric_canonicalization_warning.v4.7`; it is not an evidence source and must not create, merge, delete, overwrite, or durably repair result rows.
+- `llmwiki metric canonicalize` must not call LLM providers, embedding providers, MinerU, parser execution, add/import, ingest, apply, ask, synthesis, lint, clean, CLI eval recursion, or raw PDF chunk retrieval.
+- `llmwiki metric canonicalize` must not write `wiki/`, `sources/`, `staging/`, `state/catalog.sqlite`, `state/corpus-batches/`, `state/embeddings/`, `state/ui-jobs/`, or `.tmp/`.
+- V4.7 must not automatically merge vague labels such as `score`, `Avg`, or `Overall`; it should mark them as `ambiguous_label` or `context_dependent`.
+- V4.7 acceptance should reuse preserved workspaces such as `.tmp/paper-v46-corpus-acceptance`; do not rerun full MinerU+LLM for canonicalization or timeline readiness reports.
+- V4.8 `llmwiki metric repair-plan`, `llmwiki metric repair-status`, and `llmwiki metric repair-mark` are deprecated CLI-first metric repair review commands over existing V4.7 diagnostics.
+- Do not continue V4.8 manual repair review as a core direction. Future work should prefer LLM-assisted metric normalization, evidence validation, and gold/eval feedback over human repair workflow expansion.
+- V4.8 uses `metric_repair_plan.v4.8`, `metric_repair_proposal.v4.8`, `metric_repair_review_decision.v4.8`, `metric_repair_projection.v4.8`, `metric_repair_warning.v4.8`, and `metric_repair_run.v4.8`; proposals and decisions are review metadata, not evidence.
+- Default `llmwiki metric repair-plan` and `llmwiki metric repair-status` must be read-only. `repair-plan --stage` and `repair-mark` may write only `staging/<repair-run-id>/` review artifacts.
+- V4.8 must not update `metric_results`, mutate `state/catalog.sqlite`, change `llmwiki metric timeline`, create wiki pages, create source artifacts, or provide durable repair/apply.
+- V4.8 must not call LLM providers, embedding providers, MinerU, parser execution, add/import, ingest, apply, ask, synthesis, lint, clean, CLI eval recursion, or raw PDF chunk retrieval.
+- V4.8 acceptance should reuse `.tmp/paper-v46-corpus-acceptance`; do not rerun full MinerU+LLM for repair review proposal generation.
+- V4.9 `llmwiki metric normalize`, `llmwiki metric normalize-status`, and `llmwiki metric timeline-synthesis` are CLI-first LLM metric normalization and timeline preview commands over existing catalog-backed `metric_results`.
+- V4.9 uses `metric_normalization_run.v4.9`, `metric_evidence_bundle.v4.9`, `metric_normalization_decision.v4.9`, `metric_timeline_group.v4.9`, `metric_timeline_point.v4.9`, `metric_timeline_synthesis.v4.9`, and `metric_normalization_warning.v4.9`; decisions and timeline previews are derived metadata, not formal evidence.
+- `llmwiki metric normalize --dry-run`, `normalize-status`, and `timeline-synthesis` must be read-only and must not call LLM providers or write workspace files.
+- A real `llmwiki metric normalize` run may call the configured LLM provider and may write only `staging/<normalization-run-id>/` artifacts; it must not write `state/catalog.sqlite`, `wiki/`, `sources/`, `state/corpus-batches/`, `state/embeddings/`, or `state/ui-jobs/`.
+- V4.9 must not rerun MinerU, parser execution, corpus import, ingest, apply, ask, synthesis writeback, lint, clean, or raw PDF chunk retrieval.
+- V4.9 must not update durable `metric_results`, change `llmwiki metric timeline`, create durable overlays, or write wiki pages.
+- V4.9 LLM prompts must use bounded evidence bundles only and must not save raw prompt, raw LLM response, API key, parser logs, parser artifacts, or unsupported evidence refs.
+- V4.9 acceptance should reuse `.tmp/paper-v46-corpus-acceptance`; do not rerun full MinerU+LLM ingest for metric normalization and timeline synthesis.
+- V5.0 Research Relationship Graph shifts the main research-intelligence surface from year-based timelines to source-backed cross-paper relationships.
+- V5.0 is not a global scholarly knowledge graph. It is a local-first relationship graph compiler for a user-provided paper corpus.
+- V5.0 commands include `llmwiki research graph`, `llmwiki research graph-status`, and `llmwiki research synthesize`.
+- V5.0 uses schemas `research_relationship_run.v5.0`, `research_relationship_bundle.v5.0`, `research_relationship_edge.v5.0`, `research_graph.v5.0`, `research_synthesis.v5.0`, and `research_relationship_warning.v5.0`.
+- Every accepted V5.0 relationship edge must preserve real evidence refs such as `claim_id`, `result_id`, `source_id`, `paper_id`, and `citation_locator`; the LLM must not invent relationship ids, evidence ids, source ids, paper ids, page paths, or locators.
+- V5.0 relationship types may include `same_task`, `same_benchmark`, `same_metric`, `compares_against`, `improves_over`, `extends_method`, `uses_component`, `addresses_limitation`, `supports`, `contradicts_or_tensions`, `not_comparable`, and `background_related`.
+- `not_comparable` is a first-class V5.0 output, not a failure; the system should preserve why papers or results cannot be fairly compared.
+- V5.0 first implementation should be CLI-first and staging-only. It must not add UI, perform catalog migration, update durable relationships, write wiki pages, call MinerU/parser/import/ingest/apply, or perform external scholarly metadata lookup.
+- `llmwiki research graph --dry-run`, `research graph-status`, and `research synthesize` must be read-only and must not call LLM providers or write workspace files. A real `research graph` run may call the configured LLM provider and may write only `staging/<relationship-run-id>/` artifacts.
+- V5.0 acceptance should reuse `.tmp/paper-v46-corpus-acceptance` and V4.9 normalization staging artifacts where possible; full MinerU+LLM corpus re-ingest is not justified for first implementation.
+
+## 11.6 Expensive Acceptance Policy
+
+- MinerU+LLM full-corpus acceptance is expensive and must not be treated as routine validation.
+- Default to reusing preserved acceptance workspaces such as `.tmp/paper-v46-corpus-acceptance` for read-only analysis, CLI reports, metric canonicalization, timeline readiness checks, and other post-processing work.
+- Do not rerun MinerU+LLM imports when a task only changes read-only reporting, catalog queries, metric grouping, value normalization over existing rows, timeline readiness scoring, docs, tests, or formatting.
+- Rerun MinerU+LLM only when the task changes ingest, PDF chunking, parser/block handling, LLM extraction prompts, metric result candidate validation, source import semantics, or apply-time metric persistence.
+- When a rerun is necessary, use staged acceptance levels instead of jumping directly to the full corpus:
+  - L0: unit tests and schema tests.
+  - L1: read existing catalog/eval outputs.
+  - L2: run new eval/report commands against preserved `.tmp` acceptance workspaces.
+  - L3: rerun a targeted 1-3 paper MinerU+LLM subset.
+  - L4: rerun the fixed 5-paper smoke corpus.
+  - L5: rerun the full 20-paper corpus only for phase closure or when lower levels cannot answer the risk.
+- Every future V4/V5 spec and implementation plan must include an `Acceptance Reuse` section stating whether existing acceptance workspaces can be reused, what the minimum rerun subset is, and what condition would justify L5 full-corpus rerun.
+- Prefer `llmwiki corpus retry <batch-id> --failed-only` for transient failures; do not rerun already-applied items unless the changed code path requires re-ingesting successful sources.
+- Preserve expensive acceptance outputs by default when the user intends to inspect results. Do not run clean commands that remove `.tmp/paper-v46-corpus-acceptance` or similar preserved workspaces unless the user explicitly approves cleanup.
 
 ## 12. Generated Files And Cleanup
 

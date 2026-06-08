@@ -154,7 +154,6 @@ llmwiki query "问题" --root .
 llmwiki lint --root .
 llmwiki doctor --root .
 llmwiki clean --root .
-llmwiki ui --root .
 ```
 
 `llmwiki ask` 会先调用 LLM query planning，再使用本地 retrieve 从 wiki/catalog 检索证据，最后只基于 retrieved evidence 生成 grounded answer。默认不写回 wiki。
@@ -163,7 +162,11 @@ llmwiki ui --root .
 
 `llmwiki clean --root .` 默认只清理测试缓存和临时验收工作区；`llmwiki clean --root . --scope generated` 清理生成态 source/wiki/staging/state/vector cache；`--scope all` 同时清理两类内容。`--dry-run` 可先预览将删除的路径。该命令会保留 `.gitkeep`、`config/api-keys.toml`、`docs/papers/`、`.venv/` 和用户资料。
 
-## V3.1 Local UI
+真实验收 observation 放在本地 `docs/observations/`，该目录被 `.gitignore` 忽略，不作为提交内容。提交的 spec/plan 可以引用这些本地 observation 文件名，但不要提交验收工作区、原始 prompt/response、parser logs、API key 或 catalog/source/wiki 生成态。
+
+## V3.1 Local UI Deprecated
+
+UI dashboard 已冻结并进入删除目标。后续论文主线不再扩展 UI dashboard；项目重点收束到 research metric graph、gold/eval、incremental update、graph-aware Ask 和 evidence-grounded synthesis。
 
 `llmwiki ui --root .` 启动绑定 `127.0.0.1` 的本地 read-only dashboard。它直接读取 workspace skeleton、catalog、staging runs、PDF sidecars、parser 状态、LLM/embedding 配置状态和 vector index 状态，用于快速判断当前 workspace 是否 ready、有哪些 sources、最近 runs 和 wiki pages。
 
@@ -283,6 +286,135 @@ state/catalog.sqlite metric_results
 `metric_results` is a structured query surface for later V4.4 metric timelines. It is not a replacement for `claims`, and parser artifacts/logs/diagnostics are not evidence. V4.3 does not add UI, does not add `llmwiki metric timeline`, and does not add a relationship classifier.
 
 V4.3 real acceptance must use the configured real LLM provider on a declared `docs/papers/` subset followed by the full 20-paper corpus. Generated acceptance workspaces, raw prompts, raw LLM responses, parser logs, parser artifacts, catalogs, staging files, wiki output, and API keys must not be committed.
+
+## V4.4 Metric Timeline Frozen
+
+Timeline 线已经冻结。除非未来语料确实需要按年份组织 metric evolution，否则不要继续扩展 timeline；当前论文方向以 research metric graph 作为主要组织结构。
+
+V4.4 新增 CLI-first、只读的指标时间线查询，用于把 durable `metric_results` 行展示为可审计的 metric evolution timeline。它不重新 ingest，不搜索 raw PDF chunks，不调用 LLM/embedding/parser，也不写 wiki 或 catalog。
+
+常用命令：
+
+```bash
+llmwiki metric list --root .
+llmwiki metric list --root . --json
+llmwiki metric timeline "success rate" --root .
+llmwiki metric timeline "success rate" --dataset "OSWorld" --task "computer use" --root . --json
+```
+
+JSON schema 使用 `metric_list.v4.4`、`metric_timeline.v4.4` 和 `metric_timeline_item.v4.4`。Timeline rows 只来自 `state/catalog.sqlite metric_results`，并必须 join 到 formal `claims` 和 `sources`；paper title/authors/year/DOI/arXiv/page_path 只作为显示和排序 metadata，不作为 result evidence。
+
+V4.4 不做 metric alias 自动合并、单位换算、ranking、trend/gap/synthesis、UI 或 writeback。空结果返回 `no_catalog_backed_result` warning，不编造 narrative。
+
+## V4.5-min Result Evidence Quality Closure
+
+V4.5-min 新增 CLI-first、只读的结果证据质量检查，用于评估 durable `metric_results` rows 是否能回溯到 formal `claims`、`sources` 和可检查的 source context。它不重新抽取结果，不调用 LLM/embedding/parser，也不写 wiki、staging、sources 或 catalog。
+
+常用命令：
+
+```bash
+llmwiki eval result-evidence --root .
+llmwiki eval result-evidence --root . --json
+llmwiki eval result-evidence --root . --metric "success rate" --dataset "OSWorld" --json
+```
+
+JSON schema 使用 `result_evidence_quality.v4.5` 和 `result_evidence_item.v4.5`。检查项包括 claim/source join、PDF `page:N;block:<block-id>` locator、Markdown/text `line:N` locator、bounded context availability、parser fallback diagnostics、missing method/dataset/task/value/baseline 等。Parser diagnostics 和 paper metadata 只用于质量诊断，不是 result evidence。
+
+V4.5-min 真实验收使用固定 5 篇 `docs/papers/` 子集，不默认跑完整 20 篇；验收 workspace `.tmp/paper-v45-acceptance` 会按用户要求保留，便于后续追问实际结果。
+
+## V4.5.1 MinerU Result Extraction Quality Repair
+
+V4.5.1 是 V4.5-min 后的窄修复阶段，用 strict MinerU 重新验收固定 5 篇论文，并提升 `metric-results` 对 table、caption、heading 和 result-text block 的覆盖。验收使用 `.tmp/paper-v451-mineru-repair-acceptance`，默认保留结果供人工追问和对比。
+
+新建 workspace 的 `[pdf_parser]` 推荐配置使用 `mineru_backend = "pipeline"`、`mineru_method = "auto"`；本次英文 5 篇验收才额外设置 `mineru_extra_args = ["-l", "en"]`。`llmwiki parsers status --root . --json` 会报告 `mineru_command_source`、`mineru_backend`、`mineru_method` 和 `mineru_extra_args`，用于确认没有误用 fallback。
+
+PDF chunking 会额外生成 result-focused chunks，让 table/caption/nearby heading/result text 进入同一个 bounded evidence window。`metric_result_candidates` 可以携带辅助 `evidence_block_ids`；durable `metric_results` 保留主 locator 和有效辅助 block roles。`See table`、`not reported`、`N/A` 这类 placeholder 不应作为最终 cited metric value，尤其当同一 evidence bundle 中能看到具体表格数值时。
+
+`llmwiki eval result-evidence --root . --json` 的 summary 可用于 V4.5.1 对比：关注 `metric_result_count`、`table_result_count`、`caption_result_count`、`result_text_context_count`、`parser_backend_result_counts`、`parser_fallback_result_count`、missing method/dataset/task/value counts 和 `error_count`。
+
+## V4.6-min Corpus Acceptance Metrics
+
+V4.6-min 新增 CLI-first、只读的 corpus acceptance 报告，把 V4.2 inventory、V4.3 durable `metric_results`、V4.4 timeline readiness 和 V4.5 result-evidence 质量指标汇总到一个入口：
+
+```bash
+llmwiki eval corpus-results --root .
+llmwiki eval corpus-results --root . --json
+llmwiki eval corpus-results --root . --metric "success rate" --dataset "OSWorld" --json
+```
+
+JSON schema 使用 `corpus_results_eval.v4.6`、`corpus_results_paper.v4.6`、`corpus_results_metric.v4.6` 和 `corpus_results_warning.v4.6`。顶层字段包括 `summary`、`quality_gates`、`papers`、`metrics`、`timeline_readiness` 和 `warnings`；`summary` 汇总 formal claim count、durable metric result count、parser backend/fallback 分布、table/caption/result-text coverage、missing method/dataset/task/value counts 和 timeline candidate count。
+
+`llmwiki eval corpus-results` 是 acceptance/reporting surface，不是 evidence source。它只读 catalog、paper inventory metadata 和 result-evidence context，不调用 LLM、embedding、MinerU/parser、add/import、ingest、apply、ask、synthesis、lint、clean，也不写 `wiki/`、`sources/`、`staging/`、`state/catalog.sqlite`、`state/corpus-batches/`、`state/embeddings/`、`state/ui-jobs/` 或 `.tmp/`。
+
+V4.6-min 完整验收使用 strict MinerU 跑完整 `docs/papers/` 20 篇，并保留 `.tmp/paper-v46-corpus-acceptance` 供人工追问和对比，不默认 clean。
+
+## V4.7 Metric Canonicalization And Timeline Readiness Repair
+
+V4.7 adds a CLI-first, read-only canonicalization report over existing durable `metric_results`:
+
+```bash
+llmwiki metric canonicalize --root .
+llmwiki metric canonicalize --root . --json
+llmwiki metric canonicalize --root . --metric "success rate" --dataset "OSWorld" --json
+```
+
+JSON output uses `metric_canonicalization_report.v4.7`, `canonical_metric.v4.7`, `metric_result_value_repair.v4.7`, `metric_comparability_group.v4.7`, `metric_timeline_readiness.v4.7`, and `metric_canonicalization_warning.v4.7`. The report groups conservative metric variants, proposes non-durable value repair suggestions, and classifies timeline readiness as `strict_ready`, `ready_after_value_repair`, `discoverable_not_comparable`, `needs_canonical_review`, `needs_value_repair`, `needs_year_repair`, `not_ready_single_paper`, or `not_ready_empty`.
+
+`llmwiki metric canonicalize` is a reporting surface, not an evidence source and not an automatic repair. It does not call LLM, embedding, MinerU/parser, add/import, ingest, apply, ask, synthesis, lint, clean, or CLI eval recursion, and it does not write `wiki/`, `sources/`, `staging/`, `state/catalog.sqlite`, `state/corpus-batches/`, `state/embeddings/`, `state/ui-jobs/`, or `.tmp/`.
+
+V4.7 reuses preserved acceptance workspaces such as `.tmp/paper-v46-corpus-acceptance`; a full MinerU+LLM rerun is not required for metric canonicalization or timeline readiness reporting.
+
+## V4.8 Metric Repair Review Workflow Deprecated
+
+V4.8 manual repair review workflow is deprecated as a core project direction. Future work should prioritize automatic LLM-assisted normalization, evidence validation, gold-set evaluation, and research metric graph quality rather than expanding manual proposal review.
+
+V4.8 adds a CLI-first metric repair review workflow that turns V4.7 diagnostics into reviewable proposals:
+
+```bash
+llmwiki metric repair-plan --root .
+llmwiki metric repair-plan --root . --json
+llmwiki metric repair-plan --root . --stage
+llmwiki metric repair-status <repair-run-id> --root .
+llmwiki metric repair-mark <repair-run-id> <proposal-id> --root . --status accepted --reason "reviewed"
+```
+
+JSON output uses `metric_repair_plan.v4.8`, `metric_repair_proposal.v4.8`, `metric_repair_review_decision.v4.8`, `metric_repair_projection.v4.8`, `metric_repair_warning.v4.8`, and staged run manifests use `metric_repair_run.v4.8`.
+
+V4.8 is a review workflow, not a durable repair/apply workflow. Default `repair-plan` and `repair-status` are read-only. `repair-plan --stage` and `repair-mark` may write only `staging/<repair-run-id>/` review artifacts, including `metric-repair-plan.json`, `metric-repair-proposals.jsonl`, `metric-repair-decisions.jsonl`, `run.json`, and `triage.md`. V4.8 does not update `state/catalog.sqlite`, does not change `metric_results`, does not alter `llmwiki metric timeline`, and does not rerun MinerU+LLM.
+
+## V4.9 LLM Metric Normalization And Timeline Synthesis
+
+V4.9 adds a CLI-first LLM normalization pass over existing catalog-backed `metric_results`. It uses bounded evidence bundles to automatically normalize metric, dataset, task, result role, and timeline year, then writes a staging-only timeline preview:
+
+```bash
+llmwiki metric normalize --root . --dry-run --json
+llmwiki metric normalize --root . --json
+llmwiki metric normalize-status <normalization-run-id> --root . --json
+llmwiki metric timeline-synthesis <normalization-run-id> --root . --json
+```
+
+JSON output uses `metric_normalization_run.v4.9`, `metric_evidence_bundle.v4.9`, `metric_normalization_decision.v4.9`, `metric_timeline_group.v4.9`, `metric_timeline_point.v4.9`, `metric_timeline_synthesis.v4.9`, and `metric_normalization_warning.v4.9`.
+
+`llmwiki metric normalize --dry-run`, `normalize-status`, and `timeline-synthesis` are read-only. A real `normalize` run may call the configured LLM provider and may write only `staging/<normalization-run-id>/` artifacts: `run.json`, `evidence-bundles.jsonl`, `llm-normalization-decisions.jsonl`, `timeline-groups.jsonl`, `timeline-points.jsonl`, `timeline-synthesis.json`, `warnings.jsonl`, and `triage.md`.
+
+V4.9 does not rerun MinerU/parser/corpus import/ingest/apply, does not update `metric_results`, does not mutate `state/catalog.sqlite`, does not write wiki pages, and does not change `llmwiki metric timeline`. It reuses preserved acceptance workspaces such as `.tmp/paper-v46-corpus-acceptance`; full MinerU+LLM corpus re-ingest is not required.
+
+## V5.0 Research Relationship Graph And Evidence-Grounded Synthesis
+
+V5.0 shifts the research intelligence focus from year-based timelines to source-backed cross-paper relationships. The target is not a global scholarly knowledge graph; it is a local-first relationship graph compiler for a user-provided paper corpus.
+
+CLI surface:
+
+```bash
+llmwiki research graph --root . --dry-run --json
+llmwiki research graph --root . --json
+llmwiki research graph-status <relationship-run-id> --root . --json
+llmwiki research synthesize <relationship-run-id> --root . --json
+```
+
+Schemas are `research_relationship_run.v5.0`, `research_relationship_bundle.v5.0`, `research_relationship_edge.v5.0`, `research_graph.v5.0`, `research_synthesis.v5.0`, and `research_relationship_warning.v5.0`. Relationship types include `same_task`, `same_benchmark`, `same_metric`, `compares_against`, `improves_over`, `extends_method`, `uses_component`, `addresses_limitation`, `supports`, `contradicts_or_tensions`, `not_comparable`, and `background_related`.
+
+Every accepted relationship edge must preserve real evidence refs such as `claim_id`, `result_id`, `source_id`, `paper_id`, and `citation_locator`. `llmwiki research graph --dry-run`, `graph-status`, and `synthesize` are read-only. A real `research graph` run may call the configured LLM provider and may write only `staging/<relationship-run-id>/` artifacts. `not_comparable` is a first-class output, not a failure. V5.0 should reuse preserved workspaces such as `.tmp/paper-v46-corpus-acceptance` and V4.9 normalization runs; it must not require a full MinerU+LLM corpus re-ingest for first implementation.
 
 ### Internal/debug 命令
 

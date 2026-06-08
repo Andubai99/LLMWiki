@@ -25,6 +25,69 @@ from .ingestion.ingest import ingest_source, review_run
 from .lint import lint_workspace
 from .maintenance.clean import clean_workspace, format_clean_report
 from .llm import create_provider, load_llm_config, override_llm_config
+from .metrics.formatting import (
+    format_metric_canonicalization,
+    format_metric_json,
+    format_metric_list,
+    format_metric_normalization,
+    format_metric_repair_plan,
+    format_metric_repair_status,
+    format_metric_timeline,
+    format_metric_timeline_synthesis,
+    metric_canonicalization_payload,
+    metric_list_payload,
+    metric_normalization_payload,
+    metric_repair_payload,
+    metric_timeline_synthesis_payload,
+    metric_timeline_payload,
+)
+from .metrics.llm_normalization import (
+    MetricNormalizationCatalogError,
+    MetricNormalizationFilterError,
+    MetricNormalizationLLMError,
+    MetricNormalizationStagingError,
+    build_metric_normalization_dry_run,
+    build_metric_normalization_run,
+    build_metric_normalization_status,
+    build_timeline_synthesis_response,
+)
+from .metrics.repair import (
+    MetricRepairCatalogError,
+    MetricRepairFilterError,
+    MetricRepairStagingError,
+    append_metric_repair_decision,
+    build_metric_repair_plan,
+    read_metric_repair_status,
+    stage_metric_repair_plan,
+)
+from .metrics.canonicalization import (
+    MetricCanonicalizationCatalogError,
+    MetricCanonicalizationFilterError,
+    build_metric_canonicalization_report,
+)
+from .metrics.timeline import (
+    TimelineCatalogError,
+    TimelineFilterError,
+    build_metric_list,
+    build_metric_timeline,
+)
+from .research.formatting import (
+    format_research_graph,
+    format_research_json,
+    format_research_synthesis,
+    research_relationship_payload,
+    research_synthesis_payload,
+)
+from .research.relationships import (
+    ResearchRelationshipCatalogError,
+    ResearchRelationshipFilterError,
+    ResearchRelationshipLLMError,
+    ResearchRelationshipStagingError,
+    build_research_graph_run,
+    build_research_graph_status,
+    build_research_relationship_dry_run,
+    build_research_synthesis_response,
+)
 from .ingestion.pipeline import AddPipelineError, add_and_process_source
 from .pdf.quality import evaluate_pdf_quality, format_pdf_quality_report
 from .pdf.parser_backends import load_pdf_parser_config
@@ -33,6 +96,20 @@ from .providers.base import LLMProviderError
 from .retrieval.eval import evaluate_retrieval, format_eval_report, sanitize_error
 from .retrieval.query import query_context
 from .retrieval import format_retrieval_prompt, retrieve_context
+from .evals.result_evidence import (
+    ResultEvidenceCatalogError,
+    ResultEvidenceFilterError,
+    build_result_evidence_quality,
+    format_result_evidence_json,
+    format_result_evidence_quality,
+)
+from .evals.corpus_results import (
+    CorpusResultsCatalogError,
+    CorpusResultsFilterError,
+    build_corpus_results_eval,
+    format_corpus_results,
+    format_corpus_results_json,
+)
 from .synthesis import SynthesisWritebackError, SynthesisWritebackResult, create_synthesis_run
 from .synthesis.planner import (
     SynthesisPlan,
@@ -56,6 +133,7 @@ COMMANDS = (
     "ask",
     "eval",
     "corpus",
+    "metric",
     "clean",
     "embeddings",
     "parsers",
@@ -286,6 +364,50 @@ def cmd_eval_pdf_quality(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_eval_result_evidence(args: argparse.Namespace) -> int:
+    root = Path(args.root).resolve()
+    try:
+        summary = build_result_evidence_quality(
+            root,
+            source_id=args.source_id,
+            paper_id=args.paper_id,
+            metric=args.metric,
+            dataset=args.dataset,
+            task=args.task,
+            limit=args.limit,
+            offset=args.offset,
+        )
+    except (ResultEvidenceCatalogError, ResultEvidenceFilterError, OSError, ValueError) as exc:
+        print(f"Result evidence eval failed: {sanitize_error(exc)}")
+        return 1
+    if args.json:
+        print(format_result_evidence_json(summary.to_dict()))
+    else:
+        print(format_result_evidence_quality(summary))
+    return 0
+
+
+def cmd_eval_corpus_results(args: argparse.Namespace) -> int:
+    root = Path(args.root).resolve()
+    try:
+        summary = build_corpus_results_eval(
+            root,
+            metric=args.metric,
+            dataset=args.dataset,
+            task=args.task,
+            limit=args.limit,
+            offset=args.offset,
+        )
+    except (CorpusResultsCatalogError, CorpusResultsFilterError, OSError, ValueError) as exc:
+        print(f"Corpus results eval failed: {sanitize_error(exc)}")
+        return 1
+    if args.json:
+        print(format_corpus_results_json(summary.to_dict()))
+    else:
+        print(format_corpus_results(summary))
+    return 0
+
+
 def cmd_clean(args: argparse.Namespace) -> int:
     root = Path(args.root).resolve()
     try:
@@ -394,6 +516,280 @@ def cmd_corpus_inventory(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_metric_list(args: argparse.Namespace) -> int:
+    root = Path(args.root).resolve()
+    try:
+        result = build_metric_list(
+            root,
+            query=args.query,
+            dataset=args.dataset,
+            task=args.task,
+            limit=args.limit,
+            offset=args.offset,
+        )
+    except (TimelineCatalogError, TimelineFilterError, OSError, ValueError) as exc:
+        print(f"Metric list failed: {sanitize_error(exc)}")
+        return 1
+    if args.json:
+        print(format_metric_json(metric_list_payload(result)))
+    else:
+        print(format_metric_list(result))
+    return 0
+
+
+def cmd_metric_timeline(args: argparse.Namespace) -> int:
+    root = Path(args.root).resolve()
+    try:
+        result = build_metric_timeline(
+            root,
+            metric=args.metric,
+            dataset=args.dataset,
+            task=args.task,
+            method=args.method,
+            source_id=args.source_id,
+            paper_id=args.paper_id,
+            year_from=args.year_from,
+            year_to=args.year_to,
+            limit=args.limit,
+            offset=args.offset,
+        )
+    except (TimelineCatalogError, TimelineFilterError, OSError, ValueError) as exc:
+        print(f"Metric timeline failed: {sanitize_error(exc)}")
+        return 1
+    if args.json:
+        print(format_metric_json(metric_timeline_payload(result)))
+    else:
+        print(format_metric_timeline(result))
+    return 0
+
+
+def cmd_metric_canonicalize(args: argparse.Namespace) -> int:
+    root = Path(args.root).resolve()
+    try:
+        result = build_metric_canonicalization_report(
+            root,
+            metric=args.metric,
+            dataset=args.dataset,
+            task=args.task,
+            limit=args.limit,
+            offset=args.offset,
+        )
+    except (MetricCanonicalizationCatalogError, MetricCanonicalizationFilterError, OSError, ValueError) as exc:
+        print(f"Metric canonicalization failed: {sanitize_error(exc)}")
+        return 1
+    if args.json:
+        print(format_metric_json(metric_canonicalization_payload(result)))
+    else:
+        print(format_metric_canonicalization(result))
+    return 0
+
+
+def cmd_metric_repair_plan(args: argparse.Namespace) -> int:
+    root = Path(args.root).resolve()
+    try:
+        result = build_metric_repair_plan(
+            root,
+            metric=args.metric,
+            dataset=args.dataset,
+            task=args.task,
+            proposal_type=args.proposal_type,
+            limit=args.limit,
+            offset=args.offset,
+        )
+        if args.stage:
+            result = stage_metric_repair_plan(root, result, label=args.label or "")
+    except (MetricRepairCatalogError, MetricRepairFilterError, MetricRepairStagingError, OSError, ValueError) as exc:
+        print(f"Metric repair plan failed: {sanitize_error(exc)}")
+        return 1
+    if args.json:
+        print(format_metric_json(metric_repair_payload(result)))
+    else:
+        print(format_metric_repair_plan(result))
+    return 0
+
+
+def cmd_metric_repair_status(args: argparse.Namespace) -> int:
+    root = Path(args.root).resolve()
+    try:
+        result = read_metric_repair_status(root, args.repair_run_id)
+    except (MetricRepairStagingError, OSError, ValueError) as exc:
+        print(f"Metric repair status failed: {sanitize_error(exc)}")
+        return 1
+    if args.json:
+        print(format_metric_json(metric_repair_payload(result)))
+    else:
+        print(format_metric_repair_status(result))
+    return 0
+
+
+def cmd_metric_repair_mark(args: argparse.Namespace) -> int:
+    root = Path(args.root).resolve()
+    try:
+        decision = append_metric_repair_decision(
+            root,
+            args.repair_run_id,
+            args.proposal_id,
+            status=args.status,
+            reason=args.reason or "",
+        )
+    except (MetricRepairStagingError, OSError, ValueError) as exc:
+        print(f"Metric repair mark failed: {sanitize_error(exc)}")
+        return 1
+    if args.json:
+        print(format_metric_json(decision))
+    else:
+        print(f"Metric repair decision recorded: {decision['proposal_id']} -> {decision['status']}")
+    return 0
+
+
+def cmd_metric_normalize(args: argparse.Namespace) -> int:
+    root = Path(args.root).resolve()
+    try:
+        if args.dry_run:
+            result = build_metric_normalization_dry_run(
+                root,
+                metric=args.metric,
+                dataset=args.dataset,
+                task=args.task,
+                source_id=args.source_id,
+                paper_id=args.paper_id,
+                limit=args.limit,
+                offset=args.offset,
+                max_groups=args.max_groups,
+                max_results_per_group=args.max_results_per_group,
+            )
+        else:
+            result = build_metric_normalization_run(
+                root,
+                metric=args.metric,
+                dataset=args.dataset,
+                task=args.task,
+                source_id=args.source_id,
+                paper_id=args.paper_id,
+                limit=args.limit,
+                offset=args.offset,
+                max_groups=args.max_groups,
+                max_results_per_group=args.max_results_per_group,
+                reuse_run=args.reuse_run,
+            )
+    except (
+        MetricNormalizationCatalogError,
+        MetricNormalizationFilterError,
+        MetricNormalizationLLMError,
+        MetricNormalizationStagingError,
+        OSError,
+        ValueError,
+    ) as exc:
+        print(f"Metric normalize failed: {sanitize_error(exc)}")
+        return 1
+    if args.json:
+        print(format_metric_json(metric_normalization_payload(result)))
+    else:
+        print(format_metric_normalization(result))
+    return 0
+
+
+def cmd_metric_normalize_status(args: argparse.Namespace) -> int:
+    root = Path(args.root).resolve()
+    try:
+        result = build_metric_normalization_status(root, args.normalization_run_id)
+    except (MetricNormalizationStagingError, OSError, ValueError) as exc:
+        print(f"Metric normalize status failed: {sanitize_error(exc)}")
+        return 1
+    if args.json:
+        print(format_metric_json(metric_normalization_payload(result)))
+    else:
+        print(format_metric_normalization(result))
+    return 0
+
+
+def cmd_metric_timeline_synthesis(args: argparse.Namespace) -> int:
+    root = Path(args.root).resolve()
+    try:
+        result = build_timeline_synthesis_response(root, args.normalization_run_id, metric=args.metric)
+    except (MetricNormalizationStagingError, OSError, ValueError) as exc:
+        print(f"Metric timeline synthesis failed: {sanitize_error(exc)}")
+        return 1
+    if args.json:
+        print(format_metric_json(metric_timeline_synthesis_payload(result)))
+    else:
+        print(format_metric_timeline_synthesis(result))
+    return 0
+
+
+def cmd_research_graph(args: argparse.Namespace) -> int:
+    root = Path(args.root).resolve()
+    try:
+        if args.dry_run:
+            result = build_research_relationship_dry_run(
+                root,
+                topic=args.topic,
+                source_id=args.source_id,
+                paper_id=args.paper_id,
+                relationship_type=args.relationship_type,
+                metric=args.metric,
+                dataset=args.dataset,
+                task=args.task,
+                limit=args.limit,
+                offset=args.offset,
+                max_bundles=args.max_bundles,
+                max_results_per_bundle=args.max_results_per_bundle,
+                reuse_normalization_run=args.reuse_normalization_run,
+            )
+        else:
+            result = build_research_graph_run(
+                root,
+                topic=args.topic,
+                source_id=args.source_id,
+                paper_id=args.paper_id,
+                relationship_type=args.relationship_type,
+                metric=args.metric,
+                dataset=args.dataset,
+                task=args.task,
+                limit=args.limit,
+                offset=args.offset,
+                max_bundles=args.max_bundles,
+                max_results_per_bundle=args.max_results_per_bundle,
+                reuse_normalization_run=args.reuse_normalization_run,
+            )
+    except (ResearchRelationshipCatalogError, ResearchRelationshipFilterError, ResearchRelationshipLLMError) as exc:
+        print(f"Research graph failed: {sanitize_error(exc)}")
+        return 1
+    if args.json:
+        print(format_research_json(research_relationship_payload(result)))
+    else:
+        print(format_research_graph(result))
+    return 0
+
+
+def cmd_research_graph_status(args: argparse.Namespace) -> int:
+    root = Path(args.root).resolve()
+    try:
+        result = build_research_graph_status(root, args.relationship_run_id)
+    except ResearchRelationshipStagingError as exc:
+        print(f"Research graph status failed: {sanitize_error(exc)}")
+        return 1
+    if args.json:
+        print(format_research_json(research_relationship_payload(result)))
+    else:
+        print(format_research_graph(result))
+    return 0
+
+
+def cmd_research_synthesize(args: argparse.Namespace) -> int:
+    root = Path(args.root).resolve()
+    try:
+        result = build_research_synthesis_response(root, args.relationship_run_id, topic=args.topic)
+    except ResearchRelationshipStagingError as exc:
+        print(f"Research synthesis failed: {sanitize_error(exc)}")
+        return 1
+    if args.json:
+        print(format_research_json(research_synthesis_payload(result)))
+    else:
+        print(format_research_synthesis(result))
+    return 0
+
+
 def cmd_parsers_status(args: argparse.Namespace) -> int:
     root = Path(args.root).resolve()
     config = load_pdf_parser_config(root)
@@ -406,6 +802,9 @@ def cmd_parsers_status(args: argparse.Namespace) -> int:
         "mineru_command": config.mineru_command,
         "mineru_command_path": mineru["mineru_command_path"],
         "mineru_command_source": mineru["mineru_command_source"],
+        "mineru_backend": mineru["mineru_backend"],
+        "mineru_method": mineru["mineru_method"],
+        "mineru_extra_args": mineru["mineru_extra_args"],
         "mineru_available": bool(mineru["mineru_available"]),
         "warnings": list(mineru.get("warnings", [])),
         "pypdf_available": True,
@@ -420,6 +819,9 @@ def cmd_parsers_status(args: argparse.Namespace) -> int:
     print(f"mineru_available={bool_text(bool(data['mineru_available']))}")
     print(f"mineru_command={data['mineru_command']}")
     print(f"mineru_command_source={data['mineru_command_source']}")
+    print(f"mineru_backend={data['mineru_backend']}")
+    print(f"mineru_method={data['mineru_method']}")
+    print(f"mineru_extra_args={json.dumps(data['mineru_extra_args'], ensure_ascii=False)}")
     if data["mineru_command_path"]:
         print(f"mineru_command_path={data['mineru_command_path']}")
     for warning in data["warnings"]:
@@ -739,6 +1141,196 @@ def build_parser() -> argparse.ArgumentParser:
     pdf_quality_eval_parser.add_argument("--root", default=".")
     pdf_quality_eval_parser.add_argument("--json", action="store_true", help="Output stable machine-readable JSON.")
     pdf_quality_eval_parser.set_defaults(func=cmd_eval_pdf_quality)
+    result_evidence_eval_parser = eval_subparsers.add_parser(
+        "result-evidence",
+        help="Evaluate metric result evidence locator and context quality.",
+    )
+    result_evidence_eval_parser.add_argument("--root", default=".")
+    result_evidence_eval_parser.add_argument("--source-id")
+    result_evidence_eval_parser.add_argument("--paper-id")
+    result_evidence_eval_parser.add_argument("--metric")
+    result_evidence_eval_parser.add_argument("--dataset")
+    result_evidence_eval_parser.add_argument("--task")
+    result_evidence_eval_parser.add_argument("--limit", type=int, default=None)
+    result_evidence_eval_parser.add_argument("--offset", type=int, default=None)
+    result_evidence_eval_parser.add_argument("--json", action="store_true", help="Output stable machine-readable JSON.")
+    result_evidence_eval_parser.set_defaults(func=cmd_eval_result_evidence)
+    corpus_results_eval_parser = eval_subparsers.add_parser(
+        "corpus-results",
+        help="Summarize corpus-level metric result acceptance quality.",
+    )
+    corpus_results_eval_parser.add_argument("--root", default=".")
+    corpus_results_eval_parser.add_argument("--metric")
+    corpus_results_eval_parser.add_argument("--dataset")
+    corpus_results_eval_parser.add_argument("--task")
+    corpus_results_eval_parser.add_argument("--limit", type=int, default=None)
+    corpus_results_eval_parser.add_argument("--offset", type=int, default=None)
+    corpus_results_eval_parser.add_argument("--json", action="store_true", help="Output stable machine-readable JSON.")
+    corpus_results_eval_parser.set_defaults(func=cmd_eval_corpus_results)
+
+    metric_parser = subparsers.add_parser("metric", help="Query metric result timelines.")
+    metric_subparsers = metric_parser.add_subparsers(dest="metric_command", required=True)
+    metric_list_parser = metric_subparsers.add_parser(
+        "list",
+        help="List available metric names from durable result claims.",
+    )
+    metric_list_parser.add_argument("--root", default=".")
+    metric_list_parser.add_argument("--query")
+    metric_list_parser.add_argument("--dataset")
+    metric_list_parser.add_argument("--task")
+    metric_list_parser.add_argument("--limit", type=int, default=None)
+    metric_list_parser.add_argument("--offset", type=int, default=None)
+    metric_list_parser.add_argument("--json", action="store_true", help="Output stable machine-readable JSON.")
+    metric_list_parser.set_defaults(func=cmd_metric_list)
+
+    metric_timeline_parser = metric_subparsers.add_parser(
+        "timeline",
+        help="Show a source-backed timeline for a metric.",
+    )
+    metric_timeline_parser.add_argument("metric")
+    metric_timeline_parser.add_argument("--root", default=".")
+    metric_timeline_parser.add_argument("--dataset")
+    metric_timeline_parser.add_argument("--task")
+    metric_timeline_parser.add_argument("--method")
+    metric_timeline_parser.add_argument("--source-id")
+    metric_timeline_parser.add_argument("--paper-id")
+    metric_timeline_parser.add_argument("--year-from", type=int, default=None)
+    metric_timeline_parser.add_argument("--year-to", type=int, default=None)
+    metric_timeline_parser.add_argument("--limit", type=int, default=None)
+    metric_timeline_parser.add_argument("--offset", type=int, default=None)
+    metric_timeline_parser.add_argument("--json", action="store_true", help="Output stable machine-readable JSON.")
+    metric_timeline_parser.set_defaults(func=cmd_metric_timeline)
+
+    metric_canonicalize_parser = metric_subparsers.add_parser(
+        "canonicalize",
+        help="Report conservative metric canonicalization and timeline readiness.",
+    )
+    metric_canonicalize_parser.add_argument("--root", default=".")
+    metric_canonicalize_parser.add_argument("--metric")
+    metric_canonicalize_parser.add_argument("--dataset")
+    metric_canonicalize_parser.add_argument("--task")
+    metric_canonicalize_parser.add_argument("--limit", type=int, default=None)
+    metric_canonicalize_parser.add_argument("--offset", type=int, default=None)
+    metric_canonicalize_parser.add_argument("--json", action="store_true", help="Output stable machine-readable JSON.")
+    metric_canonicalize_parser.set_defaults(func=cmd_metric_canonicalize)
+
+    metric_repair_plan_parser = metric_subparsers.add_parser(
+        "repair-plan",
+        help="Generate a reviewable metric repair proposal plan.",
+    )
+    metric_repair_plan_parser.add_argument("--root", default=".")
+    metric_repair_plan_parser.add_argument("--metric")
+    metric_repair_plan_parser.add_argument("--dataset")
+    metric_repair_plan_parser.add_argument("--task")
+    metric_repair_plan_parser.add_argument("--proposal-type")
+    metric_repair_plan_parser.add_argument("--limit", type=int, default=None)
+    metric_repair_plan_parser.add_argument("--offset", type=int, default=None)
+    metric_repair_plan_parser.add_argument("--stage", action="store_true")
+    metric_repair_plan_parser.add_argument("--label")
+    metric_repair_plan_parser.add_argument("--json", action="store_true", help="Output stable machine-readable JSON.")
+    metric_repair_plan_parser.set_defaults(func=cmd_metric_repair_plan)
+
+    metric_repair_status_parser = metric_subparsers.add_parser(
+        "repair-status",
+        help="Show staged metric repair review status.",
+    )
+    metric_repair_status_parser.add_argument("repair_run_id")
+    metric_repair_status_parser.add_argument("--root", default=".")
+    metric_repair_status_parser.add_argument("--json", action="store_true", help="Output stable machine-readable JSON.")
+    metric_repair_status_parser.set_defaults(func=cmd_metric_repair_status)
+
+    metric_repair_mark_parser = metric_subparsers.add_parser(
+        "repair-mark",
+        help="Append a review decision for a metric repair proposal.",
+    )
+    metric_repair_mark_parser.add_argument("repair_run_id")
+    metric_repair_mark_parser.add_argument("proposal_id")
+    metric_repair_mark_parser.add_argument("--root", default=".")
+    metric_repair_mark_parser.add_argument("--status", choices=("accepted", "rejected", "needs_review", "blocked"), required=True)
+    metric_repair_mark_parser.add_argument("--reason", default="")
+    metric_repair_mark_parser.add_argument("--json", action="store_true", help="Output stable machine-readable JSON.")
+    metric_repair_mark_parser.set_defaults(func=cmd_metric_repair_mark)
+
+    metric_normalize_parser = metric_subparsers.add_parser(
+        "normalize",
+        help="Run LLM metric normalization and stage a timeline preview.",
+    )
+    metric_normalize_parser.add_argument("--root", default=".")
+    metric_normalize_parser.add_argument("--metric")
+    metric_normalize_parser.add_argument("--dataset")
+    metric_normalize_parser.add_argument("--task")
+    metric_normalize_parser.add_argument("--source-id")
+    metric_normalize_parser.add_argument("--paper-id")
+    metric_normalize_parser.add_argument("--limit", type=int, default=None)
+    metric_normalize_parser.add_argument("--offset", type=int, default=None)
+    metric_normalize_parser.add_argument("--max-groups", type=int, default=None)
+    metric_normalize_parser.add_argument("--max-results-per-group", type=int, default=None)
+    metric_normalize_parser.add_argument("--reuse-run")
+    metric_normalize_parser.add_argument("--dry-run", action="store_true")
+    metric_normalize_parser.add_argument("--json", action="store_true", help="Output stable machine-readable JSON.")
+    metric_normalize_parser.set_defaults(func=cmd_metric_normalize)
+
+    metric_normalize_status_parser = metric_subparsers.add_parser(
+        "normalize-status",
+        help="Show staged LLM metric normalization status.",
+    )
+    metric_normalize_status_parser.add_argument("normalization_run_id")
+    metric_normalize_status_parser.add_argument("--root", default=".")
+    metric_normalize_status_parser.add_argument("--json", action="store_true", help="Output stable machine-readable JSON.")
+    metric_normalize_status_parser.set_defaults(func=cmd_metric_normalize_status)
+
+    metric_timeline_synthesis_parser = metric_subparsers.add_parser(
+        "timeline-synthesis",
+        help="Read a staged LLM-normalized metric timeline synthesis.",
+    )
+    metric_timeline_synthesis_parser.add_argument("normalization_run_id")
+    metric_timeline_synthesis_parser.add_argument("--root", default=".")
+    metric_timeline_synthesis_parser.add_argument("--metric")
+    metric_timeline_synthesis_parser.add_argument("--json", action="store_true", help="Output stable machine-readable JSON.")
+    metric_timeline_synthesis_parser.set_defaults(func=cmd_metric_timeline_synthesis)
+
+    research_parser = subparsers.add_parser("research", help="Build research relationship graph previews.")
+    research_subparsers = research_parser.add_subparsers(dest="research_command", required=True)
+
+    research_graph_parser = research_subparsers.add_parser(
+        "graph",
+        help="Build a source-backed research relationship graph staging run.",
+    )
+    research_graph_parser.add_argument("--root", default=".")
+    research_graph_parser.add_argument("--topic")
+    research_graph_parser.add_argument("--source-id")
+    research_graph_parser.add_argument("--paper-id")
+    research_graph_parser.add_argument("--relationship-type")
+    research_graph_parser.add_argument("--metric")
+    research_graph_parser.add_argument("--dataset")
+    research_graph_parser.add_argument("--task")
+    research_graph_parser.add_argument("--limit", type=int, default=None)
+    research_graph_parser.add_argument("--offset", type=int, default=None)
+    research_graph_parser.add_argument("--max-bundles", type=int, default=None)
+    research_graph_parser.add_argument("--max-results-per-bundle", type=int, default=None)
+    research_graph_parser.add_argument("--reuse-normalization-run")
+    research_graph_parser.add_argument("--dry-run", action="store_true")
+    research_graph_parser.add_argument("--json", action="store_true", help="Output stable machine-readable JSON.")
+    research_graph_parser.set_defaults(func=cmd_research_graph)
+
+    research_graph_status_parser = research_subparsers.add_parser(
+        "graph-status",
+        help="Show staged research relationship graph status.",
+    )
+    research_graph_status_parser.add_argument("relationship_run_id")
+    research_graph_status_parser.add_argument("--root", default=".")
+    research_graph_status_parser.add_argument("--json", action="store_true", help="Output stable machine-readable JSON.")
+    research_graph_status_parser.set_defaults(func=cmd_research_graph_status)
+
+    research_synthesize_parser = research_subparsers.add_parser(
+        "synthesize",
+        help="Read a staged evidence-grounded research synthesis preview.",
+    )
+    research_synthesize_parser.add_argument("relationship_run_id")
+    research_synthesize_parser.add_argument("--root", default=".")
+    research_synthesize_parser.add_argument("--topic")
+    research_synthesize_parser.add_argument("--json", action="store_true", help="Output stable machine-readable JSON.")
+    research_synthesize_parser.set_defaults(func=cmd_research_synthesize)
 
     corpus_parser = subparsers.add_parser("corpus", help="Manage corpus import batches.")
     corpus_subparsers = corpus_parser.add_subparsers(dest="corpus_command", required=True)

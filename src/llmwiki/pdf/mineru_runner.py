@@ -91,20 +91,20 @@ def discover_mineru_command(root: Path, config: Any) -> MinerUDiscoveryResult:
                 warnings=warnings,
             )
 
-    repo_root = Path(__file__).resolve().parents[1]
-    repo_candidates = [
-        *(repo_root / ".venv" / "Scripts" / name for name in candidate_names),
-        *(repo_root / ".venv" / "bin" / name for name in candidate_names),
-    ]
-    for candidate in repo_candidates:
-        if candidate.exists():
-            return MinerUDiscoveryResult(
-                command=str(candidate),
-                command_path=str(candidate),
-                command_source="repo_venv",
-                available=True,
-                warnings=warnings,
-            )
+    for repo_root in _repo_venv_roots():
+        repo_candidates = [
+            *(repo_root / ".venv" / "Scripts" / name for name in candidate_names),
+            *(repo_root / ".venv" / "bin" / name for name in candidate_names),
+        ]
+        for candidate in repo_candidates:
+            if candidate.exists():
+                return MinerUDiscoveryResult(
+                    command=str(candidate),
+                    command_path=str(candidate),
+                    command_source="repo_venv",
+                    available=True,
+                    warnings=warnings,
+                )
 
     warnings.append("MinerU command was not found in configured path, PATH, workspace .venv, or repo .venv")
     return MinerUDiscoveryResult(
@@ -222,14 +222,41 @@ def select_mineru_content_list(candidates: list[Path], *, pdf_stem: str = "") ->
 
 def probe_mineru_status(config: Any, root: Path | None = None) -> dict[str, object]:
     discovery = discover_mineru_command(root or Path.cwd(), config)
+    available = bool(config.mineru_enabled and discovery.available)
     return {
         "mineru_command": str(config.mineru_command),
         "mineru_command_path": discovery.command_path,
         "mineru_command_source": discovery.command_source,
+        "mineru_backend": str(getattr(config, "mineru_backend", "") or ""),
+        "mineru_method": str(getattr(config, "mineru_method", "") or ""),
+        "mineru_extra_args": list(getattr(config, "mineru_extra_args", ()) or ()),
         "mineru_enabled": bool(config.mineru_enabled),
-        "mineru_available": bool(config.mineru_enabled and discovery.available),
+        "mineru_available": available,
+        "available": available,
+        "command_source": discovery.command_source,
         "warnings": list(discovery.warnings),
     }
+
+
+def _repo_venv_roots() -> list[Path]:
+    module_path = Path(__file__).resolve()
+    roots: list[Path] = []
+    for parent in module_path.parents:
+        if (parent / "pyproject.toml").exists() or (parent / "src" / "llmwiki").exists():
+            roots.append(parent)
+            break
+    if len(module_path.parents) > 3:
+        roots.append(module_path.parents[3])
+
+    unique: list[Path] = []
+    seen: set[str] = set()
+    for root in roots:
+        key = str(root)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(root)
+    return unique
 
 
 def sanitize_parser_log(text: str, *, max_chars: int) -> str:

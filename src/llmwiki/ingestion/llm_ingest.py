@@ -14,6 +14,8 @@ from .metric_results import (
     MetricResultValidationError,
     assign_metric_result_ids,
     dedupe_metric_results,
+    evidence_bundle_has_concrete_metric_value,
+    is_placeholder_metric_value,
     metric_result_from_candidate,
     validate_pdf_result_locator,
 )
@@ -145,13 +147,24 @@ def create_chunked_pdf_ingest_proposal(
             if not isinstance(raw_candidate, dict):
                 continue
             try:
+                auxiliary_block_ids = clean_string_list(raw_candidate.get("evidence_block_ids"))
+                if chunk.chunk_type == "result_evidence_extraction":
+                    auxiliary_block_ids = [*auxiliary_block_ids, *chunk.context_block_ids]
                 validation = validate_pdf_result_locator(
                     str(raw_candidate.get("citation_locator") or ""),
                     source_id=source_id,
                     blocks_by_id=blocks_by_id,
                     allowed_block_ids=allowed_block_ids,
+                    auxiliary_block_ids=auxiliary_block_ids,
                 )
             except MetricResultValidationError:
+                continue
+            raw_metric_value = raw_candidate.get("metric_raw_value") or raw_candidate.get("metric_value")
+            if not clean_optional_string(raw_metric_value):
+                continue
+            if is_placeholder_metric_value(raw_metric_value) and evidence_bundle_has_concrete_metric_value(validation, blocks_by_id):
+                continue
+            if not all(clean_optional_string(raw_candidate.get(name)) for name in ("method", "dataset", "task")):
                 continue
             claim_text = clean_optional_string(raw_candidate.get("claim_text")) or ""
             metric_name = clean_optional_string(raw_candidate.get("metric_name")) or ""
@@ -308,6 +321,7 @@ def build_chunk_ingest_messages(source: dict[str, str], chunk: SourceChunk, chun
                 '      "claim_text": "...",\n'
                 '      "citation_locator": "block:<block_id>",\n'
                 '      "confidence_status": "cited",\n'
+                '      "evidence_block_ids": ["<primary_or_support_block_id>"],\n'
                 '      "extraction_origin": "abstract|method|experiment|table|caption|conclusion|other",\n'
                 '      "method": "", "dataset": "", "task": "",\n'
                 '      "metric_name": "", "metric_raw_value": "", "metric_direction": "unknown",\n'
@@ -321,6 +335,11 @@ def build_chunk_ingest_messages(source: dict[str, str], chunk: SourceChunk, chun
                 "- Every important claim must cite block:<block_id> from the evidence below.\n"
                 "- Extract metric_result_candidates only when this chunk explicitly reports a metric/result.\n"
                 "- Relevant result regions include abstract headline results, method sections that report results, experiment/results sections, tables, captions, and conclusion or limitation sections.\n"
+                "- For tables, read visible cells and report concrete values such as 92.3%, not placeholders such as See table, N/A, or not reported when a concrete value is visible.\n"
+                "- For method, dataset, and task, use explicit row labels, table headers, captions, section headings, benchmark names, or nearby result text when they identify the evaluated method, benchmark/dataset, or task.\n"
+                "- If method, dataset, task, or metric value cannot be filled from explicit chunk evidence, keep the statement as a normal claim and do not create a metric_result_candidate for it.\n"
+                "- Do not create metric_result_candidates for taxonomy counts, survey category counts, paper metadata, dataset inventory, or generic descriptive statistics unless the chunk explicitly reports an evaluated method's performance, cost, efficiency, or quality result.\n"
+                "- Put related table, caption, heading, and result-text block ids in evidence_block_ids when they support the same metric result.\n"
                 "- Do not infer missing baselines, datasets, methods, metric directions, or values.\n"
                 "- Do not cite blocks outside this chunk.\n"
                 "- Do not invent sources, page paths, or citations.\n\n"

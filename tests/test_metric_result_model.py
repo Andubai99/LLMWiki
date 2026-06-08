@@ -5,6 +5,7 @@ from llmwiki.ingestion.metric_results import (
     MetricResultClaim,
     assign_metric_result_ids,
     dedupe_metric_results,
+    is_placeholder_metric_value,
     normalize_metric_value,
 )
 
@@ -68,6 +69,24 @@ def test_metric_value_normalization_is_conservative() -> None:
         "metric_raw_value": "+3.4 points",
         "value_normalization_status": "normalized",
     }
+    assert normalize_metric_value("5.26% to 5.80%") == {
+        "metric_value": "5.26..5.80",
+        "metric_unit": "%",
+        "metric_raw_value": "5.26% to 5.80%",
+        "value_normalization_status": "ambiguous",
+    }
+    assert normalize_metric_value("below 5%") == {
+        "metric_value": "<5",
+        "metric_unit": "%",
+        "metric_raw_value": "below 5%",
+        "value_normalization_status": "ambiguous",
+    }
+    assert normalize_metric_value("around 70%") == {
+        "metric_value": "~70",
+        "metric_unit": "%",
+        "metric_raw_value": "around 70%",
+        "value_normalization_status": "ambiguous",
+    }
     assert normalize_metric_value("roughly state of the art") == {
         "metric_value": "",
         "metric_unit": "",
@@ -80,6 +99,14 @@ def test_metric_value_normalization_is_conservative() -> None:
         "metric_raw_value": "",
         "value_normalization_status": "missing",
     }
+
+
+def test_metric_placeholder_values_are_detected_before_durable_results() -> None:
+    assert is_placeholder_metric_value("See Table 2")
+    assert is_placeholder_metric_value("not reported")
+    assert is_placeholder_metric_value("N/A")
+    assert not is_placeholder_metric_value("92.3%")
+    assert not is_placeholder_metric_value("0.87")
 
 
 def test_assign_metric_result_ids_happens_after_claim_ids_are_known() -> None:

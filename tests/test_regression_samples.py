@@ -211,6 +211,8 @@ def test_docs_describe_v1_commands_and_constraints():
         "clean",
         "ui",
         "corpus",
+        "metric",
+        "research",
     ):
         assert f"llmwiki {command}" in readme
     assert "--json" in readme
@@ -255,6 +257,72 @@ def test_docs_describe_v1_commands_and_constraints():
     assert "metric-results.jsonl" in readme
     assert "state/catalog.sqlite metric_results" in readme
     assert "does not add `llmwiki metric timeline`" in readme
+    assert "V4.4 Metric Timeline" in readme
+    assert "llmwiki metric list --root . --json" in readme
+    assert "llmwiki metric timeline \"success rate\"" in readme
+    assert "metric_list.v4.4" in readme
+    assert "metric_timeline.v4.4" in readme
+    assert "metric_timeline_item.v4.4" in readme
+    assert "no_catalog_backed_result" in readme
+    assert "V4.5-min Result Evidence Quality Closure" in readme
+    assert "llmwiki eval result-evidence --root . --json" in readme
+    assert "result_evidence_quality.v4.5" in readme
+    assert "result_evidence_item.v4.5" in readme
+    assert ".tmp/paper-v45-acceptance" in readme
+    assert "V4.5.1 MinerU Result Extraction Quality Repair" in readme
+    assert ".tmp/paper-v451-mineru-repair-acceptance" in readme
+    assert "mineru_backend = \"pipeline\"" in readme
+    assert "mineru_method = \"auto\"" in readme
+    assert "mineru_extra_args" in readme
+    assert "result-focused chunks" in readme
+    assert "placeholder" in readme
+    assert "parser_backend_result_counts" in readme
+    assert "V4.6-min Corpus Acceptance Metrics" in readme
+    assert "llmwiki eval corpus-results --root . --json" in readme
+    assert "corpus_results_eval.v4.6" in readme
+    assert "corpus_results_paper.v4.6" in readme
+    assert "corpus_results_metric.v4.6" in readme
+    assert "corpus_results_warning.v4.6" in readme
+    assert ".tmp/paper-v46-corpus-acceptance" in readme
+    assert "V4.7 Metric Canonicalization And Timeline Readiness Repair" in readme
+    assert "llmwiki metric canonicalize --root . --json" in readme
+    assert "metric_canonicalization_report.v4.7" in readme
+    assert "canonical_metric.v4.7" in readme
+    assert "metric_result_value_repair.v4.7" in readme
+    assert "metric_comparability_group.v4.7" in readme
+    assert "metric_timeline_readiness.v4.7" in readme
+    assert "ready_after_value_repair" in readme
+    assert "full MinerU+LLM rerun is not required" in readme
+    assert "V4.8 Metric Repair Review Workflow" in readme
+    assert "llmwiki metric repair-plan --root . --json" in readme
+    assert "llmwiki metric repair-status <repair-run-id> --root ." in readme
+    assert "llmwiki metric repair-mark <repair-run-id> <proposal-id>" in readme
+    assert "metric_repair_plan.v4.8" in readme
+    assert "metric_repair_proposal.v4.8" in readme
+    assert "metric_repair_review_decision.v4.8" in readme
+    assert "metric_repair_projection.v4.8" in readme
+    assert "metric_repair_run.v4.8" in readme
+    assert "not a durable repair/apply workflow" in readme
+    assert "V4.9 LLM Metric Normalization And Timeline Synthesis" in readme
+    assert "llmwiki metric normalize --root . --dry-run --json" in readme
+    assert "llmwiki metric normalize-status <normalization-run-id>" in readme
+    assert "llmwiki metric timeline-synthesis <normalization-run-id>" in readme
+    assert "metric_normalization_run.v4.9" in readme
+    assert "metric_evidence_bundle.v4.9" in readme
+    assert "metric_normalization_decision.v4.9" in readme
+    assert "metric_timeline_group.v4.9" in readme
+    assert "metric_timeline_point.v4.9" in readme
+    assert "metric_timeline_synthesis.v4.9" in readme
+    assert "V5.0 Research Relationship Graph And Evidence-Grounded Synthesis" in readme
+    assert "llmwiki research graph --root . --dry-run --json" in readme
+    assert "llmwiki research graph-status <relationship-run-id>" in readme
+    assert "llmwiki research synthesize <relationship-run-id>" in readme
+    assert "research_relationship_run.v5.0" in readme
+    assert "research_relationship_bundle.v5.0" in readme
+    assert "research_relationship_edge.v5.0" in readme
+    assert "staging/<relationship-run-id>/" in readme
+    assert "not_comparable" in readme
+    assert "full MinerU+LLM corpus re-ingest" in readme
     assert "page markdown 是页面文本，不是 formal evidence" in readme
     assert "llmwiki eval pdf-quality --root ." in readme
     assert "defaults to `auto`" in readme
@@ -348,13 +416,88 @@ def test_docs_describe_v1_commands_and_constraints():
     assert "catalog `metric_results` table" in agents
     assert "Weak, ambiguous, unsupported, invalid-locator" in agents
     assert "full 20-paper corpus" in agents
+    assert "llmwiki metric list" in agents
+    assert "llmwiki metric timeline" in agents
+    assert "metric_list.v4.4" in agents
+    assert "metric_timeline.v4.4" in agents
+    assert "result_id`, `claim_id`, `source_id`, and `citation_locator" in agents
+    assert "substring metric matching" in agents
+    assert "llmwiki eval result-evidence" in agents
+    assert "result_evidence_quality.v4.5" in agents
+    assert "result_evidence_item.v4.5" in agents
+    assert "fixed 5-paper" in agents
+    assert ".tmp/paper-v45-acceptance" in agents
+    assert "V4.5.1 is a narrow MinerU result extraction quality repair" in agents
+    assert ".tmp/paper-v451-mineru-repair-acceptance" in agents
+    assert "mineru_backend = \"pipeline\"" in agents
+    assert "mineru_method = \"auto\"" in agents
+    assert "Placeholder metric values" in agents
+    assert "evidence_block_roles" in agents
+    assert "llmwiki eval corpus-results" in agents
+    assert "corpus_results_eval.v4.6" in agents
+    assert "corpus_results_paper.v4.6" in agents
+    assert "corpus_results_metric.v4.6" in agents
+    assert "corpus_results_warning.v4.6" in agents
+    assert ".tmp/paper-v46-corpus-acceptance" in agents
+    assert "llmwiki metric canonicalize" in agents
+    assert "metric_canonicalization_report.v4.7" in agents
+    assert "canonical_metric.v4.7" in agents
+    assert "metric_result_value_repair.v4.7" in agents
+    assert "metric_comparability_group.v4.7" in agents
+    assert "metric_timeline_readiness.v4.7" in agents
+    assert "ambiguous_label" in agents
+    assert "do not rerun full MinerU+LLM" in agents
+    assert "llmwiki metric repair-plan" in agents
+    assert "deprecated CLI-first metric repair review commands" in agents
+    assert "Do not continue V4.8 manual repair review" in agents
+    assert "metric_repair_plan.v4.8" in agents
+    assert "metric_repair_proposal.v4.8" in agents
+    assert "metric_repair_review_decision.v4.8" in agents
+    assert "metric_repair_projection.v4.8" in agents
+    assert "metric_repair_run.v4.8" in agents
+    assert "staging/<repair-run-id>/" in agents
+    assert "must not update `metric_results`" in agents
+    assert "llmwiki metric normalize" in agents
+    assert "metric_normalization_run.v4.9" in agents
+    assert "metric_evidence_bundle.v4.9" in agents
+    assert "metric_normalization_decision.v4.9" in agents
+    assert "metric_timeline_group.v4.9" in agents
+    assert "metric_timeline_point.v4.9" in agents
+    assert "metric_timeline_synthesis.v4.9" in agents
+    assert "staging/<normalization-run-id>/" in agents
+    assert "must not update durable `metric_results`" in agents
+    assert "V5.0 Research Relationship Graph" in agents
+    assert "llmwiki research graph" in agents
+    assert "llmwiki research graph-status" in agents
+    assert "llmwiki research synthesize" in agents
+    assert "research_relationship_run.v5.0" in agents
+    assert "research_relationship_bundle.v5.0" in agents
+    assert "research_relationship_edge.v5.0" in agents
+    assert "research_graph.v5.0" in agents
+    assert "research_synthesis.v5.0" in agents
+    assert "staging/<relationship-run-id>/" in agents
+    assert "not_comparable" in agents
+    assert "full MinerU+LLM corpus re-ingest is not justified" in agents
+    assert "research metric graph" in agents
+    assert "metric result extraction" in agents
+    assert "graph-aware ask" in agents
+    assert "UI dashboard is deprecated" in agents
+    assert "Timeline line" in agents
+    assert "docs/observations/" in agents
+    assert "must not be committed" in agents
+    assert "Expensive Acceptance Policy" in agents
+    assert "MinerU+LLM full-corpus acceptance is expensive" in agents
+    assert "Default to reusing preserved acceptance workspaces" in agents
+    assert "Acceptance Reuse" in agents
+    assert "L5: rerun the full 20-paper corpus only for phase closure" in agents
+    assert "corpus retry <batch-id> --failed-only" in agents
     assert "--scope generated" in agents
     assert "PDF source aliases must not include parser-created aliases or paper title aliases" in agents
     assert "LLM repair may only repair JSON syntax" in agents
     assert "content_role=\"ignored\"" in agents
     assert "MinerU" in agents
     assert "vector" in agents
-    assert "V3.4 local Source Library, Ask/Synthesis UI, and read-only Evidence/Wiki Browser are allowed" in agents
+    assert "V3 UI dashboard 线已经冻结并进入删除目标" in agents
 
 
 def test_gitignore_excludes_virtualenv_and_python_caches():
@@ -363,6 +506,47 @@ def test_gitignore_excludes_virtualenv_and_python_caches():
 
     for pattern in (".venv/", "__pycache__/", ".pytest_cache/", "*.pyc"):
         assert pattern in gitignore
+
+
+def test_v47_spec_preserves_acceptance_reuse_policy():
+    root = Path(__file__).resolve().parents[1]
+    spec = (
+        root
+        / "docs"
+        / "specs"
+        / "2026-06-05-llmwiki-v4-7-metric-canonicalization-timeline-readiness-repair-design.md"
+    ).read_text(encoding="utf-8")
+
+    assert "V4.7 Metric Canonicalization And Timeline Readiness Repair Design" in spec
+    assert "Acceptance Reuse" in spec
+    assert ".tmp\\paper-v46-corpus-acceptance" in spec
+    assert "full 20-paper MinerU+LLM rerun is not required for V4.7" in spec
+    assert "call LLM providers" in spec
+    assert "run MinerU" in spec
+    assert "does not create new claims" in spec
+
+
+def test_v50_spec_defines_source_backed_relationship_graph():
+    root = Path(__file__).resolve().parents[1]
+    spec = (
+        root
+        / "docs"
+        / "specs"
+        / "2026-06-06-llmwiki-v5-0-research-relationship-graph-evidence-grounded-synthesis-design.md"
+    ).read_text(encoding="utf-8")
+
+    assert "V5.0 Research Relationship Graph And Evidence-Grounded Synthesis Design" in spec
+    assert "not a global scholarly knowledge graph" in spec
+    assert "source-backed cross-paper relationships" in spec
+    assert "research_relationship_edge.v5.0" in spec
+    assert "claim_id" in spec
+    assert "result_id" in spec
+    assert "citation_locator" in spec
+    assert "not_comparable" in spec
+    assert "Acceptance Reuse" in spec
+    assert ".tmp/paper-v46-corpus-acceptance" in spec
+    assert "L5 full-corpus rerun is not justified" in spec
+    assert "staging/<relationship-run-id>/" in spec
 
 
 def test_gitignore_excludes_generated_workspace_content():
@@ -382,6 +566,7 @@ def test_gitignore_excludes_generated_workspace_content():
         "!sources/chunks/.gitkeep",
         "sources/parser-artifacts/*",
         "!sources/parser-artifacts/.gitkeep",
+        "docs/observations/",
         "staging/*",
         "!staging/.gitkeep",
         "state/*.sqlite",

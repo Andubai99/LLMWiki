@@ -101,7 +101,108 @@ def build_source_chunks(
         chunks.extend(section_chunks)
         next_index += len(section_chunks)
 
+        result_chunks = build_result_focused_chunks(
+            source_id,
+            section_key,
+            section_items,
+            context,
+            next_index,
+            target_tokens,
+            max_tokens,
+            diagnostics,
+        )
+        chunks.extend(result_chunks)
+        next_index += len(result_chunks)
+
     return chunks
+
+
+def build_result_focused_chunks(
+    source_id: str,
+    section_key: tuple[str, ...],
+    section_blocks: list[SourceBlock],
+    section_context_block_ids: list[str],
+    start_index: int,
+    target_tokens: int,
+    max_tokens: int,
+    diagnostics: dict[str, int] | None = None,
+) -> list[SourceChunk]:
+    chunks: list[SourceChunk] = []
+    next_index = start_index
+    for index, block in enumerate(section_blocks):
+        if not is_result_focus_block(section_key, block):
+            continue
+        context_ids = result_context_block_ids(section_blocks, index, section_context_block_ids)
+        warning = classify_result_focus_block(section_key, block)
+        chunks.append(
+            make_chunk(
+                source_id,
+                next_index,
+                "result_evidence_extraction",
+                [block],
+                context_ids,
+                target_tokens,
+                max_tokens,
+                warnings=[warning],
+                diagnostics=diagnostics,
+            )
+        )
+        next_index += 1
+    return chunks
+
+
+def result_context_block_ids(
+    section_blocks: list[SourceBlock],
+    focus_index: int,
+    section_context_block_ids: list[str],
+) -> list[str]:
+    focus = section_blocks[focus_index]
+    context: list[str] = []
+    for block_id in section_context_block_ids:
+        if block_id != focus.block_id:
+            context.append(block_id)
+    for candidate in nearby_blocks(section_blocks, focus_index):
+        if candidate.block_id == focus.block_id:
+            continue
+        if getattr(candidate, "content_role", "content") == "ignored":
+            continue
+        if candidate.block_id not in context:
+            context.append(candidate.block_id)
+    for candidate in same_page_support_blocks(section_blocks, focus_index):
+        if candidate.block_id not in context:
+            context.append(candidate.block_id)
+    return context
+
+
+def nearby_blocks(section_blocks: list[SourceBlock], focus_index: int) -> list[SourceBlock]:
+    start = max(0, focus_index - 2)
+    end = min(len(section_blocks), focus_index + 3)
+    return section_blocks[start:focus_index] + section_blocks[focus_index + 1 : end]
+
+
+def same_page_support_blocks(section_blocks: list[SourceBlock], focus_index: int) -> list[SourceBlock]:
+    focus = section_blocks[focus_index]
+    focus_role = str(getattr(focus, "content_role", "") or "").casefold()
+    focus_type = str(getattr(focus, "block_type", "") or "").casefold()
+    support: list[SourceBlock] = []
+    for candidate in section_blocks:
+        if candidate.block_id == focus.block_id:
+            continue
+        if int(candidate.page_start) != int(focus.page_start):
+            continue
+        if abs(int(candidate.order) - int(focus.order)) > 8:
+            continue
+        candidate_role = str(getattr(candidate, "content_role", "") or "").casefold()
+        candidate_type = str(getattr(candidate, "block_type", "") or "").casefold()
+        if ("table" in focus_type or focus_role == "table_like") and (
+            "caption" in candidate_type or candidate_role in {"caption", "image"}
+        ):
+            support.append(candidate)
+        elif ("caption" in focus_type or focus_role in {"caption", "image"}) and (
+            "table" in candidate_type or candidate_role == "table_like"
+        ):
+            support.append(candidate)
+    return sorted(support, key=lambda block: (abs(int(block.order) - int(focus.order)), int(block.order)))
 
 
 def split_section_blocks(
@@ -228,6 +329,44 @@ def section_chunk_type(section_key: tuple[str, ...], blocks: list[SourceBlock]) 
     if "appendix" in section_name:
         return "appendix_text"
     return "section_claim_extraction"
+
+
+def is_result_focus_block(section_key: tuple[str, ...], block: SourceBlock) -> bool:
+    if getattr(block, "content_role", "content") == "ignored":
+        return False
+    role = str(getattr(block, "content_role", "") or "").casefold()
+    block_type = str(getattr(block, "block_type", "") or "").casefold()
+    if role not in {"table_like", "caption"} and not any(term in block_type for term in ("table", "caption")):
+        return False
+    classification = classify_result_focus_block(section_key, block)
+    return classification not in {"paper_metadata_or_reference_table", "dataset_inventory_table"}
+
+
+def classify_result_focus_block(section_key: tuple[str, ...], block: SourceBlock) -> str:
+    section = " ".join(section_key).casefold()
+    text = " ".join(
+        str(value or "")
+        for value in (
+            getattr(block, "block_type", ""),
+            getattr(block, "text_clean", ""),
+            getattr(block, "table_markdown", ""),
+            getattr(block, "markdown", ""),
+        )
+    ).casefold()
+    if "reference" in section or "bibliography" in section:
+        return "paper_metadata_or_reference_table"
+    if any(term in text for term in ("author", "affiliation", "license", "copyright")):
+        return "paper_metadata_or_reference_table"
+    if any(term in text for term in ("dataset statistics", "dataset inventory", "data split", "statistics of")):
+        return "dataset_inventory_table"
+    if any(term in text for term in ("ablation", "diagnostic", "sensitivity", "variant")):
+        return "ablation_or_diagnostic_table"
+    if (
+        any(term in section for term in ("result", "experiment", "evaluation", "benchmark", "performance", "comparison"))
+        or any(term in text for term in ("result", "accuracy", "success", "score", "f1", "auc", "bleu", "pass rate", "win rate"))
+    ):
+        return "result_table"
+    return "ambiguous_table"
 
 
 def total_tokens(blocks: list[SourceBlock]) -> int:
